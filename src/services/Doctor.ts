@@ -1,12 +1,10 @@
-// services/Doctor.ts
-
 import axios, { AxiosResponse } from 'axios';
+import * as SecureStore from 'expo-secure-store';
 import { IDoctor, DoctorRegistrationData } from '../types/backendType'; 
-
+import { TOKEN_KEY } from './Auth';
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 const API_URL = `${SERVER_URL}/api/v1/doctors`;
-
 
 // Define API response shape
 interface DoctorListResponse {
@@ -19,13 +17,12 @@ interface SingleDoctorResponse {
     data: IDoctor;
 }
 
-
 /**
  * 🧑‍⚕️ Register a new doctor (Self-registration)
  * Handles multipart form data for file upload.
  */
 export const registerDoctor = async (
-    data: DoctorRegistrationData, // Use the full imported type
+    data: DoctorRegistrationData,
     imageUri: string
 ): Promise<IDoctor | null> => {
     try {
@@ -41,7 +38,7 @@ export const registerDoctor = async (
         // Append the image file
         const filename = imageUri.split('/').pop();
         const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : `image/jpeg`; // Default to jpeg if type unknown
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
 
         formData.append('doctorImage', {
             uri: imageUri,
@@ -65,14 +62,25 @@ export const registerDoctor = async (
     }
 };
 
-
 /**
  * Fetch all approved doctors for public display.
+ * This endpoint should be public and not require authentication.
  */
 export const fetchApprovedDoctors = async (): Promise<IDoctor[] | null> => {
     try {
-        const url = API_URL; 
-        const response: AxiosResponse<DoctorListResponse> = await axios.get(url);
+        const url = API_URL;
+        
+        // Try to get token for better experience, but don't fail if not present
+        const token = await SecureStore.getItemAsync(TOKEN_KEY);
+        
+        const headers: any = {};
+        if (token) {
+            headers.Authorization = `Bearer ${token}`;
+        }
+        
+        const response: AxiosResponse<DoctorListResponse> = await axios.get(url, {
+            headers
+        });
         
         if (response.data.success) {
             return response.data.data;
@@ -85,14 +93,29 @@ export const fetchApprovedDoctors = async (): Promise<IDoctor[] | null> => {
 };
 
 /**
- * Fetch a single doctor profile. Requires a token for authorization.
+ * Fetch a single doctor profile.
+ * Requires authentication token.
  */
-export const fetchDoctorProfile = async (doctorId: string, token: string): Promise<IDoctor | null> => {
+export const fetchDoctorProfile = async (doctorId: string, token?: string): Promise<IDoctor | null> => {
     try {
-        const url = `${API_URL}/${doctorId}`; 
+        // If token not provided, get it from SecureStore
+let authToken: string | null = token || null;  // Type: string | null
+        if (!authToken) {
+            authToken = await SecureStore.getItemAsync(TOKEN_KEY);
+        }
+        
+        if (!authToken) {
+            console.error('No authentication token available for fetching doctor profile');
+            throw new Error('Authentication required');
+        }
+        
+        const url = `${API_URL}/${doctorId}`;
+        
+        console.log(`Fetching doctor profile with token: ${authToken.substring(0, 20)}...`);
+        
         const response: AxiosResponse<SingleDoctorResponse> = await axios.get(url, {
             headers: {
-                Authorization: `Bearer ${token}`,
+                Authorization: `Bearer ${authToken}`,
             },
         });
         

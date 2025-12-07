@@ -20,6 +20,7 @@ import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import { UpdateUserData, updateUserProfile } from '../../services/User';
 
 interface EditProfileModalProps {
     visible: boolean;
@@ -40,7 +41,7 @@ interface ProfileFormState {
 }
 
 const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose }) => {
-    const { user, updateUser } = useAuth();
+    const { user, updateUser, userToken, refreshUser } = useAuth();
     const [isSaving, setIsSaving] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -49,7 +50,6 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
         state: '', lga: '', userImageUri: '', imageChanged: false,
     });
 
-    // ✅ FIXED: Better image extraction from user object
     useEffect(() => {
         if (user && visible) {
             console.log('📝 Populating form with user data');
@@ -134,49 +134,58 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
         setIsSaving(true);
 
         try {
-            const payload = {
-                name: formData.name.trim(),
-                phone: formData.phone.trim(),
+            const payload: UpdateUserData = {
+                firstName: formData.name.trim(),
+                phoneNumber: formData.phone.trim(),
                 gender: formData.gender,
                 dateOfBirth: formData.dateOfBirth,
-                homeAddress: formData.homeAddress,
+                address: formData.homeAddress,
                 city: formData.city,
                 state: formData.state,
                 lga: formData.lga,
             };
 
-            // Only send image if it's a new local file (starts with file://)
-            const imageToUpload = formData.imageChanged && formData.userImageUri.startsWith('file://') 
-                ? formData.userImageUri 
-                : undefined;
+            const token = userToken || "";
 
-            console.log('💾 Saving profile:', {
-                userId: user._id,
-                hasImage: !!imageToUpload,
-                imageUri: imageToUpload
-            });
+            // Call service to update profile
+            const updated = await updateUserProfile(
+                user._id.toString(),
+                token,
+                payload,
+                formData.imageChanged && formData.userImageUri.startsWith('file://')
+                    ? formData.userImageUri
+                    : undefined
+            );
 
-            const updated = await updateUser(user._id.toString(), payload, imageToUpload);
-
-            if (!updated) {
-                throw new Error('No update response');
+            if (!updated || !updated.success) {
+                throw new Error('Update failed');
             }
 
             console.log('✅ Profile updated successfully');
-            
+
             Toast.show({ 
                 type: 'success', 
                 text1: 'Profile updated',
                 text2: 'Your profile has been updated successfully' 
             });
+
+            // ✅ KEY FIX: Force immediate refresh from server to get updated image
+            console.log('🔄 Refreshing user data from server...');
+            const refreshedUser = await refreshUser();
             
+            if (refreshedUser) {
+                console.log('✅ User data refreshed, new image:', refreshedUser.userImage);
+            }
+
+            // Close modal
             onClose();
+
         } catch (error: any) {
             console.error('❌ Update error:', error);
             Toast.show({ 
                 type: 'error', 
                 text1: 'Update failed',
-                text2: error.response?.data?.message || 'Failed to update profile'
+                text2: error.response?.data?.message || error.message || 'Failed to update profile'
             });
         } finally {
             setIsSaving(false);

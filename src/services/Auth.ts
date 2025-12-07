@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import * as SecureStore from 'expo-secure-store'; // 💡 Changed import
+import * as SecureStore from 'expo-secure-store';
 import { UserData, AuthResponse } from '../types/Auth';
 import { AuthEntity } from '../types/backendType';
 
@@ -29,8 +29,6 @@ interface AuthResponseData {
 interface GenericAPIResponse<T> {
     success: boolean;
     data?: T;
-    // NOTE: For login, the backend returns token/user directly, not wrapped in 'data'.
-    // Adjusting type definition for frontend helper functions:
 }
 
 /**
@@ -43,10 +41,10 @@ export async function createGuestSession(): Promise<AuthResponse | null> {
     
     const { token, sessionId, isAnonymous } = response.data;
     
-    // Store credentials securely for persistence (using SecureStore)
+    // Store credentials securely for persistence
     await SecureStore.setItemAsync(TOKEN_KEY, token);
     await SecureStore.setItemAsync(SESSION_ID_KEY, sessionId);
-    await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, String(isAnonymous)); // Store boolean as string
+    await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, String(isAnonymous));
 
     console.log("Guest session created and token stored.");
     return response.data;
@@ -72,7 +70,8 @@ export async function convertGuestToUser(sessionId: string, userData: UserData):
     
     // Update stored credentials (new token and non-anonymous status)
     await SecureStore.setItemAsync(TOKEN_KEY, token);
-    await SecureStore.deleteItemAsync(IS_ANONYMOUS_KEY); // Remove anonymous status
+    await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, 'false'); // Update to false
+    await SecureStore.deleteItemAsync(SESSION_ID_KEY); // Remove session ID after conversion
 
     console.log("Guest session converted to full user.");
     return response.data;
@@ -83,39 +82,47 @@ export async function convertGuestToUser(sessionId: string, userData: UserData):
   }
 }
 
+/**
+ * Register a new user
+ * POST /auth/register
+ */
 export async function registerUser(userData: UserData): Promise<AuthResponse | null> {
     try {
         const response = await axios.post<AuthResponse>(`${BASE_URL}/register`, userData);
         
-        // Since backend only returns success: true and data: newUser (local only), 
-        // we assume the success object looks like: { success: true, data: IUser }
-        // The frontend will need to call login immediately afterward to get the token.
         if (response.data.success) {
-             // Returning success status for the screen, but requires login step next
+             // Return success status - user needs to login afterward
              return { success: true, user: response.data, token: '' } as unknown as AuthResponse;
         }
         return null;
     } catch (error) {
         console.error('Registration failed:', error);
-        throw error; // Re-throw for screen to handle specific errors (e.g., 409)
+        throw error;
     }
 }
 
 /**
- * PUBLIC - Login user
- * POST /auth/login
+ * Login user or doctor
+ * POST /auth/login or /auth/doctor/login
  */
 export async function loginUser(
     credentials: { email: string; password: string }, 
-    role: 'User' | 'Doctor' // Added role parameter
+    role: 'User' | 'Doctor'
 ): Promise<AuthResponseData | null> {
     try {
         const endpoint = role === 'User' ? `${BASE_URL}/login` : `${BASE_URL}/doctor/login`;
         
-        // Response type is assumed to be AuthResponseData (with token/user at root level)
         const response: AxiosResponse<AuthResponseData> = await axios.post(endpoint, credentials);
         
         if (response.data.token && response.data.user) {
+            // 🔥 CRITICAL: Store the token immediately after successful login
+            await SecureStore.setItemAsync(TOKEN_KEY, response.data.token);
+            await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, 'false');
+            
+            // Clear any guest session data
+            await SecureStore.deleteItemAsync(SESSION_ID_KEY);
+            
+            console.log(`${role} logged in successfully, token stored.`);
             return response.data;
         }
         return null;
@@ -132,4 +139,5 @@ export async function logout() {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
   await SecureStore.deleteItemAsync(SESSION_ID_KEY);
   await SecureStore.deleteItemAsync(IS_ANONYMOUS_KEY);
+  console.log("Logged out, all tokens cleared.");
 }

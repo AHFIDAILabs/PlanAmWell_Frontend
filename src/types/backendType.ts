@@ -29,6 +29,8 @@ export interface IUser {
   verified?: boolean;
   preferences?: Record<string, any>;
   partnerId?: string;
+      status?: "submitted" | "reviewing" | "approved" | "rejected";
+
 }
 
 export interface IDoctor {
@@ -37,16 +39,17 @@ export interface IDoctor {
     lastName: string;
     email: string;
     name?: string;
+       gender?: string;
     userImage?: IImage;
     roles?: string;
      homeAddress?: string;
+     dateOfBirth?: string;
     city?: string;
     state: string;
     lga: string;
     phone?: string;
-    preferences?: string;
-    // passwordHash is not sent to the frontend
-    doctorImage?: IImage; // Populate the image details
+ preferences?: Record<string, any>;   
+    doctorImage?: IImage; 
     profileImage?: IImage;
     specialization: string;
     licenseNumber: string;

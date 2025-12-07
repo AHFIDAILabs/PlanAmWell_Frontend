@@ -80,14 +80,14 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
         Alert.alert(
             "Select Gender", "Choose your gender:",
             [
-                { text: "Male", onPress: () => handleInputChange('gender', 'Male') },
-                { text: "Female", onPress: () => handleInputChange('gender', 'Female') },
-                { text: "Other", onPress: () => handleInputChange('gender', 'Other') },
+                { text: "male", onPress: () => handleInputChange('gender', 'male') },
+                { text: "female", onPress: () => handleInputChange('gender', 'female') },
+                { text: "other", onPress: () => handleInputChange('gender', 'other') },
             ]
         );
     };
 
-    // --- Image Picker Function ---
+
     const handleImagePick = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -106,7 +106,6 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
             setDoctorImageUri(result.assets[0].uri);
         }
     };
-    // ---
 
 
     const validateForm = () => {
@@ -133,12 +132,10 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
             return false;
         }
 
-        // --- Doctor Image Validation ---
         if (role === 'Doctor' && !doctorImageUri) {
             Toast.show({ type: 'error', text1: 'Missing Image', text2: 'Doctor registration requires a profile image.' });
             return false;
         }
-        // ---
 
         return true;
     };
@@ -170,20 +167,16 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
                 
                 Toast.show({ type: 'info', text1: 'Pending Approval', text2: "Doctor account created! Please allow time for admin review." });
                 
-                // Doctors navigate back to Login to await approval
                 navigation.navigate('Login' as never); 
             } else {
-                // --- USER REGISTRATION & AUTO-LOGIN ---
                 finalPayload = { ...finalPayload, name: formData.name };
 
                 await handleRegister(finalPayload, 'User'); 
                 
-                // User auto-logs in after registration, updating `isAuthenticated` to true.
                 await handleLogin({ email: formData.email, password: formData.password }, 'User');
 
                 Toast.show({ type: 'success', text1: 'Success', text2: `Account created!` });
                 
-                // 🚀 FIX: Reset the stack to force AppNavigator to switch from AuthStack to HomeScreen.
                 navigation.reset({
                     index: 0,
                     // 'HomeScreen' is a screen defined on the RootStack in AppNavigator, which is now accessible
@@ -403,7 +396,6 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
     );
 };
 
-// Added local styles for image preview
 const localStyles = StyleSheet.create({
     previewImage: {
         width: 100, 

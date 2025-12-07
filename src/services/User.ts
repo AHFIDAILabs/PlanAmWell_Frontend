@@ -1,167 +1,192 @@
-// services/User.ts - WITH ENHANCED DEBUGGING
+// services/User.ts
 
-import axios from 'axios';
-import { IUser } from '../types/backendType';
+import axios, { AxiosResponse } from 'axios';
+import { IUser, IDoctor, AuthEntity } from '../types/backendType';
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
-const BASE_URL = `${SERVER_URL}/api/v1/users`; 
+const USER_API_URL = `${SERVER_URL}/api/v1/users`;
+const DOCTOR_API_URL = `${SERVER_URL}/api/v1/doctors`;
 
-if (!SERVER_URL) {
-  console.error("SERVER_URL environment variable is not set!");
+export interface UpdateUserData {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phoneNumber?: string;
+  address?: string;
+  city?: string;
+  lga? : string;
+  state? : string;
+  country?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  profileImage?: string;
+}
+
+interface UserProfileResponse {
+  success: boolean;
+  data: IUser | IDoctor; // Can be either
 }
 
 /**
- * User profile fetch
- * GET /users/profile/me  
+ * Decode JWT token to get user role without verification
+ * This is safe because we only use it to route the API call - the backend still verifies the token
  */
-export const fetchUserProfile = async (token: string) => {
-  console.log("📤 Sending profile request...");
-  console.log("   Token exists:", !!token);
-  console.log("   Token preview:", token ? token.substring(0, 30) + "..." : "NONE");
-  console.log("   API URL:", `${BASE_URL}/profile/me`);
-  
+const decodeToken = (token: string): { role?: string; id?: string } => {
   try {
-    const response = await axios.get(`${BASE_URL}/profile/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    
-    console.log("✅ Profile fetch successful");
-    
-    // 🔍 DEBUG: Log the full response structure
-    console.log("📦 Response data structure:", {
-      success: response.data.success,
-      hasData: !!response.data.data,
-      dataKeys: response.data.data ? Object.keys(response.data.data) : [],
-    });
-    
-    // 🔍 DEBUG: Specifically log userImage
-    if (response.data.data?.userImage) {
-      console.log("🖼️ UserImage from backend:", {
-        type: typeof response.data.data.userImage,
-        value: response.data.data.userImage,
-        keys: typeof response.data.data.userImage === 'object' 
-          ? Object.keys(response.data.data.userImage) 
-          : 'N/A'
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('Error decoding token:', error);
+    return {};
+  }
+};
+
+/**
+ * Fetch user or doctor profile based on token role
+ * GET /users/profile/me OR /doctors/{doctorId}
+ */
+export const fetchUserProfile = async (token: string): Promise<UserProfileResponse | null> => {
+  try {
+    console.log('📤 Sending profile request...');
+    console.log('    Token exists:', !!token);
+    console.log('    Token preview:', token.substring(0, 30) + '...');
+
+    // Decode token to determine role
+    const decoded = decodeToken(token);
+    const isDoctor = decoded.role === 'Doctor';
+    const userId = decoded.id;
+
+    console.log('    Decoded role:', decoded.role);
+    console.log('    User ID:', userId);
+
+    let response: AxiosResponse<UserProfileResponse>;
+
+    if (isDoctor && userId) {
+      // Fetch doctor profile
+      const url = `${DOCTOR_API_URL}/${userId}`;
+      console.log('    API URL (Doctor):', url);
+      
+      response = await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
     } else {
-      console.log("🖼️ No userImage in response");
+      // Fetch user profile
+      const url = `${USER_API_URL}/profile/me`;
+      console.log('    API URL (User):', url);
+      
+      response = await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
     }
+
+    console.log('✅ Profile fetched successfully');
     
-    return response.data;
+    if (response.data.success) {
+      return response.data;
+    }
+    return null;
   } catch (error: any) {
-    console.error("❌ Profile fetch failed");
-    console.error("   Status:", error.response?.status);
-    console.error("   Message:", error.response?.data?.message || error.message);
+    console.error('❌ Profile fetch failed');
+    if (error.response) {
+      console.error('    Status:', error.response.status);
+      console.error('    Message:', error.response.data?.message || 'Unknown error');
+    }
     throw error;
   }
 };
 
 /**
  * Update user profile
- * PUT /users/:id
+ * PUT /users/profile/{userId}
  */
-export interface UpdateUserData {
-  name?: string;
-  phone?: string;
-  email?: string;
-  gender?: string;
-  dateOfBirth?: string;
-  homeAddress?: string;
-  city?: string;
-  state?: string;
-  lga?: string;
-  preferences?: Record<string, any>;
-}
-
 export const updateUserProfile = async (
   userId: string,
   token: string,
-  userData: UpdateUserData,
+  data: UpdateUserData,
   imageUri?: string
-) => {
-  console.log("📤 Sending profile update...");
-  console.log("   User ID:", userId);
-  console.log("   Has image:", !!imageUri);
-  console.log("   Image URI:", imageUri);
-  
+): Promise<UserProfileResponse | null> => {
   try {
-    const formData = new FormData();
+    const url = `${USER_API_URL}/${userId}`;
 
-    // Attach image if present
+    // If image is provided, use FormData
     if (imageUri) {
-      const filename = imageUri.split('/').pop() || 'photo.jpg';
-      const ext = filename.split('.').pop();
-      const type = ext ? `image/${ext}` : 'image/jpeg';
-      
-      console.log("📎 Attaching image:", { filename, type });
-      
-      formData.append('userImage', { 
-        uri: imageUri, 
-        name: filename, 
-        type 
+      const formData = new FormData();
+
+      // Append all text fields
+      Object.keys(data).forEach((key) => {
+        const value = (data as any)[key];
+        if (value !== undefined && value !== null) {
+          formData.append(key, value);
+        }
+      });
+
+      // Append the image file
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+      formData.append('userImage', {
+        uri: imageUri,
+        name: filename || 'profile_image.jpg',
+        type,
       } as any);
+
+      const response = await axios.put<UserProfileResponse>(url, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data;
+    } else {
+      // No image, send JSON
+      const response = await axios.put<UserProfileResponse>(url, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      return response.data;
     }
-
-    // Attach text fields
-    Object.entries(userData).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        formData.append(key, value.toString());
-      }
-    });
-
-    const response = await axios.put(`${BASE_URL}/${userId}`, formData, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-
-    console.log("✅ Profile update successful");
-    
-    // 🔍 DEBUG: Log the update response
-    console.log("📦 Update response:", {
-      success: response.data.success,
-      hasData: !!response.data.data,
-      userImage: response.data.data?.userImage,
-      userImageType: typeof response.data.data?.userImage,
-    });
-    
-    if (response.data.data?.userImage && typeof response.data.data.userImage === 'object') {
-      console.log("🖼️ Updated userImage keys:", Object.keys(response.data.data.userImage));
-      console.log("🖼️ Updated userImage value:", response.data.data.userImage);
-    }
-
-    return response.data;
-  } catch (error: any) {
-    console.error('❌ Profile update failed');
-    console.error('   Status:', error.response?.status);
-    console.error('   Error:', error.response?.data || error.message);
+  } catch (error) {
+    console.error('Error updating user profile:', error);
     throw error;
   }
 };
 
 /**
- * Delete user profile image
- * DELETE /users/:id/image
+ * Delete user account
+ * DELETE /users/profile/{userId}
  */
-export const deleteUserProfileImage = async (userId: string, token: string) => {
-  console.log("📤 Sending delete profile image request...");
-  
+export const deleteUserAccount = async (
+  userId: string,
+  token: string
+): Promise<{ success: boolean; message: string } | null> => {
   try {
-    const response = await axios.delete(`${BASE_URL}/${userId}/image`, {
+    const url = `${USER_API_URL}/profile/${userId}`;
+
+    const response = await axios.delete(url, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
-    
-    console.log("✅ Profile image deleted successfully");
+
     return response.data;
-  } catch (error: any) {
-    console.error("❌ Profile image deletion failed");
-    console.error("   Status:", error.response?.status);
-    console.error("   Message:", error.response?.data?.message || error.message);
+  } catch (error) {
+    console.error('Error deleting user account:', error);
     throw error;
   }
 };

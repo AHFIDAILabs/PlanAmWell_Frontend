@@ -3,16 +3,26 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image } from 'rea
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-
-// Fix the navigation type - Onboarding is in AuthStack, so it navigates within AuthStack
-type OnboardingScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'Onboarding'>;
-
-import Animated, { useSharedValue, withRepeat, withTiming, useAnimatedStyle, FadeIn, Easing } from 'react-native-reanimated';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import Animated, { 
+  useSharedValue, 
+  withRepeat, 
+  withTiming, 
+  useAnimatedStyle, 
+  FadeIn, 
+  Easing 
+} from 'react-native-reanimated';
 import { useAuth } from '../../hooks/useAuth';
 import { AppStackParamList } from '../../types/App';
 import { AuthStackParamList } from '../../types/Auth';
 
 const { height } = Dimensions.get('window');
+
+// Composite navigation type to access both AuthStack and RootStack
+type OnboardingScreenNavigationProp = CompositeNavigationProp<
+  StackNavigationProp<AuthStackParamList, 'Onboarding'>,
+  StackNavigationProp<AppStackParamList>
+>;
 
 export default function OnboardingScreen() {
   const breath = useSharedValue(1);
@@ -32,21 +42,43 @@ export default function OnboardingScreen() {
   }));
 
   const handleSkip = async () => {
-    await completeOnboarding();
-    await enableGuestMode();
-    // Navigation will happen automatically via AppNavigator
+    try {
+      // First complete onboarding
+      await completeOnboarding();
+      // Then enable guest mode (sets isAuthenticated = true)
+      await enableGuestMode();
+      
+      // Navigate to HomeScreen via the parent navigator
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.reset({
+          index: 0,
+          routes: [{ name: 'HomeScreen' }],
+        });
+      }
+    } catch (error) {
+      console.error('Error in handleSkip:', error);
+    }
   };
 
   const handleNext = async () => {
-    await completeOnboarding();
-    // Navigate within AuthStack to Login screen
-    navigation.navigate('Login');
+    try {
+      await completeOnboarding();
+      // Stay within AuthStack and navigate to Register
+      navigation.navigate('Register');
+    } catch (error) {
+      console.error('Error in handleNext:', error);
+    }
   };
 
   const handleLogin = async () => {
-    await completeOnboarding();
-    // Navigate within AuthStack to Login screen
-    navigation.navigate('Login');
+    try {
+      await completeOnboarding();
+      // Stay within AuthStack and navigate to Login
+      navigation.navigate('Login');
+    } catch (error) {
+      console.error('Error in handleLogin:', error);
+    }
   };
 
   return (
@@ -71,7 +103,7 @@ export default function OnboardingScreen() {
           style={styles.nextButton}
           onPress={handleNext}
         >
-          <Text style={styles.nextText}>Next</Text>
+          <Text style={styles.nextText}>Get Started</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={handleLogin}>
@@ -80,7 +112,7 @@ export default function OnboardingScreen() {
       </View>
 
       <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-        <Text style={styles.skipText}>Skip</Text>
+        <Text style={styles.skipText}>Continue as Guest</Text>
       </TouchableOpacity>
     </Animated.View>
   );

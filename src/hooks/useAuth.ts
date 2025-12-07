@@ -1,5 +1,4 @@
-// hooks/useAuth.ts
-
+// hooks/useAuth.ts - FIXED VERSION
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import {
@@ -10,27 +9,23 @@ import {
   SESSION_ID_KEY,
   IS_ANONYMOUS_KEY,
   registerUser,
-  loginUser, 
+  loginUser,
 } from '../services/Auth';
-
-import { registerDoctor } from '../services/Doctor'; 
-
+import { registerDoctor } from '../services/Doctor';
 import {
   fetchUserProfile,
   updateUserProfile,
   UpdateUserData
 } from '../services/User';
-
-import { IUser, AuthEntity } from '../types/backendType'; 
+import { IUser, AuthEntity } from '../types/backendType';
 import { AxiosError } from 'axios';
 
-// Onboarding key for SecureStore
 const HAS_SEEN_ONBOARDING = 'HAS_SEEN_ONBOARDING';
 
 interface ConversionResult {
   success: boolean;
   token?: string;
-  user?: IUser; // Conversion always results in a regular user
+  user?: IUser;
 }
 
 export function useAuth() {
@@ -39,10 +34,43 @@ export function useAuth() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [userToken, setUserToken] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthEntity | null>(null); // State holds IUser or IDoctor
+  const [user, setUser] = useState<AuthEntity | null>(null);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
 
   const userLoadedRef = useRef(false);
+  const didLoadRef = useRef(false);
+
+  // ------------------------------------------------------------
+  // REFRESH USER - FIXED
+  // ------------------------------------------------------------
+  const refreshUser = useCallback(async () => {
+    if (!userToken) {
+      console.log('[useAuth] No token available for refresh');
+      return null;
+    }
+    
+    try {
+      console.log('[useAuth] 🔄 Refreshing user profile from server...');
+      const refreshed = await fetchUserProfile(userToken);
+      
+      if (refreshed?.success && refreshed.data) {
+        console.log('[useAuth] ✅ Profile refreshed successfully');
+        console.log('[useAuth] 🖼️ New userImage:', refreshed.data.userImage);
+        
+        // Force state update with fresh data
+        setUser(refreshed.data as AuthEntity);
+        userLoadedRef.current = true;
+        
+        return refreshed.data;
+      }
+      
+      console.warn('[useAuth] ⚠️ Refresh response invalid');
+      return null;
+    } catch (error) {
+      console.error('[useAuth] ❌ refreshUser error:', error);
+      return null;
+    }
+  }, [userToken]);
 
   // ------------------------------------------------------------
   // LOGOUT
@@ -55,7 +83,6 @@ export function useAuth() {
     setIsAnonymous(true);
     setIsAuthenticated(false);
     userLoadedRef.current = false;
-    // Don't reset hasSeenOnboarding - they've already seen it
   }, []);
 
   // ------------------------------------------------------------
@@ -63,12 +90,17 @@ export function useAuth() {
   // ------------------------------------------------------------
   const loadUserProfile = useCallback(
     async (token: string) => {
-      try {
-        // Assuming fetchUserProfile handles fetching either IUser or IDoctor based on token role
-        const response = await fetchUserProfile(token); 
+      if (userLoadedRef.current) {
+        console.log('[useAuth] Profile already loaded, skipping...');
+        return user;
+      }
 
+      try {
+        console.log('[useAuth] Loading user profile...');
+        const response = await fetchUserProfile(token);
         if (response?.success && response.data) {
-          setUser(response.data as AuthEntity); // Asserting data is AuthEntity
+          console.log('[useAuth] Profile loaded successfully');
+          setUser(response.data as AuthEntity);
           setIsAnonymous(false);
           setIsAuthenticated(true);
           userLoadedRef.current = true;
@@ -77,10 +109,10 @@ export function useAuth() {
       } catch (err) {
         const error = err as AxiosError;
         if (error.response?.status === 401) {
-          console.warn('Token expired. Logging out...');
+          console.warn('[useAuth] Token expired, logging out...');
           handleLogout();
         } else {
-          console.error('Failed to fetch user profile:', err);
+          console.error('[useAuth] Failed to fetch user profile:', err);
         }
       }
       return null;
@@ -89,38 +121,41 @@ export function useAuth() {
   );
 
   // ------------------------------------------------------------
-  // COMPLETE ONBOARDING
+  // ONBOARDING
   // ------------------------------------------------------------
- const completeOnboarding = useCallback(async () => {
-  try {
-    await SecureStore.setItemAsync(HAS_SEEN_ONBOARDING, 'true');
-    setHasSeenOnboarding(true);
-  } catch (error) {
-    console.error('Failed to save onboarding status:', error);
-  }
-}, []);
+  const completeOnboarding = useCallback(async () => {
+    try {
+      await SecureStore.setItemAsync(HAS_SEEN_ONBOARDING, 'true');
+      setHasSeenOnboarding(true);
+      console.log('[useAuth] Onboarding completed');
+    } catch (error) {
+      console.error('[useAuth] Failed to save onboarding status:', error);
+    }
+  }, []);
 
-// Add this function
-const enableGuestMode = useCallback(async () => {
-  try {
-    setIsAnonymous(true);
-    setIsAuthenticated(true);
-    // Optionally set a guest user object
-    setUser({ id: 'guest', role: 'Guest' } as any);
-  } catch (error) {
-    console.error('Failed to enable guest mode:', error);
-  }
-}, []);
-
-  // ------------------------------------------------------------
-  // RESET ONBOARDING (for testing purposes)
-  // ------------------------------------------------------------
   const resetOnboarding = useCallback(async () => {
     try {
       await SecureStore.deleteItemAsync(HAS_SEEN_ONBOARDING);
       setHasSeenOnboarding(false);
+      console.log('[useAuth] Onboarding reset');
     } catch (error) {
-      console.error('Failed to reset onboarding status:', error);
+      console.error('[useAuth] Failed to reset onboarding status:', error);
+    }
+  }, []);
+
+  // ------------------------------------------------------------
+  // GUEST MODE
+  // ------------------------------------------------------------
+  const enableGuestMode = useCallback(async () => {
+    try {
+      console.log('[useAuth] Enabling guest mode...');
+      setIsAnonymous(true);
+      setIsAuthenticated(false); 
+      setUser({ id: 'guest', role: 'Guest' } as any);
+      await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, 'true');
+      console.log('[useAuth] Guest mode enabled');
+    } catch (error) {
+      console.error('[useAuth] Failed to enable guest mode:', error);
     }
   }, []);
 
@@ -128,73 +163,95 @@ const enableGuestMode = useCallback(async () => {
   // INITIAL AUTH LOAD
   // ------------------------------------------------------------
   useEffect(() => {
-    (async () => {
-      try {
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
-        const storedSessionId = await SecureStore.getItemAsync(SESSION_ID_KEY);
-        const storedIsAnonymous = await SecureStore.getItemAsync(IS_ANONYMOUS_KEY);
-        const seenOnboarding = await SecureStore.getItemAsync(HAS_SEEN_ONBOARDING);
-        
-        const isAnon = storedIsAnonymous === 'true';
+    // Prevent multiple calls
+    if (didLoadRef.current) return;
+    didLoadRef.current = true;
 
-        // Set onboarding status
+    (async () => {
+      console.log('[useAuth] Starting initial auth load...');
+      
+      try {
+        const [token, storedSessionId, storedIsAnonymous, seenOnboarding] = await Promise.all([
+          SecureStore.getItemAsync(TOKEN_KEY),
+          SecureStore.getItemAsync(SESSION_ID_KEY),
+          SecureStore.getItemAsync(IS_ANONYMOUS_KEY),
+          SecureStore.getItemAsync(HAS_SEEN_ONBOARDING),
+        ]);
+
+        const isAnon = storedIsAnonymous === 'true';
         setHasSeenOnboarding(seenOnboarding === 'true');
 
-        if (token && storedSessionId) {
-          setUserToken(token);
-          setSessionId(storedSessionId);
-          setIsAnonymous(isAnon);
-          setIsAuthenticated(true);
+        console.log('[useAuth] Stored values:', {
+          hasToken: !!token,
+          hasSession: !!storedSessionId,
+          isAnonymous: isAnon,
+          hasSeenOnboarding: seenOnboarding === 'true',
+        });
 
-          if (!isAnon) {
-            // Registered user or approved doctor - load profile
+        if (token) {
+          // Have existing token
+          setUserToken(token);
+          setIsAnonymous(isAnon);
+          setIsAuthenticated(!isAnon);
+
+          if (storedSessionId) setSessionId(storedSessionId);
+
+          if (!isAnon && !userLoadedRef.current) {
+            // Real user - load profile
+            console.log('[useAuth] Loading profile for real user...');
             await loadUserProfile(token);
+          } else if (isAnon) {
+            // Guest user
+            console.log('[useAuth] Setting up guest user...');
+            setUser({ id: 'guest', role: 'Guest' } as any);
+            setIsAuthenticated(false); // Guests can browse
           }
         } else {
-          // New install → create guest session
+          // No token - create guest session
+          console.log('[useAuth] No token found, creating guest session...');
           const guest = await createGuestSession();
           if (guest) {
+            console.log('[useAuth] Guest session created');
             setUserToken(guest.token);
             setSessionId(guest.sessionId);
             setIsAnonymous(true);
-            setIsAuthenticated(true);
+            setIsAuthenticated(false); // Not authenticated until onboarding
+            setUser({ id: 'guest', role: 'Guest' } as any);
+          } else {
+            console.error('[useAuth] Failed to create guest session');
           }
         }
       } catch (e) {
-        console.error('Error restoring session:', e);
+        console.error('[useAuth] Error restoring session:', e);
       } finally {
+        console.log('[useAuth] Initial auth load complete, setting loading to false');
         setLoading(false);
       }
     })();
-  }, [loadUserProfile]);
+  }, [loadUserProfile]); // Only run once on mount
 
   // ------------------------------------------------------------
-  // GENERALIZED REGISTER (Handles User and Doctor)
+  // REGISTER / LOGIN
   // ------------------------------------------------------------
   const handleRegister = useCallback(
-    async (
-      data: any, // Contains user or doctor specific fields
-      role: 'User' | 'Doctor',
-      imageUri?: string 
-    ) => {
+    async (data: any, role: 'User' | 'Doctor', imageUri?: string) => {
       setLoading(true);
       try {
+        console.log(`[useAuth] Registering ${role}...`);
         let response;
         if (role === 'Doctor') {
           if (!imageUri) throw new Error("Doctor registration requires a profile image.");
-          response = await registerDoctor(data, imageUri); // Calls doctor service
+          response = await registerDoctor(data, imageUri);
         } else {
-          response = await registerUser(data); // Calls user service
+          response = await registerUser(data);
         }
 
         if (response) {
-          // Mark onboarding as complete after successful registration
           await completeOnboarding();
+          console.log(`[useAuth] ${role} registered successfully`);
           return response;
         }
         throw new Error(`${role} registration failed.`);
-      } catch (e) {
-        throw e;
       } finally {
         setLoading(false);
       }
@@ -202,34 +259,23 @@ const enableGuestMode = useCallback(async () => {
     [completeOnboarding]
   );
 
-  // ------------------------------------------------------------
-  // GENERALIZED LOGIN (Handles User and Approved Doctor)
-  // ------------------------------------------------------------
   const handleLogin = useCallback(
     async (credentials: { email: string; password: string }, role: 'User' | 'Doctor') => {
       setLoading(true);
       try {
-        // Calls the generalized loginUser (which now uses the role parameter to hit the correct endpoint)
-        const response = await loginUser(credentials, role); 
-        
+        console.log(`[useAuth] Logging in ${role}...`);
+        const response = await loginUser(credentials, role);
         if (response?.token && response?.user) {
-          await SecureStore.setItemAsync(TOKEN_KEY, response.token);
-          await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, 'false');
-
           setUserToken(response.token);
-          setUser(response.user); 
+          setUser(response.user);
           setIsAnonymous(false);
           setIsAuthenticated(true);
           userLoadedRef.current = true;
-
-          // Mark onboarding as complete after successful login
           await completeOnboarding();
-
+          console.log(`[useAuth] ${role} logged in successfully`);
           return response.user;
         }
         throw new Error('Login failed: Invalid response from server.');
-      } catch (e) {
-        throw e;
       } finally {
         setLoading(false);
       }
@@ -238,23 +284,19 @@ const enableGuestMode = useCallback(async () => {
   );
 
   // ------------------------------------------------------------
-  // UPDATE PROFILE
+  // PROFILE UPDATE - SIMPLIFIED (not used for images anymore)
   // ------------------------------------------------------------
   const updateUser = useCallback(
     async (userId: string, data: UpdateUserData, imageUri?: string) => {
       if (!userToken) return null;
       setLoading(true);
-
       try {
         const res = await updateUserProfile(userId, userToken, data, imageUri);
         if (res?.success && res.data) {
-          setUser(res.data as AuthEntity); // Update state with the updated entity
+          setUser(res.data as AuthEntity);
           userLoadedRef.current = true;
           return res.data;
         }
-        return null;
-      } catch (err) {
-        console.error('Profile update failed:', err);
         return null;
       } finally {
         setLoading(false);
@@ -264,38 +306,31 @@ const enableGuestMode = useCallback(async () => {
   );
 
   // ------------------------------------------------------------
-  // CONVERT GUEST → REAL USER (Remains the same, specific to User)
+  // CONVERT GUEST TO USER
   // ------------------------------------------------------------
   const handleConversion = useCallback(
     async (formData: any): Promise<ConversionResult> => {
       if (!sessionId) return { success: false };
-
       setLoading(true);
       try {
         const res = await convertGuestToUser(sessionId, formData);
-
         if (res?.token) {
-          await SecureStore.setItemAsync(TOKEN_KEY, res.token);
-          await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, 'false');
-
           setUserToken(res.token);
           setIsAnonymous(false);
-
-          if (res.user) {
-            setUser(res.user);
-          }
-
+          setIsAuthenticated(true);
+          if (res.user) setUser(res.user);
           userLoadedRef.current = true;
-
-          // Mark onboarding as complete after successful conversion
           await completeOnboarding();
+          // ------------------------------------------------------------
+  // SET USER TOKEN (for updating after conversion)
+  // ------------------------------------------------------------
+  const setToken = useCallback((newToken: string) => {
+    console.log('[useAuth] Updating token in context');
+    setUserToken(newToken);
+  }, []);
 
-          return { success: true, token: res.token, user: res.user };
+  return { success: true, token: res.token, user: res.user };
         }
-
-        return { success: false };
-      } catch (error) {
-        console.error('Conversion failed:', error);
         return { success: false };
       } finally {
         setLoading(false);
@@ -305,38 +340,39 @@ const enableGuestMode = useCallback(async () => {
   );
 
   // ------------------------------------------------------------
-  // REFRESH USER
+  // HELPERS
   // ------------------------------------------------------------
-  const refreshUser = useCallback(() => {
-    if (userToken) {
-      loadUserProfile(userToken);
-    }
-  }, [userToken, loadUserProfile]);
-
-  // ------------------------------------------------------------
-  // HELPER: Check if user is a doctor
-  // ------------------------------------------------------------
-  const isDoctor = useCallback(() => {
-    return user && 'role' in user && user.role === 'Doctor';
-  }, [user]);
-
-  // ------------------------------------------------------------
-  // HELPER: Check if doctor is approved
-  // ------------------------------------------------------------
-  const isDoctorApproved = useCallback(() => {
-    return isDoctor() && 'approvalStatus' in user! && user!.approvalStatus === 'Approved';
-  }, [user, isDoctor]);
-
-  // ------------------------------------------------------------
-  // HELPER: Get user role
-  // ------------------------------------------------------------
+  
+  // ✅ SET USER TOKEN (for updating after conversion)
+  const setToken = useCallback((newToken: string) => {
+    console.log('[useAuth] Updating token in context');
+    setUserToken(newToken);
+  }, []);
+  
+  const isDoctor = useCallback(() => 
+    user && 'specialization' in user && 'licenseNumber' in user, 
+    [user]
+  );
+  
+  const isDoctorApproved = useCallback(() => 
+    isDoctor() && 'status' in user! && user!.status === 'approved', 
+    [user, isDoctor]
+  );
+  
   const getUserRole = useCallback(() => {
     if (!user) return null;
-    if ('role' in user) return user.role;
-    return 'User'; // Default to User if role field doesn't exist
+    if ('specialization' in user && 'licenseNumber' in user) return 'Doctor';
+    return 'User';
   }, [user]);
 
-  // ------------------------------------------------------------
+  const getInitialScreen = useCallback(() => {
+    if (!isAuthenticated && !isAnonymous) return 'AuthStack';
+    if (isAuthenticated && !isAnonymous && isDoctor() && isDoctorApproved()) {
+      return 'DoctorDashScreen';
+    }
+    return 'HomeScreen';
+  }, [isAuthenticated, isAnonymous, isDoctor, isDoctorApproved]);
+
   return {
     loading,
     isAuthenticated,
@@ -349,13 +385,15 @@ const enableGuestMode = useCallback(async () => {
     handleLogout,
     handleRegister,
     handleLogin,
-    refreshUser,
     updateUser,
     completeOnboarding,
-      enableGuestMode, // ADD THIS
-    resetOnboarding, // Useful for development/testing
+    enableGuestMode,
+    resetOnboarding,
     isDoctor,
     isDoctorApproved,
     getUserRole,
+    getInitialScreen,
+    refreshUser,
+    setToken, // ✅ NEW: Export token setter
   };
 }

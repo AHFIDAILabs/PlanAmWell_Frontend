@@ -18,7 +18,7 @@ import { AppStackParamList } from '../types/App';
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
-// --- Placeholder Loading Screen ---
+
 const LoadingScreen = () => (
     <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#D81E5B" />

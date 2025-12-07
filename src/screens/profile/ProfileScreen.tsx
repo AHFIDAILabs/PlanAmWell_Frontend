@@ -45,57 +45,35 @@ const ProfileMenuItem: React.FC<ProfileMenuItemProps> = ({ icon, title, onPress,
 
 const ProfileScreen = () => {
     const navigation = useNavigation<any>(); 
-    const { user, handleLogout, refreshUser, loading: authLoading } = useAuth();
+    const { user, handleLogout, refreshUser, loading: authLoading, isAuthenticated, isAnonymous } = useAuth();
 
     const [isEditModalVisible, setIsEditModalVisible] = useState(false);
     const [isImageUpdateVisible, setIsImageUpdateVisible] = useState(false);
+    const [imageUri, setImageUri] = useState<string>('https://via.placeholder.com/150');
 
-    // Debug: Log user data when it changes
+    // ✅ FIXED: Redirect to login if not authenticated or is guest
+    useEffect(() => {
+        if (!authLoading && (!isAuthenticated || isAnonymous)) {
+            console.log('⚠️ User not authenticated, redirecting to login...');
+            navigation.navigate('AuthStack', { screen: 'Login' });
+        }
+    }, [authLoading, isAuthenticated, isAnonymous, navigation]);
+
+    // ✅ FIXED: Extract and update image URI whenever user changes
     useEffect(() => {
         if (user) {
-            console.log('👤 User data updated:', {
+            console.log('👤 User data updated in ProfileScreen:', {
                 name: user.name,
                 userImage: user.userImage,
                 userImageType: typeof user.userImage,
-                userImageKeys: user.userImage && typeof user.userImage === 'object' 
-                    ? Object.keys(user.userImage) 
-                    : 'not an object'
             });
+
+            const newImageUri = getImageUri();
+            console.log('📷 Extracted image URI:', newImageUri);
+            setImageUri(newImageUri);
         }
-    }, [user]);
+    }, [user]); // Re-run whenever user object changes
 
-    if (authLoading) {
-        return (
-            <SafeAreaView style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#D81E5B" />
-            </SafeAreaView>
-        );
-    }
-
-    const displayName = user?.name || 'Guest User';
-    const displayEmail = user?.email || 'N/A';
-    const role = user?.roles?.[0] || 'User';
-
-    const handleLogoutPress = async () => {
-        try {
-            await handleLogout();
-            Toast.show({
-                type: 'success',
-                text1: 'Logged out',
-                text2: 'You have been successfully logged out.'
-            });
-navigation.navigate("AuthStack", {
-    screen: "Login"
-});
-        } catch (error) {
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'Logout failed.'
-            });
-        }
-    };
-    
     // ✅ FIXED: Comprehensive image URI extraction
     const getImageUri = (): string => {
         const placeholder = 'https://via.placeholder.com/150';
@@ -137,8 +115,37 @@ navigation.navigate("AuthStack", {
         return placeholder;
     };
 
-    const imageUri = getImageUri();
-    console.log('📷 Final image URI:', imageUri);
+    if (authLoading) {
+        return (
+            <SafeAreaView style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#D81E5B" />
+            </SafeAreaView>
+        );
+    }
+
+    const displayName = user?.name || 'Guest User';
+    const displayEmail = user?.email || 'N/A';
+    const role = user?.roles?.[0] || 'User';
+
+    const handleLogoutPress = async () => {
+        try {
+            await handleLogout();
+            Toast.show({
+                type: 'success',
+                text1: 'Logged out',
+                text2: 'You have been successfully logged out.'
+            });
+            navigation.navigate("AuthStack", {
+                screen: "Login"
+            });
+        } catch (error) {
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Logout failed.'
+            });
+        }
+    };
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -154,6 +161,7 @@ navigation.navigate("AuthStack", {
                    
                     <TouchableOpacity onPress={() => setIsImageUpdateVisible(true)}>
                         <Image
+                            key={imageUri} // Force re-render when URI changes
                             source={{ uri: imageUri }}
                             style={styles.profileImage}
                             onError={(e) => {
@@ -205,9 +213,12 @@ navigation.navigate("AuthStack", {
 
             <EditProfileModal
                 visible={isEditModalVisible}
-                onClose={() => {
+                onClose={async () => {
+                    console.log('📝 Edit modal closed, refreshing user data...');
                     setIsEditModalVisible(false);
-                    refreshUser();
+                    
+                    // Refresh user data after modal closes
+                    await refreshUser();
                 }}
             />
 
