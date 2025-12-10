@@ -7,7 +7,7 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   icon: './src/assets/images/logo1.png',
   userInterfaceStyle: 'light',
-  newArchEnabled: false,
+  newArchEnabled: true,
   plugins: [
     'expo-asset',
     [
@@ -43,6 +43,12 @@ const config: ExpoConfig = {
     eas: {
       projectId: 'b17d8d1f-7620-4a54-9baa-9166dc7a27ea',
     },
+     serverUrl: process.env.EXPO_PUBLIC_SERVER_URL,
+  googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_IOS_CLIENT_ID,
+  androidClientId: process.env.EXPO_PUBLIC_ANDROID_CLIENT_ID,
+  openAIKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
+  whisperKey: process.env.EXPO_PUBLIC_WHISPER_API_KEY,
   },
 };
 

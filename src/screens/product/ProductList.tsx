@@ -46,7 +46,7 @@ export default function ProductList({ route, navigation }: Props) {
                 drugName: product.name,
                 imageUrl: product.imageUrl
             };
-            await cartService.addToCart(null, "guest-session-id", [cartItem]);
+            await cartService.addToCart([], "guest-session-id", [cartItem] as any);
             Toast.show({ type: 'success', text1: `${product.name} added to cart!` });
             navigation.navigate('CartModal');
         } catch (err: any) {

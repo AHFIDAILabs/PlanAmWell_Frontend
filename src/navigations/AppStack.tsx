@@ -1,5 +1,4 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { useAuth } from '../hooks/useAuth'; 
@@ -12,8 +11,7 @@ import CheckoutScreen from '../screens/cart/CheckoutScreen';
 import PaymentMethodScreen from '../screens/payment/PaymentMethodScreen';
 import Productlist from '../screens/product/ProductList';
 import WebViewScreen from '../screens/payment/WebViewScreen';
-import SettingsScreen from '../screens/setting/Setting';
-import NotificationsScreen from '../screens/notification/notification';
+
 import { AppStackParamList } from '../types/App'; 
 
 const RootStack = createStackNavigator<AppStackParamList>();
