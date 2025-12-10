@@ -28,6 +28,7 @@ export interface IUser {
   isAnonymous?: boolean;
   verified?: boolean;
   preferences?: Record<string, any>;
+   availability?: Record<string, any>;
   partnerId?: string;
       status?: "submitted" | "reviewing" | "approved" | "rejected";
 
@@ -171,6 +172,11 @@ export interface AuthResponse {
   user?: IUser; 
 }
 
+// Add these to your existing backendType.ts file
+
+/**
+ * Notification Interface
+ */
 export interface INotification {
   _id: string;
   userId: string;
@@ -182,12 +188,88 @@ export interface INotification {
     orderId?: string;
     appointmentId?: string;
     articleId?: string;
+    status?: string;
+    doctorName?: string;
+    scheduledAt?: string;
     time?: string;
   };
   createdAt: string;
 }
 
+/**
+ * Generic API Response Interface
+ */
 export interface IAPIResponse<T> {
   success: boolean;
   data: T;
+  message?: string;
+}
+
+/**
+ * Upcoming Appointment Summary
+ */
+export interface IUpcomingAppointment {
+  _id: string;
+  scheduledAt: string;
+  duration: number;
+  status: string;
+  reason?: string;
+  doctorId: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    specialization: string;
+    profileImage?: {
+      imageUrl?: string;
+      secure_url?: string;
+      url?: string;
+    } | string;
+  };
+}
+
+/**
+ * Appointments Summary Response
+ */
+export interface IAppointmentsSummary {
+  upcoming: IUpcomingAppointment[];
+  pendingCount: number;
+}
+
+
+export interface IAppointment {
+  _id?: string;
+  userId: string;
+  doctorId: string | IDoctor;
+
+  scheduledAt: Date;                 // requested appointment time
+  proposedAt?: Date;                 // doctor-proposed new time (if rescheduled)
+
+  duration?: number;
+
+  status:
+    | "pending"
+    | "confirmed"
+    | "cancelled"
+    | "completed"
+    | "rejected"
+    | "rescheduled";
+
+  paymentStatus?: "pending" | "paid" | "failed";
+
+  reason?: string;                   // reason for visit
+  notes?: string;                    // doctor or user notes
+
+  shareUserInfo?: boolean;
+
+  // snapshot of user info if they toggle "Share My Info"
+  patientSnapshot?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    gender?: string;
+    dateOfBirth?: Date;
+  };
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }

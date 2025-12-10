@@ -133,6 +133,60 @@ export async function loginUser(
 }
 
 /**
+ * Register Expo push token
+ * POST /auth/register-push-token
+ */
+export async function registerPushToken(token: string, authToken: string): Promise<boolean> {
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/register-push-token`,
+      { token },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+    
+    if (response.data.success) {
+      console.log('[Auth] Push token registered successfully');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('[Auth] Failed to register push token:', error);
+    return false;
+  }
+}
+
+/**
+ * Remove Expo push token (on logout)
+ * POST /auth/remove-push-token
+ */
+export async function removePushToken(token: string, authToken: string): Promise<boolean> {
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/remove-push-token`,
+      { token },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
+    );
+    
+    if (response.data.success) {
+      console.log('[Auth] Push token removed successfully');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('[Auth] Failed to remove push token:', error);
+    return false;
+  }
+}
+
+/**
  * Clears all authentication tokens upon logout.
  */
 export async function logout() {

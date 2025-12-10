@@ -12,31 +12,28 @@ import BottomBar from '../../components/common/BottomBar';
 import { useAuth } from '../../hooks/useAuth';
 import { useCart } from '../../hooks/useCart';
 import { useProducts } from '../../hooks/productAuth';
-import { useDoctors } from '../../hooks/useDoctor'; // Corrected hook name based on context
-import { useTheme } from '../../context/ThemeContext'; // <-- ADDED THEME IMPORT
+import { useDoctors } from '../../hooks/useDoctor';
+import { useTheme } from '../../context/ThemeContext';
 import { IProduct } from '../../types/backendType';
 import { AppStackParamList } from '../../types/App';
 import Toast from 'react-native-toast-message';
 import AdvocacyCarousel from '../../components/advocacy/AdvocacyCarousel';
 
-// Get screen width for responsive card sizing
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-// Define standard card size for horizontal scroll (e.g., 70% of screen width)
 const CAROUSEL_CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CAROUSEL_CARD_MARGIN = 10;
 const DOCTOR_CARD_WIDTH = SCREEN_WIDTH * 0.45; 
 
-// Define the type for navigation passed to ProductSection
 type HomeScreenNavigation = NavigationProp<AppStackParamList>;
 
-// --- Product Data Section Component (Now an Animated Carousel) ---
 interface ProductSectionProps {
     navigation: HomeScreenNavigation;
 }
+
 const ProductSection = ({ navigation }: ProductSectionProps) => {
     const { products, loading, error } = useProducts();
     const { addProduct, refreshCart } = useCart();
-    const { darkMode } = useTheme(); // <-- USE THEME
+    const { darkMode } = useTheme();
 
     const handleSeeAll = () => {
         navigation.navigate('ProductsScreen' as any);
@@ -60,23 +57,17 @@ const ProductSection = ({ navigation }: ProductSectionProps) => {
             });
         }
     };
-
-    // Conditional styles for theme
-    const errorTextStyles = [
-        styles.errorText,
-        darkMode && styles.errorTextDark
-    ];
-    const noDataTextStyles = [
-        styles.noDataText,
-        darkMode && styles.noDataTextDark
-    ];
     
     if (loading) {
         return <ActivityIndicator size="large" color="#D81E5B" style={{ marginVertical: 30 }} />;
     }
 
     if (error) {
-        return <Text style={errorTextStyles}>Error loading products: {error}</Text>;
+        return (
+            <Text style={[styles.errorText, darkMode && styles.errorTextDark]}>
+                Error loading products: {error}
+            </Text>
+        );
     }
     
     return (
@@ -102,13 +93,14 @@ const ProductSection = ({ navigation }: ProductSectionProps) => {
                     contentContainerStyle={styles.productListContainer}
                 />
             ) : (
-                <Text style={noDataTextStyles}>No products currently available.</Text>
+                <Text style={[styles.noDataText, darkMode && styles.noDataTextDark]}>
+                    No products currently available.
+                </Text>
             )}
         </View>
     );
 };
 
-// --- Doctor Data Section Component (Now an Animated Carousel) ---
 const DoctorSection = () => {
     const { doctors, loading, error } = useDoctors();
     const navigation = useNavigation<HomeScreenNavigation>();
@@ -117,11 +109,6 @@ const DoctorSection = () => {
     const handleSeeAll = () => {
         navigation.navigate('AllDoctorScreen' as any); 
     };
-
-    // Conditional styles for theme (omitted for brevity)
-    const infoTextStyles = [styles.infoText, darkMode && styles.infoTextDark];
-    const errorTextStyles = [styles.errorText, darkMode && styles.errorTextDark];
-    const noDataTextStyles = [styles.noDataText, darkMode && styles.noDataTextDark];
 
     if (loading) {
         return <ActivityIndicator size="small" color="#D81E5B" style={{ marginVertical: 10 }} />;
@@ -138,9 +125,6 @@ const DoctorSection = () => {
                 showsHorizontalScrollIndicator={false}
                 decelerationRate="fast"
                 renderItem={({ item }) => {
-                    
-                    // 💡 FIX: Use Type Narrowing to explicitly ensure the URI is a string.
-                    // Prioritize item.profileImage (the string URL from seeder)
                     const imageUri = 
                         (typeof item.profileImage === 'string' ? item.profileImage : null) || 
                         item.doctorImage?.imageUrl || 
@@ -152,7 +136,6 @@ const DoctorSection = () => {
                                 key={item._id}
                                 name={`Dr. ${item.firstName} ${item.lastName}`}
                                 specialty={item.specialization}
-                                // Use the correctly resolved string URI
                                 avatar={{ uri: imageUri }}
                                 rating={item.ratings}
                                 onPress={() => navigation.navigate('DoctorScreen' as any, { doctor: item })}
@@ -162,12 +145,22 @@ const DoctorSection = () => {
                 }}
                 contentContainerStyle={styles.doctorListContainer}
             />
-            {error && <Text style={error.includes('mock profiles') ? infoTextStyles : errorTextStyles}>{error}</Text>}
-            {doctors.length === 0 && !loading && !error && <Text style={noDataTextStyles}>No doctors currently available.</Text>}
+            {error && (
+                <Text style={[
+                    error.includes('mock profiles') ? styles.infoText : styles.errorText,
+                    darkMode && (error.includes('mock profiles') ? styles.infoTextDark : styles.errorTextDark)
+                ]}>
+                    {error}
+                </Text>
+            )}
+            {doctors.length === 0 && !loading && !error && (
+                <Text style={[styles.noDataText, darkMode && styles.noDataTextDark]}>
+                    No doctors currently available.
+                </Text>
+            )}
         </View>
     );
 };
-
 
 export default function HomeScreen() {
     const { isAnonymous, user } = useAuth();
@@ -175,7 +168,6 @@ export default function HomeScreen() {
     const navigation = useNavigation<HomeScreenNavigation>();
     const { darkMode } = useTheme();
 
-    
     let greetingName = "Guest"; 
     if (user && 'name' in user && user.name) { 
         greetingName = user.name.split(' ')[0]; 
@@ -186,14 +178,8 @@ export default function HomeScreen() {
     const titleText = `Welcome, ${greetingName}!`;
     const BOTTOM_BAR_TOTAL_HEIGHT = 90; 
     
-
-    const fullContainerStyles = [
-        styles.fullContainer,
-        darkMode && styles.fullContainerDark
-    ];
-    
     return (
-        <View style={fullContainerStyles}> 
+        <View style={[styles.fullContainer, darkMode && styles.fullContainerDark]}> 
             <ScrollView 
                 showsVerticalScrollIndicator={false} 
                 contentContainerStyle={{ 
@@ -215,10 +201,10 @@ export default function HomeScreen() {
 
                 <AdvocacyCarousel />
 
-
                 <SectionHeader title="Our Partners" />
                 <View style={styles.partnerRow}>
-                    <PartnerCard /><PartnerCard />
+                    <PartnerCard />
+                    <PartnerCard />
                 </View>
 
                 <AboutCard />
@@ -235,7 +221,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
- 
     fullContainer: { 
         flex: 1, 
         backgroundColor: '#FFF', 
@@ -245,7 +230,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#0A0A0A', 
     },
     
- 
     doctorSectionWrapper: {
         marginBottom: 32,
         paddingHorizontal: 0,
@@ -275,10 +259,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     
-   
-    partnerRow: { flexDirection: 'row', gap: 16, marginBottom: 40 },
+    partnerRow: { 
+        flexDirection: 'row', 
+        gap: 16, 
+        marginBottom: 40 
+    },
     
-  
     noDataText: {
         textAlign: 'center',
         color: '#888', 

@@ -4,7 +4,7 @@ import advocacyService, { IAdvocacyArticle, IComment } from '../services/Advocac
 import { useAuth } from './useAuth';
 import Toast from 'react-native-toast-message';
 
-// ==================== MAIN ADVOCACY HOOK ====================
+
 export const useAdvocacy = () => {
   const [articles, setArticles] = useState<IAdvocacyArticle[]>([]);
   const [featuredArticles, setFeaturedArticles] = useState<IAdvocacyArticle[]>([]);
@@ -20,7 +20,7 @@ export const useAdvocacy = () => {
     pages: 0,
   });
 
-  // Fetch all articles with filters
+
   const fetchArticles = useCallback(
     async (params?: {
       category?: string;

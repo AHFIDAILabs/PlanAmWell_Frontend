@@ -98,7 +98,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       await cartService.updateItem(drugId, quantity, cartId, userToken ?? undefined, dosage, specialInstructions);
       
-      // Optimistically update the cart
+    
       setCart(prevCart => {
         if (!prevCart) return null;
         
@@ -113,7 +113,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
             : item
         );
 
-        // Recalculate totals
+      
         const totalItems = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
         const totalPrice = updatedItems.reduce((sum, item) => sum + ((item.price ?? 0) * item.quantity), 0);
 
@@ -126,7 +126,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       });
     } catch (err) {
       console.error("Update item failed:", err);
-      // Refresh cart to get correct state on error
+ 
       await refreshCart();
       throw err;
     } finally {
@@ -141,17 +141,16 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     setLoading(true);
     try {
       await cartService.removeItem(drugId, cartId, userToken ?? undefined);
-      
-      // Optimistically update the cart
+
       setCart(prevCart => {
         if (!prevCart) return null;
         
         const updatedItems = prevCart.items.filter(item => item.drugId !== drugId);
 
-        // If no items left, return null
+
         if (updatedItems.length === 0) return null;
 
-        // Recalculate totals
+        
         const totalItems = updatedItems.reduce((sum, item) => sum + item.quantity, 0);
         const totalPrice = updatedItems.reduce((sum, item) => sum + ((item.price ?? 0) * item.quantity), 0);
 
@@ -164,7 +163,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       });
     } catch (err) {
       console.error("Remove item failed:", err);
-      // Refresh cart to get correct state on error
+     
       await refreshCart();
       throw err;
     } finally {
@@ -172,14 +171,14 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // 🛑 RENAMED: Clears cart via API call, intended for manual "Empty Cart" button
+
   const clearCartBackend = async () => {
     const cartId = getCartId();
     if (!cartId) return;
 
     setLoading(true);
     try {
-      // This still calls the backend DELETE /api/v1/cart
+     
       await cartService.clearCart(cartId, userToken ?? undefined);
       setCart(null);
     } catch (err) {
@@ -190,7 +189,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // ✅ NEW: Clears the local state only, used after successful checkout
+
   const clearCartLocal = () => {
     setCart(null);
     console.log("🛒 Local cart state cleared after checkout.");
@@ -205,8 +204,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         addProduct, 
         removeItem, 
         updateItem, 
-        clearCartBackend, // Renamed
-        clearCartLocal, // New
+        clearCartBackend, 
+        clearCartLocal, 
         refreshCart 
       }}
     >

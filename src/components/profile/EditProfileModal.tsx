@@ -70,10 +70,10 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
                 phone: user.phone || '',
                 gender: user.gender || '',
                 dateOfBirth: user.dateOfBirth || '',
-                homeAddress: user.homeAddress || user.preferences?.address || '',
-                city: user.city || user.preferences?.city || '',
-                state: user.state || user.preferences?.state || '',
-                lga: user.lga || user.preferences?.lga || '',
+                homeAddress: user.homeAddress || (user.preferences as any)?.homeAddress || (user.preferences as any)?.address || '',
+                city: user.city || (user.preferences as any)?.city || '',
+                state: user.state || (user.preferences as any)?.state || '',
+                lga: user.lga || (user.preferences as any)?.lga || '',
                 userImageUri: imageUri,
                 imageChanged: false,
             });
@@ -209,11 +209,17 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
                             onPress={handleImagePick}
                             disabled={isSaving}
                         >
-                            <Image
-                                source={{ uri: formData.userImageUri || 'https://via.placeholder.com/150' }}
-                                style={styles.profileImage}
-                                onError={(e) => console.error('Image load error:', e.nativeEvent.error)}
-                            />
+                            {formData.userImageUri ? (
+                                <Image
+                                    source={{ uri: formData.userImageUri }}
+                                    style={styles.profileImage}
+                                    onError={(e) => console.error('Image load error:', e.nativeEvent.error)}
+                                />
+                            ) : (
+                                <View style={[styles.profileImage, styles.placeholderImage]}>
+                                    <Feather name="user" size={50} color="#999" />
+                                </View>
+                            )}
                             <View style={styles.imageOverlay}>
                                 <Feather name="camera" size={18} color="#FFF" />
                             </View>
@@ -392,6 +398,11 @@ const styles = StyleSheet.create({
         borderRadius: 60,
         borderWidth: 2,
         borderColor: '#D81E5B',
+    },
+    placeholderImage: {
+        backgroundColor: '#F0F0F0',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     imageOverlay: {
         position: 'absolute',

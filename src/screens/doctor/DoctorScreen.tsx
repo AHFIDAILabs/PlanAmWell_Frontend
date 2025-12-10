@@ -6,41 +6,38 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RouteProp, useRoute } from "@react-navigation/native";
+import { useNavigation, RouteProp, useRoute } from "@react-navigation/native";
 
 import Header from "../../components/home/header";
 import BottomBar from "../../components/common/BottomBar";
-// Removed unused imports: fetchApprovedDoctors, fetchDoctorProfile
 import { AppStackParamList } from "../../types/App";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { getDoctorImageUri } from "../../services/Doctor";
+
+
+// 1️⃣ Create a strongly typed navigation prop for DoctorScreen
+type DoctorScreenNavigationProp = NativeStackNavigationProp<
+  AppStackParamList,
+  "DoctorScreen"
+>;
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "DoctorScreen">;
 
-
 export const DoctorScreen: React.FC = () => {
   const route = useRoute<DoctorRouteProps>();
+  const navigation = useNavigation<DoctorScreenNavigationProp>(); // ✅ Strongly typed
   const doctor = route.params?.doctor;
 
-  if (!doctor) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <Text style={{ fontWeight: 'bold' }}>Error: Doctor data not found.</Text>
-      </SafeAreaView>
-    );
-  }
+  const handleBookPress = () => {
+    // Now TypeScript knows BookAppointmentScreen exists and expects doctor param
+    navigation.navigate("BookAppointmentScreen", { doctor });
+  };
 
-  // 💡 FIX APPLIED HERE: Prioritize the 'profileImage' string URL
-  const doctorImageUri =
-    typeof doctor.profileImage === "string" // Check the profileImage field first
-      ? doctor.profileImage
-      : typeof doctor.doctorImage === "string" // Fallback to doctorImage if it's a string
-      ? doctor.doctorImage
-      : doctor.doctorImage?.imageUrl || // Fallback to nested imageUrl
-        "https://placehold.co/150x150?text=No+Image"; // Final placeholder
-
+  // get doctor imageuri
+  const doctorImageUri = getDoctorImageUri(doctor);
 
   return (
     <SafeAreaView style={StyleSheet.absoluteFill}>
@@ -52,7 +49,6 @@ export const DoctorScreen: React.FC = () => {
           style={styles.headerBg}
         />
 
-        {/* This now uses the corrected doctorImageUri */}
         <Image source={{ uri: doctorImageUri }} style={styles.avatar} />
 
         <Text style={styles.name}>
@@ -62,9 +58,7 @@ export const DoctorScreen: React.FC = () => {
 
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>
-              {doctor.yearsOfExperience || 0}+
-            </Text>
+            <Text style={styles.statValue}>{doctor.yearsOfExperience || 0}+</Text>
             <Text style={styles.statLabel}>Years</Text>
           </View>
 
@@ -80,10 +74,13 @@ export const DoctorScreen: React.FC = () => {
         </View>
 
         <Text style={styles.sectionTitle}>Bio</Text>
-
         <Text style={styles.about}>{doctor.bio || "No bio available."}</Text>
 
-        <TouchableOpacity style={styles.button}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleBookPress}
+          activeOpacity={0.8}
+        >
           <Text style={styles.buttonText}>Book Appointment</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -105,8 +102,8 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#D81E5B55",
   },
-  name: { fontSize: 24, fontWeight: "700" },
-  specialty: { fontSize: 16, color: "#777", marginBottom: 20 },
+  name: { fontSize: 26, fontWeight: "700" },
+  specialty: { fontSize: 16, color: "#555", marginBottom: 20 },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -116,9 +113,25 @@ const styles = StyleSheet.create({
   stat: { alignItems: "center" },
   statValue: { fontSize: 20, fontWeight: "700", color: "#D81E5B" },
   statLabel: { fontSize: 12, color: "#777" },
-  sectionTitle: { fontSize: 18, fontWeight: "700", marginTop: 25, alignSelf: "flex-start" },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 25,
+    alignSelf: "flex-start",
+  },
   about: { fontSize: 15, color: "#555", lineHeight: 22, marginTop: 8 },
-  button: { backgroundColor: "#D81E5B", paddingVertical: 14, borderRadius: 14, width: "100%", marginTop: 30 },
-  buttonText: { color: "#fff", fontSize: 16, textAlign: "center", fontWeight: "600" },
+  button: {
+    backgroundColor: "#D81E5B",
+    paddingVertical: 16,
+    borderRadius: 16,
+    width: "100%",
+    marginTop: 30,
+    alignItems: "center",
+    shadowColor: "#D81E5B",
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 5 },
+    shadowRadius: 10,
+  },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

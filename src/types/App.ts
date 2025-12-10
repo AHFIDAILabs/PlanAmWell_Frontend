@@ -25,6 +25,15 @@ export type AppStackParamList = {
   ArticleDetailScreen: { slug: string };
   AllArticleScreen: undefined;
   DoctorDashScreen: undefined
+  BookAppointmentScreen: {
+    doctor: IDoctor;
+  };
+  DoctorProfileScreen: {
+  doctorId: string;
+};
+MyAppointments: undefined;
+DoctorAvailability: undefined;
+ConsultationHistory: undefined;
 
 };
 

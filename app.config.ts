@@ -7,24 +7,34 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   icon: './src/assets/images/logo1.png',
   userInterfaceStyle: 'light',
-  newArchEnabled: false,        // ← TypeScript ensures this is a real boolean
-  plugins: ['expo-asset'],
+  newArchEnabled: false,
+  plugins: [
+    'expo-asset',
+    [
+      'expo-notifications',
+      {
+        icon: './src/assets/images/logo1.png',
+        color: '#D81E5B',
+      },
+    ],
+  ],
   splash: {
     image: './src/assets/images/logo1.png',
     resizeMode: 'contain',
     backgroundColor: '#ffffff',
-
   },
   ios: {
     supportsTablet: true,
+    bundleIdentifier: 'com.planamwell.bundle',
   },
   android: {
     adaptiveIcon: {
       foregroundImage: './src/assets/images/logo1.png',
       backgroundColor: '#ffffff',
     },
+    package: 'com.planamwell.bundle',
+    permissions: ['NOTIFICATIONS', 'VIBRATE'],
     edgeToEdgeEnabled: true,
-    // predictiveBackGestureEnabled: false, // optional, can keep as boolean
   },
   web: {
     favicon: './assets/favicon.png',

@@ -16,12 +16,12 @@ export interface Message {
     timestamp: Date;
 }
 
-// --- Constants ---
+
 const OPENAI_WHISPER_KEY = process.env.EXPO_PUBLIC_WHISPER_API_KEY || "";
 const WHISPER_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
 const CHAT_SESSION_STORAGE_KEY = "chatbot_session_id";
 
-// --- Hook Implementation ---
+
 export const useChatBot = (userId?: string, authSessionId?: string | null) => {
     const [messages, setMessages] = useState<Message[]>([
         { 
@@ -135,7 +135,7 @@ export const useChatBot = (userId?: string, authSessionId?: string | null) => {
         })();
     }, []);
 
-    // --- Send Message ---
+
     const sendMessage = useCallback(async (voiceInput: string | null = null) => {
         const messageContent = voiceInput || input;
         if (!messageContent.trim() || isBotThinking) return;
@@ -198,7 +198,7 @@ export const useChatBot = (userId?: string, authSessionId?: string | null) => {
         }
     }, [input, isBotThinking, userId, chatSessionId, authSessionId]);
 
-    // --- Audio Recording Logic ---
+
     const startRecording = async () => {
         try {
             await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });

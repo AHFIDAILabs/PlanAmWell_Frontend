@@ -13,7 +13,8 @@ export const useNotification = () => {
     try {
       setLoading(true);
       const res = await notificationService.getNotifications(filter);
-      setNotifications(res.data);
+      if (res.success) setNotifications(res.data);
+      else setError("Failed to fetch notifications");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -25,9 +26,7 @@ export const useNotification = () => {
     try {
       await notificationService.markAsRead(notificationId);
       setNotifications((prev) =>
-        prev.map((n) =>
-          n._id === notificationId ? { ...n, isRead: true } : n
-        )
+        prev.map((n) => (n._id === notificationId ? { ...n, isRead: true } : n))
       );
     } catch (err: any) {
       setError(err.message);
@@ -37,9 +36,7 @@ export const useNotification = () => {
   const markAllAsRead = async () => {
     try {
       await notificationService.markAllAsRead();
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, isRead: true }))
-      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     } catch (err: any) {
       setError(err.message);
     }
@@ -55,6 +52,7 @@ export const useNotification = () => {
     error,
     fetchNotifications,
     markAsRead,
-    markAllAsRead
+    markAllAsRead,
+    setNotifications,
   };
 };

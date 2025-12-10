@@ -19,10 +19,15 @@ import { DoctorScreen } from "../screens/doctor/DoctorScreen";
 import ArticleDetailScreen from "../screens/advocacy/articleDetailScreen";
 import AllArticlesScreen from "../screens/advocacy/AllContentScreen";
 import SettingsScreen from "../screens/setting/Setting";
-import NotificationsScreen from "../screens/notification/notification";
+import {NotificationsScreen} from "../screens/notification/notification";
 import AllDoctorsScreen from "../screens/doctor/AllDoctorsScreen";
 import DoctorDashboardScreen from "../screens/doctor/DoctorDashboard";
 import { IDoctor } from "../types/backendType";
+import {BookAppointmentScreen} from "../screens/appointments/BookAppointmentScreen"
+import { MyAppointmentsScreen } from "../screens/appointments/MyAppointmentsScreen";
+import DoctorProfileScreen from "../screens/doctor/DoctorProfileScreen";
+import DoctorAvailabilityScreen from "../screens/doctor/DoctorAvailabilityScreen";
+import { ConsultationHistoryScreen } from "../screens/appointments/ConsultationHistoryScreen";
 
 import { AppStackParamList } from "../types/App";
 
@@ -46,30 +51,30 @@ export default function AppNavigator() {
   if (loading) return <LoadingScreen />;
 
   const getInitialRoute = (): keyof AppStackParamList => {
-    console.log('🔍 Determining initial route...');
-    console.log('   hasSeenOnboarding:', hasSeenOnboarding);
-    console.log('   isAuthenticated:', isAuthenticated);
-    console.log('   isAnonymous:', isAnonymous);
-    console.log('   user:', user);
+    // console.log('🔍 Determining initial route...');
+    // console.log('   hasSeenOnboarding:', hasSeenOnboarding);
+    // console.log('   isAuthenticated:', isAuthenticated);
+    // console.log('   isAnonymous:', isAnonymous);
+    // console.log('   user:', user);
 
-    // 1. First time user - show onboarding
+   
     if (!hasSeenOnboarding) {
       console.log('   → AuthStack (Onboarding)');
       return "AuthStack";
     }
 
-    // 2. Authenticated guest (browsing mode)
+
     if (isAuthenticated && isAnonymous) {
       console.log('   → HomeScreen (Guest)');
       return "HomeScreen";
     }
 
-    // 3. Authenticated user/doctor
+   
     if (isAuthenticated && !isAnonymous && user) {
-      // Check if it's a doctor by checking for doctor-specific fields
+    
       if (isDoctor(user)) {
         console.log('   User is a doctor, status:', user.status);
-        // Check if approved
+    
         if (user.status === 'approved') {
           console.log('   → DoctorDashScreen (Approved Doctor)');
           return "DoctorDashScreen";
@@ -78,12 +83,12 @@ export default function AppNavigator() {
           return "HomeScreen";
         }
       }
-      // Regular user
+     
       console.log('   → HomeScreen (Regular User)');
       return "HomeScreen";
     }
 
-    // 4. Not authenticated
+
     console.log('   → AuthStack (Not authenticated)');
     return "AuthStack";
   };
@@ -115,6 +120,11 @@ export default function AppNavigator() {
       <RootStack.Screen name="ArticleDetailScreen" component={ArticleDetailScreen} />
       <RootStack.Screen name="AllArticleScreen" component={AllArticlesScreen} />
       <RootStack.Screen name="DoctorDashScreen" component={DoctorDashboardScreen} />
+      <RootStack.Screen name="BookAppointmentScreen" component={BookAppointmentScreen} />
+      <RootStack.Screen name="MyAppointments" component={MyAppointmentsScreen} />
+      <RootStack.Screen name="DoctorProfileScreen" component={DoctorProfileScreen} />
+      <RootStack.Screen name="DoctorAvailability" component={DoctorAvailabilityScreen}/>
+      <RootStack.Screen name="ConsultationHistory" component={ConsultationHistoryScreen} />
       
       <RootStack.Screen
         name="AmWellChatModal"

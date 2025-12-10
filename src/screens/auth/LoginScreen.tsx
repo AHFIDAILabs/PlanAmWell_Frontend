@@ -29,7 +29,7 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
 
 if (loggedInUser) {
     // Immediately mark onboarding as complete in state
-    completeOnboarding(); // updates both SecureStore and hook state
+    completeOnboarding(); 
 
     Toast.show({ type: 'success', text1: 'Success', text2: `Logged in as ${role}!` });
 

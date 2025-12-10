@@ -18,6 +18,11 @@ import {
   UpdateUserData
 } from '../services/User';
 import { IUser, AuthEntity } from '../types/backendType';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { registerPushToken, removePushToken } from '../services/Auth';
+
 import { AxiosError } from 'axios';
 
 const HAS_SEEN_ONBOARDING = 'HAS_SEEN_ONBOARDING';
@@ -39,6 +44,46 @@ export function useAuth() {
 
   const userLoadedRef = useRef(false);
   const didLoadRef = useRef(false);
+
+
+  async function registerForPushNotificationsAsync() {
+  let token;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  
+  if (finalStatus !== 'granted') {
+    console.log('Failed to get push token for push notification!');
+    return null;
+  }
+  
+  try {
+    token = (await Notifications.getExpoPushTokenAsync({
+      projectId: Constants.expoConfig?.extra?.eas?.projectId,
+    })).data;
+    
+    console.log('Expo Push Token:', token);
+    return token;
+  } catch (error) {
+    console.error('Error getting push token:', error);
+    return null;
+  }
+}
+
 
   // ------------------------------------------------------------
   // REFRESH USER - FIXED
@@ -75,15 +120,30 @@ export function useAuth() {
   // ------------------------------------------------------------
   // LOGOUT
   // ------------------------------------------------------------
-  const handleLogout = useCallback(async () => {
-    await logout();
-    setUser(null);
-    setUserToken(null);
-    setSessionId(null);
-    setIsAnonymous(true);
-    setIsAuthenticated(false);
-    userLoadedRef.current = false;
-  }, []);
+const handleLogout = useCallback(async () => {
+  // ✅ Remove push token before logging out
+  if (userToken) {
+    try {
+      const pushToken = await Notifications.getExpoPushTokenAsync({
+        projectId: Constants.expoConfig?.extra?.eas?.projectId,
+      });
+      if (pushToken?.data) {
+        await removePushToken(pushToken.data, userToken);
+        console.log('[useAuth] Push token removed');
+      }
+    } catch (error) {
+      console.error('[useAuth] Failed to remove push token:', error);
+    }
+  }
+
+  await logout();
+  setUser(null);
+  setUserToken(null);
+  setSessionId(null);
+  setIsAnonymous(true);
+  setIsAuthenticated(false);
+  userLoadedRef.current = false;
+}, [userToken]);
 
   // ------------------------------------------------------------
   // LOAD USER PROFILE
@@ -259,29 +319,60 @@ export function useAuth() {
     [completeOnboarding]
   );
 
-  const handleLogin = useCallback(
-    async (credentials: { email: string; password: string }, role: 'User' | 'Doctor') => {
-      setLoading(true);
-      try {
-        console.log(`[useAuth] Logging in ${role}...`);
-        const response = await loginUser(credentials, role);
-        if (response?.token && response?.user) {
-          setUserToken(response.token);
-          setUser(response.user);
-          setIsAnonymous(false);
-          setIsAuthenticated(true);
-          userLoadedRef.current = true;
-          await completeOnboarding();
-          console.log(`[useAuth] ${role} logged in successfully`);
-          return response.user;
-        }
+const handleLogin = useCallback(
+  async (
+    credentials: { email: string; password: string },
+    role: 'User' | 'Doctor'
+  ) => {
+    setLoading(true);
+
+    try {
+      console.log(`[useAuth] Logging in ${role}...`);
+      const response = await loginUser(credentials, role);
+
+      if (!response?.token || !response?.user) {
         throw new Error('Login failed: Invalid response from server.');
-      } finally {
-        setLoading(false);
       }
-    },
-    [completeOnboarding]
-  );
+
+      // ✅ Persist auth first
+      setUserToken(response.token);
+      setUser(response.user);
+      setIsAnonymous(false);
+      setIsAuthenticated(true);
+
+      // ✅ Register push notifications
+      try {
+        const pushToken = await registerForPushNotificationsAsync();
+        if (pushToken) {
+          await registerPushToken(pushToken, response.token);
+          console.log('[useAuth] Push token registered');
+        }
+      } catch (pushError) {
+        console.error('[useAuth] Failed to register push token:', pushError);
+        // Don't fail login if push token registration fails
+      }
+
+      // ✅ Force React Navigation to wait for user state
+      userLoadedRef.current = false;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      userLoadedRef.current = true;
+
+      // ✅ Mark onboarding
+      await completeOnboarding();
+
+      console.log(`[useAuth] ${role} logged in successfully`);
+
+      return response.user;
+    } catch (err) {
+      console.error('[useAuth] Login failed', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, 
+  [completeOnboarding]
+);
+
 
   // ------------------------------------------------------------
   // PROFILE UPDATE - SIMPLIFIED (not used for images anymore)
@@ -321,6 +412,7 @@ export function useAuth() {
           if (res.user) setUser(res.user);
           userLoadedRef.current = true;
           await completeOnboarding();
+
           // ------------------------------------------------------------
   // SET USER TOKEN (for updating after conversion)
   // ------------------------------------------------------------
@@ -343,21 +435,22 @@ export function useAuth() {
   // HELPERS
   // ------------------------------------------------------------
   
-  // ✅ SET USER TOKEN (for updating after conversion)
+
   const setToken = useCallback((newToken: string) => {
     console.log('[useAuth] Updating token in context');
     setUserToken(newToken);
   }, []);
   
-  const isDoctor = useCallback(() => 
-    user && 'specialization' in user && 'licenseNumber' in user, 
-    [user]
-  );
-  
-  const isDoctorApproved = useCallback(() => 
-    isDoctor() && 'status' in user! && user!.status === 'approved', 
-    [user, isDoctor]
-  );
+  const isDoctor = useCallback((): boolean => 
+  !!(user && 'specialization' in user && 'licenseNumber' in user), 
+  [user]
+);
+
+const isDoctorApproved = useCallback((): boolean => 
+  isDoctor() && 'status' in user! && user!.status === 'approved',
+  [user, isDoctor]
+);
+
   
   const getUserRole = useCallback(() => {
     if (!user) return null;
@@ -394,6 +487,6 @@ export function useAuth() {
     getUserRole,
     getInitialScreen,
     refreshUser,
-    setToken, // ✅ NEW: Export token setter
+    setToken, 
   };
 }

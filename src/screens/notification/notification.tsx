@@ -1,176 +1,174 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { Bell, Calendar, Package, FileText, Pill, Route } from 'lucide-react-native';
-import { useNotifications } from '../../context/notificatonContext';
-import { INotification } from '../../types/backendType';
+import React, { useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BottomBar from '../../components/common/BottomBar';
+import { Feather } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
+import { useNotification } from '../../hooks/useNotifcation';
+import { INotification } from '../../types/backendType';
+import { notificationService } from '../../services/notification';
 
-const NotificationsScreen: React.FC = () => {
-  const { notifications, markAsRead, markAllAsRead, filter, setFilter } =
-    useNotifications();
+export const NotificationsScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
+  const [filter, setFilter] = React.useState<'all' | 'unread'>('all');
 
-  const formatTime = (date: string) => {
-    const notificationDate = new Date(date);
-    const now = new Date();
-    const diffMinutes = Math.floor((now.getTime() - notificationDate.getTime()) / 1000 / 60);
+  const {
+    notifications,
+    loading,
+    fetchNotifications,
+    markAsRead,
+    markAllAsRead,
+    setNotifications,
+  } = useNotification();
 
-    if (diffMinutes < 1) return 'Just now';
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h ago`;
-    return 'Yesterday, ' + notificationDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  };
-
-  const groupByDate = (notifications: INotification[]) => {
-    const today: INotification[] = [];
-    const yesterday: INotification[] = [];
-
-    notifications.forEach(n => {
-      const diffHours = Math.floor((new Date().getTime() - new Date(n.createdAt).getTime()) / 1000 / 60 / 60);
-      if (diffHours < 24) today.push(n);
-      else yesterday.push(n);
-    });
-
-    return { today, yesterday };
-  };
-
-  const { today, yesterday } = groupByDate(notifications);
-
-  return (
-<SafeAreaView style={{ flex: 1, paddingTop: 50 }}>
-    <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity onPress={markAllAsRead}>
-          <Text style={styles.markAll}>Mark all as read</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
-        <TouchableOpacity
-          onPress={() => setFilter('all')}
-          style={[styles.filterButton, filter === 'all' && styles.filterActive]}
-        >
-          <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setFilter('unread')}
-          style={[styles.filterButton, filter === 'unread' && styles.filterActive]}
-        >
-          <Text style={[styles.filterText, filter === 'unread' && styles.filterTextActive]}>Unread</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Notifications List */}
-      <View style={styles.listContainer}>
-        {today.length > 0 && (
-          <View style={styles.group}>
-            <Text style={styles.groupTitle}>Today</Text>
-            {today.map(notification => (
-              <NotificationItem
-                key={notification._id}
-                notification={notification}
-                onMarkAsRead={markAsRead}
-                formatTime={formatTime}
-              />
-            ))}
-          </View>
-        )}
-
-        {yesterday.length > 0 && (
-          <View style={styles.group}>
-            <Text style={styles.groupTitle}>Yesterday</Text>
-            {yesterday.map(notification => (
-              <NotificationItem
-                key={notification._id}
-                notification={notification}
-                onMarkAsRead={markAsRead}
-                formatTime={formatTime}
-              />
-            ))}
-          </View>
-        )}
-
-        {notifications.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Bell color="#ccc" size={64} />
-            <Text style={styles.emptyText}>No notifications</Text>
-          </View>
-        )}
-      </View>
-    </ScrollView>
-    <BottomBar activeRoute={Route.name} cartItemCount={0} />
-</SafeAreaView>
+  useFocusEffect(
+    useCallback(() => {
+      fetchNotifications(filter);
+    }, [filter])
   );
-};
 
-// ---------------- Notification Item ----------------
-interface NotificationItemProps {
-  notification: INotification;
-  onMarkAsRead: (id: string) => void;
-  formatTime: (date: string) => string;
-}
+  const onRefresh = () => fetchNotifications(filter);
 
-const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onMarkAsRead, formatTime }) => {
-  const iconMap = {
-    supplement: Pill,
-    order: Package,
-    appointment: Calendar,
-    article: FileText,
+  const handleNotificationPress = async (notification: INotification) => {
+    if (!notification.isRead) await markAsRead(notification._id);
+
+    if (notification.type === 'appointment' && notification.metadata?.appointmentId) {
+      navigation.navigate('ConsultationHistory');
+    } else if (notification.type === 'order' && notification.metadata?.orderId) {
+      navigation.navigate('OrderDetails', { orderId: notification.metadata.orderId });
+    }
   };
 
-  const iconColors: Record<INotification['type'], string> = {
-    supplement: '#FDE2FF',
-    order: '#E0F2FE',
-    appointment: '#DCFCE7',
-    article: '#FEF3C7',
-    system: '#E5E7EB',
+  const handleMarkAllRead = async () => {
+    await markAllAsRead();
+    Toast.show({ type: 'success', text1: 'All notifications marked as read' });
   };
 
-  const Icon = iconMap[notification.type as keyof typeof iconMap] || Bell;
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await notificationService.deleteNotification(notificationId);
+      setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
+      Toast.show({ type: 'success', text1: 'Notification deleted' });
+    } catch (error) {
+      Toast.show({ type: 'error', text1: 'Failed to delete notification' });
+    }
+  };
+
+  const renderNotification = ({ item }: { item: INotification }) => {
+    const iconMap: Record<string, string> = {
+      appointment: 'calendar',
+      order: 'shopping-bag',
+      article: 'file-text',
+      supplement: 'package',
+      system: 'bell',
+    };
+    const colorMap: Record<string, string> = {
+      appointment: '#D81E5B',
+      order: '#4CAF50',
+      article: '#2196F3',
+      supplement: '#FF9800',
+      system: '#9C27B0',
+    };
+
+    const icon = iconMap[item.type] || 'bell';
+    const color = colorMap[item.type] || '#757575';
+
+    return (
+      <TouchableOpacity
+        style={[styles.notificationCard, !item.isRead && styles.unreadCard]}
+        onPress={() => handleNotificationPress(item)}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
+          <Feather name={icon as any} size={20} color={color} />
+        </View>
+
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationTitle}>{item.title}</Text>
+          <Text style={styles.notificationMessage} numberOfLines={2}>{item.message}</Text>
+          <Text style={styles.notificationTime}>
+            {new Date(item.createdAt).toLocaleTimeString()}
+          </Text>
+        </View>
+
+        {!item.isRead && <View style={styles.unreadDot} />}
+
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteNotification(item._id)}
+        >
+          <Feather name="x" size={18} color="#999" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <TouchableOpacity
-      style={styles.itemContainer}
-      onPress={() => !notification.isRead && onMarkAsRead(notification._id)}
-    >
-      <View style={[styles.iconWrapper, { backgroundColor: iconColors[notification.type] }]}>
-        <Icon color="#D81E5B" size={20} />
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Feather name="arrow-left" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        <TouchableOpacity onPress={handleMarkAllRead}>
+          <Text style={styles.markAllText}>Mark all read</Text>
+        </TouchableOpacity>
       </View>
-      <View style={styles.itemContent}>
-        <Text style={styles.itemTitle}>{notification.title}</Text>
-        <Text style={styles.itemMessage}>{notification.message}</Text>
-        <Text style={styles.itemTime}>{formatTime(notification.createdAt)}</Text>
+
+      <View style={styles.filterContainer}>
+        {['all', 'unread'].map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterTab, filter === f && styles.activeFilterTab]}
+            onPress={() => setFilter(f as 'all' | 'unread')}
+          >
+            <Text style={[styles.filterText, filter === f && styles.activeFilterText]}>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
-      {!notification.isRead && <View style={styles.unreadDot} />}
-    </TouchableOpacity>
+
+      {loading ? (
+        <ActivityIndicator size="large" color="#D81E5B" style={{ marginTop: 50 }} />
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item._id}
+          renderItem={renderNotification}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} colors={['#D81E5B']} />}
+          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+          ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 50 }}>No notifications</Text>}
+        />
+      )}
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  screen: { flex: 1, backgroundColor: '#F9FAFB' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#111' },
-  markAll: { color: '#D81E5B', fontWeight: '500' },
-  filterContainer: { flexDirection: 'row', paddingHorizontal: 16, marginVertical: 8 },
-  filterButton: { flex: 1, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6', marginRight: 8, alignItems: 'center' },
-  filterActive: { backgroundColor: '#D81E5B' },
-  filterText: { color: '#4B5563', fontSize: 14, fontWeight: '500' },
-  filterTextActive: { color: '#FFF' },
-  listContainer: { paddingHorizontal: 16 },
-  group: { marginBottom: 16 },
-  groupTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 8 },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
-  emptyText: { color: '#9CA3AF', marginTop: 8 },
-  itemContainer: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 8 },
-  iconWrapper: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  itemContent: { flex: 1 },
-  itemTitle: { fontWeight: '600', fontSize: 14, color: '#111', marginBottom: 2 },
-  itemMessage: { fontSize: 13, color: '#4B5563', marginBottom: 2 },
-  itemTime: { fontSize: 11, color: '#9CA3AF' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D81E5B', marginLeft: 8, marginTop: 6 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
+  markAllText: { fontSize: 14, color: '#D81E5B', fontWeight: '600' },
+  filterContainer: { flexDirection: 'row', padding: 16, gap: 12, backgroundColor: '#FFF' },
+  filterTab: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20, backgroundColor: '#F5F5F5' },
+  activeFilterTab: { backgroundColor: '#D81E5B' },
+  filterText: { fontSize: 14, color: '#666', fontWeight: '500' },
+  activeFilterText: { color: '#FFF', fontWeight: '700' },
+  notificationCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  unreadCard: { borderLeftWidth: 4, borderLeftColor: '#D81E5B' },
+  iconContainer: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  notificationContent: { flex: 1 },
+  notificationTitle: { fontSize: 15, fontWeight: '700', color: '#222', marginBottom: 4 },
+  notificationMessage: { fontSize: 13, color: '#666', marginBottom: 4 },
+  notificationTime: { fontSize: 11, color: '#999' },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D81E5B', marginRight: 8 },
+  deleteButton: { padding: 8 },
 });
-
-export default NotificationsScreen;
