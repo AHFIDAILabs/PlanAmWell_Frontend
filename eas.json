@@ -23,6 +23,10 @@
     },
     "production": {
       "autoIncrement": true,
+        "distribution": "internal",
+  "android": {
+    "buildType": "apk"
+  },
       "env": {
         "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL",
         "EXPO_PUBLIC_OPENAI_API_KEY": "@EXPO_PUBLIC_OPENAI_API_KEY",

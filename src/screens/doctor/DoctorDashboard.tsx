@@ -148,9 +148,9 @@ const onRefresh = async () => {
 const handleUpdateAvailability = async (newAvailability: Record<string, any>) => {
   try {
     setAvailabilityLoading(true);
-
- 
-const updatedDoctor = await updateDoctorAvailabilityService(newAvailability);
+    
+    // ✅ Pass only the availability object
+    const updatedDoctor = await updateDoctorAvailabilityService(newAvailability);
 
     if (updatedDoctor) {
       setAvailability(updatedDoctor.availability || {});

@@ -24,14 +24,15 @@ export default function DoctorAvailabilityScreen() {
     }));
   };
 
-  const handleSave = async () => {
-    try {
-      await updateDoctorAvailabilityService({ availability });
-      Toast.show({ type: "success", text1: "Availability updated" });
-    } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to update", text2: error.message });
-    }
-  };
+const handleSave = async () => {
+  try {
+    // ✅ Pass only the availability object
+    await updateDoctorAvailabilityService(availability);
+    Toast.show({ type: "success", text1: "Availability updated" });
+  } catch (error: any) {
+    Toast.show({ type: "error", text1: "Failed to update", text2: error.message });
+  }
+};
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
