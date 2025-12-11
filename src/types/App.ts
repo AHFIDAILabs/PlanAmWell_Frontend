@@ -34,6 +34,14 @@ export type AppStackParamList = {
 MyAppointments: undefined;
 DoctorAvailability: undefined;
 ConsultationHistory: undefined;
+DoctorAppointment: undefined;
+VideoCallScreen: {
+  appointmentId: string;
+  name: string;   
+  patientId: string;
+  role: 'doctor' | 'user';
+
+};
 
 };
 

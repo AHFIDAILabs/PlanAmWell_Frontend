@@ -43,12 +43,15 @@ const config: ExpoConfig = {
     eas: {
       projectId: 'b17d8d1f-7620-4a54-9baa-9166dc7a27ea',
     },
-     serverUrl: process.env.EXPO_PUBLIC_SERVER_URL,
-  googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_IOS_CLIENT_ID,
-  androidClientId: process.env.EXPO_PUBLIC_ANDROID_CLIENT_ID,
-  openAIKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
-  whisperKey: process.env.EXPO_PUBLIC_WHISPER_API_KEY,
+    serverUrl: process.env.EXPO_PUBLIC_SERVER_URL,
+    googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_ANDROID_CLIENT_ID,
+    openAIKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
+    whisperKey: process.env.EXPO_PUBLIC_WHISPER_API_KEY,
+    // 🔹 Agora config
+    agoraAppId: process.env.EXPO_PUBLIC_AGORA_APP_ID,           // your Agora App ID
+    agoraAppCertificate: process.env.EXPO_PUBLIC_AGORA_APP_CERTIFICATE, // optional if needed
   },
 };
 

@@ -19,20 +19,24 @@ import { IDoctor } from "../../types/backendType";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
 import { notificationService } from "../../services/notification";
+import DoctorBottomBar from "../../components/common/DoctorBottomBar";
 
-type DoctorProfileRouteProps = RouteProp<{ params: { doctor: IDoctor } }, "params">;
+type DoctorProfileRouteProps = RouteProp<{ params: { doctor?: IDoctor } }, "params">;
 
 export default function DoctorProfileScreen() {
   const route = useRoute<DoctorProfileRouteProps>();
   const navigation = useNavigation();
   const { colors } = useTheme();
-  const { handleLogout } = useAuth();
+  const { user, handleLogout, isDoctor } = useAuth();
 
-  const [doctor, setDoctor] = useState<IDoctor>(route.params?.doctor);
+  // Fallback: use route param first, then logged-in doctor
+  const [doctor, setDoctor] = useState<IDoctor | null>(
+    route.params?.doctor || (isDoctor() ? (user as IDoctor) : null)
+  );
+
   const [editVisible, setEditVisible] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
-
 
   if (!doctor) {
     return (
@@ -45,20 +49,19 @@ export default function DoctorProfileScreen() {
   }
 
   const fetchNotificationCount = async () => {
-  try {
-    const response = await notificationService.getUnreadCount();
-    if (response.success) {
-      setNotificationCount(response.data.count);
+    try {
+      const response = await notificationService.getUnreadCount();
+      if (response.success) {
+        setNotificationCount(response.data.count);
+      }
+    } catch (error) {
+      console.error("Failed to fetch notification count:", error);
     }
-  } catch (error) {
-    console.error('Failed to fetch notification count:', error);
-  }
-};
+  };
 
-useEffect(() => {
-  fetchNotificationCount();
-}, []);
-
+  useEffect(() => {
+    fetchNotificationCount();
+  }, []);
 
   const getAvatarUri = () => {
     if (avatar) return avatar;
@@ -203,26 +206,20 @@ useEffect(() => {
       <Modal visible={editVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              Edit Profile
-            </Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Profile</Text>
 
             <TextInput
               style={[styles.input, { color: colors.text }]}
               placeholder="First Name"
               value={doctor.firstName}
-              onChangeText={(text) =>
-                setDoctor({ ...doctor, firstName: text })
-              }
+              onChangeText={(text) => setDoctor({ ...doctor, firstName: text })}
             />
 
             <TextInput
               style={[styles.input, { color: colors.text }]}
               placeholder="Last Name"
               value={doctor.lastName}
-              onChangeText={(text) =>
-                setDoctor({ ...doctor, lastName: text })
-              }
+              onChangeText={(text) => setDoctor({ ...doctor, lastName: text })}
             />
 
             <TextInput
@@ -230,9 +227,7 @@ useEffect(() => {
               placeholder="Bio"
               multiline
               value={doctor.bio}
-              onChangeText={(text) =>
-                setDoctor({ ...doctor, bio: text })
-              }
+              onChangeText={(text) => setDoctor({ ...doctor, bio: text })}
             />
 
             <View style={styles.modalActions}>
@@ -241,14 +236,15 @@ useEffect(() => {
               </TouchableOpacity>
 
               <TouchableOpacity onPress={() => setEditVisible(false)}>
-                <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                  Save
-                </Text>
+                <Text style={{ color: colors.primary, fontWeight: "700" }}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      {/* Bottom Bar */}
+      <DoctorBottomBar activeRoute="DoctorProfileScreen" messagesCount={notificationCount} />
     </SafeAreaView>
   );
 }

@@ -29,6 +29,8 @@ import DoctorAvailabilityScreen from "../screens/doctor/DoctorAvailabilityScreen
 import { ConsultationHistoryScreen } from "../screens/appointments/ConsultationHistoryScreen";
 
 import { AppStackParamList } from "../types/App";
+import DoctorAppointmentsScreen from "../screens/doctor/DoctorAppointmentsScreen";
+import VideoCallScreen from "../screens/video/VideoCallScreen";
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
@@ -121,9 +123,11 @@ export default function AppNavigator() {
       <RootStack.Screen name="DoctorDashScreen" component={DoctorDashboardScreen} />
       <RootStack.Screen name="BookAppointmentScreen" component={BookAppointmentScreen} />
       <RootStack.Screen name="MyAppointments" component={MyAppointmentsScreen} />
+      <RootStack.Screen name="DoctorAppointment" component={DoctorAppointmentsScreen} />
       <RootStack.Screen name="DoctorProfileScreen" component={DoctorProfileScreen} />
       <RootStack.Screen name="DoctorAvailability" component={DoctorAvailabilityScreen}/>
       <RootStack.Screen name="ConsultationHistory" component={ConsultationHistoryScreen} />
+      <RootStack.Screen name="VideoCallScreen" component={VideoCallScreen} />
       
       <RootStack.Screen
         name="AmWellChatModal"

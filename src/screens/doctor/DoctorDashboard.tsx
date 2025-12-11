@@ -24,6 +24,10 @@ import { getDoctorAppointments, updateAppointment } from "../../services/Appoint
 import { updateDoctorAvailabilityService, fetchMyDoctorProfile } from "../../services/Doctor";
 import { useTheme } from "../../context/ThemeContext";
 import { notificationService } from "../../services/notification";
+import DoctorBottomBar from "../../components/common/DoctorBottomBar";
+import { Alert } from "react-native";
+
+
 
 const formatTime = (date: Date) =>
   date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -43,7 +47,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   const [selectedAppointment, setSelectedAppointment] = useState<IAppointment | null>(null);
   const [availability, setAvailability] = useState<Record<string, any>>({});
   const [refreshing, setRefreshing] = useState(false);
-  const [messagesCount, setMessagesCount] = useState(5);
+  const [messagesCount, setMessagesCount] = useState(0);
   const [notificationCount, setNotificationCount] = useState(0);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
 
@@ -221,6 +225,18 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   setAvailability(updated);
 };
 
+const handleJoinCall = (appointment: IAppointment) => {
+ navigation.getParent()?.navigate('VideoCallScreen', {
+    appointmentId: appointment._id,
+    name: appointment.patientSnapshot?.name,
+    patientId: appointment.userId,
+    role: 'doctor',
+  });
+};
+
+console.log(navigation.getState().routeNames);
+
+
 
   const getStatusColor = (status: IAppointment["status"]) => {
     switch (status) {
@@ -359,21 +375,50 @@ export default function DoctorDashboardScreen({ navigation }: any) {
           </View>
         </LinearGradient>
 
-        {/* Stats */}
-        <View style={[styles.statsRow, { marginTop: 10 }]}>
-          <View style={[styles.statItem, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Today's Appointments</Text>
-            <Text style={[styles.statValue, { color: colors.text }]}>{todayAppointmentsCount}</Text>
-          </View>
-          <View style={[styles.statItem, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Pending Requests</Text>
-            <Text style={[styles.statValue, { color: colors.text }]}>{pendingRequestsCount}</Text>
-          </View>
-          <View style={[styles.statItem, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statLabel, { color: colors.textMuted }]}>Messages</Text>
-            <Text style={[styles.statValue, { color: colors.text }]}>{messagesCount}</Text>
-          </View>
-        </View>
+       {/* Stats */}
+<View style={[styles.statsRow, { marginTop: 10 }]}>
+  {/* Today's Appointments */}
+  <TouchableOpacity
+    style={[styles.statItem, { backgroundColor: colors.card }]}
+    onPress={() => navigation.navigate("DoctorAppointment", { filter: "today" })}
+  >
+    <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+      Today's Appointments
+    </Text>
+    <Text style={[styles.statValue, { color: colors.text }]}>
+      {todayAppointmentsCount}
+    </Text>
+  </TouchableOpacity>
+
+  {/* Pending Requests */}
+  <TouchableOpacity
+    style={[styles.statItem, { backgroundColor: colors.card }]}
+    onPress={() =>
+      navigation.navigate("DoctorAppointment", { status: "pending" })
+    }
+  >
+    <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+      Pending Requests
+    </Text>
+    <Text style={[styles.statValue, { color: colors.text }]}>
+      {pendingRequestsCount}
+    </Text>
+  </TouchableOpacity>
+
+  {/* Messages */}
+  <TouchableOpacity
+    style={[styles.statItem, { backgroundColor: colors.card }]}
+    onPress={() => navigation.navigate("NotificationsScreen")}
+  >
+    <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+      Messages
+    </Text>
+    <Text style={[styles.statValue, { color: colors.text }]}>
+      {messagesCount}
+    </Text>
+  </TouchableOpacity>
+</View>
+
 
         {/* Next Appointment */}
         <View style={styles.section}>
@@ -385,7 +430,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
               <Text style={[styles.upNextCondition, { color: colors.textMuted }]} numberOfLines={2}>{nextAppointment.reason || "No details provided"}</Text>
 
               <View style={styles.upNextActions}>
-                <TouchableOpacity style={[styles.joinButton, { backgroundColor: colors.primary }]} onPress={() => console.log("Join Call")}>
+                <TouchableOpacity style={[styles.joinButton, { backgroundColor: colors.primary }]} onPress={() => nextAppointment && handleJoinCall(nextAppointment)}>
                   <Text style={styles.joinButtonText}>Join Call</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.viewDetailsButton, { backgroundColor: colors.card }]} onPress={() => openAppointmentModal(nextAppointment)}>
@@ -489,11 +534,6 @@ export default function DoctorDashboardScreen({ navigation }: any) {
           </View>
         </View>
       </ScrollView>
-
-      {/* FAB */}
-      <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => console.log("Add Appointment")}>
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
 
       {/* Availability Management Modal */}
       <Modal visible={showAvailabilityModal} animationType="slide" transparent>
@@ -673,6 +713,9 @@ export default function DoctorDashboardScreen({ navigation }: any) {
           </View>
         </Modal>
       )}
+
+            <DoctorBottomBar activeRoute="DoctorDashboardScreen" messagesCount={0} />
+
     </SafeAreaView>
   );
 }
