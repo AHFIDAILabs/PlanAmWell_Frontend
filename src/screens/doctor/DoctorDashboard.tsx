@@ -1,3 +1,5 @@
+// DoctorDashboardScreen.tsx - WITH MODERN CALENDAR AVAILABILITY UI
+
 import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
@@ -9,6 +11,7 @@ import {
   Modal,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,9 +25,10 @@ import { updateDoctorAvailabilityService, fetchMyDoctorProfile } from "../../ser
 import { useTheme } from "../../context/ThemeContext";
 import { notificationService } from "../../services/notification";
 
-// Helper function to format time as 10:30 AM
 const formatTime = (date: Date) =>
   date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function DoctorDashboardScreen({ navigation }: any) {
   const { colors } = useTheme();
@@ -41,25 +45,33 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [messagesCount, setMessagesCount] = useState(5);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
 
-
- useEffect(() => {
-  if (authLoading) return;
-  if (!doctorUser) {
-    navigation.replace("HomeScreen");
-    return;
-  }
-  fetchAppointments();
-  fetchAvailability();
-  fetchNotificationCount(); // ✅ Add this
-}, [authLoading, doctorUser]);
-
+  useEffect(() => {
+    if (authLoading) return;
+    if (!doctorUser) {
+      navigation.replace("HomeScreen");
+      return;
+    }
+    
+    fetchAppointments();
+    fetchAvailability();
+    fetchNotificationCount();
+  }, [authLoading, doctorUser]);
 
   const fetchAvailability = async () => {
     try {
       setAvailabilityLoading(true);
       const doctorProfile = await fetchMyDoctorProfile();
-      if (doctorProfile) setAvailability(doctorProfile.availability || {});
+      if (doctorProfile) {
+        // Initialize with default structure if empty
+        const defaultAvailability = DAYS_OF_WEEK.reduce((acc, day) => ({
+          ...acc,
+          [day]: { available: false, from: "09:00", to: "17:00" }
+        }), {});
+        
+        setAvailability({ ...defaultAvailability, ...doctorProfile.availability });
+      }
     } catch (error: any) {
       Toast.show({ type: "error", text1: "Failed to load availability", text2: error.message });
     } finally {
@@ -94,26 +106,27 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   };
 
   const fetchNotificationCount = async () => {
-  try {
-    const response = await notificationService.getUnreadCount();
-    if (response.success) {
-      setNotificationCount(response.data.count);
+    try {
+      const response = await notificationService.getUnreadCount();
+      if (response.success) {
+        setNotificationCount(response.data.count);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notification count:', error);
     }
-  } catch (error) {
-    console.error('Failed to fetch notification count:', error);
-  }
-};
+  };
 
-const onRefresh = async () => {
-  setRefreshing(true);
-  await fetchAppointments();
-  await fetchNotificationCount(); // ✅ Add this
-  setRefreshing(false);
-};
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchAppointments();
+    await fetchNotificationCount();
+    setRefreshing(false);
+  };
+
   const getNextAppointment = () => {
     const now = new Date();
     const futureConfirmed = appointments
-      .filter(a => a.status === "confirmed" && new Date(a.scheduledAt) <= now)
+      .filter(a => a.status === "confirmed" && new Date(a.scheduledAt) >= now)
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
     return futureConfirmed[0] || null;
   };
@@ -125,7 +138,11 @@ const onRefresh = async () => {
       fetchAppointments();
       setShowModal(false);
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to confirm", text2: error.message });
+      Toast.show({ 
+        type: "error", 
+        text1: "Failed to confirm", 
+        text2: error.response?.data?.message || error.message 
+      });
     }
   };
 
@@ -136,7 +153,11 @@ const onRefresh = async () => {
       fetchAppointments();
       setShowModal(false);
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to reject", text2: error.message });
+      Toast.show({ 
+        type: "error", 
+        text1: "Failed to reject", 
+        text2: error.response?.data?.message || error.message 
+      });
     }
   };
 
@@ -145,22 +166,59 @@ const onRefresh = async () => {
     setShowModal(true);
   };
 
-const handleUpdateAvailability = async (newAvailability: Record<string, any>) => {
-  try {
-    setAvailabilityLoading(true);
-    
-    // ✅ Pass only the availability object
-    const updatedDoctor = await updateDoctorAvailabilityService(newAvailability);
+  const toggleAvailability = (day: string) => {
+    setAvailability(prev => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        available: !prev[day]?.available
+      }
+    }));
+  };
 
-    if (updatedDoctor) {
-      setAvailability(updatedDoctor.availability || {});
-      Toast.show({ type: "success", text1: "Availability updated successfully" });
+  const updateTime = (day: string, field: 'from' | 'to', value: string) => {
+    setAvailability(prev => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSaveAvailability = async () => {
+    try {
+      setAvailabilityLoading(true);
+      const updatedDoctor = await updateDoctorAvailabilityService(availability);
+      if (updatedDoctor) {
+        setAvailability(updatedDoctor.availability || {});
+        Toast.show({ type: "success", text1: "Availability updated successfully" });
+        setShowAvailabilityModal(false);
+      }
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: "Failed to update availability", text2: error.message });
+    } finally {
+      setAvailabilityLoading(false);
     }
-  } catch (error: any) {
-    Toast.show({ type: "error", text1: "Failed to update availability", text2: error.message });
-  } finally {
-    setAvailabilityLoading(false);
-  }
+  };
+
+  const setAllDaysAvailability = (available: boolean) => {
+    const updated: Record<string, any> = {};
+    DAYS_OF_WEEK.forEach(day => {
+      updated[day] = { ...availability[day], available };
+    });
+    setAvailability(updated);
+  };
+
+  const setWeekdaysOnly = () => {
+  const updated: Record<string, any> = {};
+  DAYS_OF_WEEK.forEach(day => {
+    updated[day] = {
+      ...availability[day],
+      available: !["Saturday", "Sunday"].includes(day),
+    };
+  });
+  setAvailability(updated);
 };
 
 
@@ -226,6 +284,22 @@ const handleUpdateAvailability = async (newAvailability: Record<string, any>) =>
     [appointments]
   );
 
+  const availableDaysCount = useMemo(
+    () => Object.values(availability).filter((d: any) => d?.available).length,
+    [availability]
+  );
+
+  const totalWeeklyHours = useMemo(() => {
+    return Object.values(availability)
+      .filter((d: any) => d?.available)
+      .reduce((sum, d: any) => {
+        if (!d?.from || !d?.to) return sum;
+        const from = new Date(`2000-01-01T${d.from}`);
+        const to = new Date(`2000-01-01T${d.to}`);
+        return sum + (to.getTime() - from.getTime()) / (1000 * 60 * 60);
+      }, 0);
+  }, [availability]);
+
   const nextAppointment = getNextAppointment();
 
   const selectedDateAppointments = useMemo(
@@ -269,34 +343,19 @@ const handleUpdateAvailability = async (newAvailability: Record<string, any>) =>
                 <Text style={[styles.doctorName, { color: colors.text }]}>Dr. {doctorLastName}</Text>
               </View>
             </View>
-           <TouchableOpacity 
-  onPress={() => navigation.navigate("NotificationsScreen")}
-  style={{ position: 'relative' }}
->
-  <Ionicons name="notifications-outline" size={24} color={colors.text} />
-  {notificationCount > 0 && (
-    <View style={{
-      position: 'absolute',
-      top: -4,
-      right: -4,
-      backgroundColor: '#D81E5B',
-      borderRadius: 10,
-      minWidth: 18,
-      height: 18,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 4,
-    }}>
-      <Text style={{
-        color: '#FFF',
-        fontSize: 10,
-        fontWeight: '700',
-      }}>
-        {notificationCount > 9 ? '9+' : notificationCount}
-      </Text>
-    </View>
-  )}
-</TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate("NotificationsScreen")}
+              style={{ position: 'relative' }}
+            >
+              <Ionicons name="notifications-outline" size={24} color={colors.text} />
+              {notificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </LinearGradient>
 
@@ -341,7 +400,57 @@ const handleUpdateAvailability = async (newAvailability: Record<string, any>) =>
           )}
         </View>
 
-        {/* Schedule & Availability */}
+        {/* Modern Availability Calendar */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Weekly Availability</Text>
+            <TouchableOpacity 
+              style={[styles.manageBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setShowAvailabilityModal(true)}
+            >
+              <Ionicons name="calendar" size={16} color="#fff" />
+              <Text style={styles.manageBtnText}>Manage</Text>
+            </TouchableOpacity>
+          </View>
+
+          <LinearGradient 
+            colors={["#4F46E5", "#7C3AED"]} 
+            style={styles.availabilitySummary}
+          >
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Available Days</Text>
+              <Text style={styles.summaryValue}>{availableDaysCount}</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Total Hours</Text>
+              <Text style={styles.summaryValue}>{totalWeeklyHours.toFixed(0)}h</Text>
+            </View>
+          </LinearGradient>
+
+          {/* Quick Preview of Available Days */}
+          <View style={styles.daysPreview}>
+            {DAYS_OF_WEEK.map(day => {
+              const dayData = availability[day];
+              const isAvailable = dayData?.available;
+              return (
+                <View key={day} style={[
+                  styles.dayChip,
+                  { backgroundColor: isAvailable ? '#10B981' : '#E5E7EB' }
+                ]}>
+                  <Text style={[
+                    styles.dayChipText,
+                    { color: isAvailable ? '#fff' : '#6B7280' }
+                  ]}>
+                    {day.slice(0, 3)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Schedule */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>My Schedule</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scheduleScroll}>
@@ -356,30 +465,6 @@ const handleUpdateAvailability = async (newAvailability: Record<string, any>) =>
               );
             })}
           </ScrollView>
-
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Availability</Text>
-            {availabilityLoading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              Object.keys(availability).map((day) => (
-                <View key={day} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Text style={{ color: colors.text }}>{day}</Text>
-                  <TouchableOpacity
-                    onPress={() => handleUpdateAvailability({ ...availability, [day]: !availability[day] })}
-                    style={{
-                      paddingVertical: 4,
-                      paddingHorizontal: 12,
-                      borderRadius: 12,
-                      backgroundColor: availability[day] ? colors.success : colors.error,
-                    }}
-                  >
-                    <Text style={{ color: "#fff" }}>{availability[day] ? "Available" : "Unavailable"}</Text>
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </View>
 
           <View style={styles.appointmentList}>
             {selectedDateAppointments.length === 0 ? (
@@ -409,6 +494,132 @@ const handleUpdateAvailability = async (newAvailability: Record<string, any>) =>
       <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => console.log("Add Appointment")}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* Availability Management Modal */}
+      <Modal visible={showAvailabilityModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.availabilityModal, { backgroundColor: colors.background }]}>
+            <View style={styles.availabilityModalHeader}>
+              <Text style={[styles.availabilityModalTitle, { color: colors.text }]}>
+                Manage Availability
+              </Text>
+              <TouchableOpacity onPress={() => setShowAvailabilityModal(false)}>
+                <Ionicons name="close-circle" size={28} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.availabilityModalContent}>
+              {/* Quick Actions */}
+              <View style={styles.quickActions}>
+                <TouchableOpacity 
+                  style={styles.quickActionBtn}
+                  onPress={() => setAllDaysAvailability(true)}
+                >
+                  <Text style={styles.quickActionText}>✅ Enable All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.quickActionBtn}
+                  onPress={() => setWeekdaysOnly()}
+                >
+                  <Text style={styles.quickActionText}>📅 Weekdays Only</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.quickActionBtn}
+                  onPress={() => setAllDaysAvailability(false)}
+                >
+                  <Text style={styles.quickActionText}>❌ Disable All</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Days Configuration */}
+              {DAYS_OF_WEEK.map((day) => {
+                const dayData = availability[day] || { available: false, from: "09:00", to: "17:00" };
+                return (
+                  <View key={day} style={[styles.dayCard, { 
+                    backgroundColor: colors.card,
+                    borderColor: dayData.available ? '#10B981' : colors.border
+                  }]}>
+                    <View style={styles.dayCardHeader}>
+                      <View style={styles.dayCardLeft}>
+                        <View style={[styles.dayBadge, { 
+                          backgroundColor: dayData.available ? '#10B981' : '#E5E7EB' 
+                        }]}>
+                          <Text style={[styles.dayBadgeText, {
+                            color: dayData.available ? '#fff' : '#6B7280'
+                          }]}>
+                            {day.slice(0, 3)}
+                          </Text>
+                        </View>
+                        <View>
+                          <Text style={[styles.dayName, { color: colors.text }]}>{day}</Text>
+                          <Text style={[styles.dayStatus, { 
+                            color: dayData.available ? '#10B981' : '#6B7280' 
+                          }]}>
+                            {dayData.available ? '✓ Available' : '✗ Unavailable'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => toggleAvailability(day)}
+                        style={[styles.toggle, {
+                          backgroundColor: dayData.available ? '#10B981' : '#E5E7EB'
+                        }]}
+                      >
+                        <View style={[styles.toggleThumb, {
+                          transform: [{ translateX: dayData.available ? 20 : 0 }]
+                        }]} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {dayData.available && (
+                      <View style={[styles.timeInputs, { backgroundColor: colors.background }]}>
+                        <View style={styles.timeInputGroup}>
+                          <Text style={[styles.timeLabel, { color: colors.textMuted }]}>From</Text>
+                          <TextInput
+                            style={[styles.timeInput, { 
+                              color: colors.text,
+                              borderColor: colors.border
+                            }]}
+                            value={dayData.from}
+                            onChangeText={(text) => updateTime(day, 'from', text)}
+                            placeholder="09:00"
+                          />
+                        </View>
+                        <Ionicons name="arrow-forward" size={20} color={colors.textMuted} />
+                        <View style={styles.timeInputGroup}>
+                          <Text style={[styles.timeLabel, { color: colors.textMuted }]}>To</Text>
+                          <TextInput
+                            style={[styles.timeInput, { 
+                              color: colors.text,
+                              borderColor: colors.border
+                            }]}
+                            value={dayData.to}
+                            onChangeText={(text) => updateTime(day, 'to', text)}
+                            placeholder="17:00"
+                          />
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.saveAvailabilityBtn, { backgroundColor: colors.primary }]}
+              onPress={handleSaveAvailability}
+              disabled={availabilityLoading}
+            >
+              {availabilityLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveAvailabilityBtnText}>Save Changes</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Appointment Modal */}
       {selectedAppointment && (
@@ -466,60 +677,635 @@ const handleUpdateAvailability = async (newAvailability: Record<string, any>) =>
   );
 }
 
+
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  scrollContent: { paddingBottom: 120 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 8, fontSize: 14 },
-  headerGradient: { paddingHorizontal: 20, paddingBottom: 20 },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 },
-  doctorInfo: { flexDirection: "row", alignItems: "center" },
-  avatar: { width: 56, height: 56, borderRadius: 28, marginRight: 12 },
-  greeting: { fontSize: 14 },
-  doctorName: { fontSize: 20, fontWeight: "bold" },
-  statsRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20 },
-  statItem: { flex: 1, marginHorizontal: 4, borderRadius: 12, padding: 12, alignItems: "center" },
-  statLabel: { fontSize: 12 },
-  statValue: { fontSize: 18, fontWeight: "bold", marginTop: 4 },
-  section: { paddingHorizontal: 20, marginTop: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: "bold", marginBottom: 12 },
-  upNextCard: { borderRadius: 12, marginBottom: 12 },
-  emptyStateCard: { borderRadius: 12, padding: 20, justifyContent: "center", alignItems: "center" },
-  emptyText: { marginTop: 8, fontSize: 14 },
-  upNextTime: { fontSize: 16, fontWeight: "bold" },
-  upNextPatient: { fontSize: 14, fontWeight: "bold", marginTop: 4 },
-  upNextCondition: { fontSize: 12, marginTop: 2 },
-  upNextActions: { flexDirection: "row", marginTop: 10 },
-  joinButton: { flex: 1, padding: 8, borderRadius: 8, marginRight: 6, alignItems: "center" },
-  joinButtonText: { color: "#fff", fontWeight: "bold" },
-  viewDetailsButton: { flex: 1, padding: 8, borderRadius: 8, marginLeft: 6, alignItems: "center" },
-  viewDetailsButtonText: { fontWeight: "bold" },
-  scheduleScroll: { flexDirection: "row" },
-  scheduleDate: { width: 60, marginRight: 12, padding: 8, borderRadius: 12, alignItems: "center" },
-  dayText: { fontSize: 12 },
-  dateText: { fontSize: 16, fontWeight: "bold" },
-  appointmentDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#D81E5B", marginTop: 4 },
-  appointmentList: { marginTop: 12 },
-  appointmentCard: { flexDirection: "row", alignItems: "center", borderRadius: 12, padding: 12, marginBottom: 8 },
-  appointmentLeft: { width: 70 },
-  appointmentTime: { fontWeight: "bold" },
-  appointmentRight: { flex: 1, marginLeft: 12 },
-  appointmentPatient: { fontSize: 14, fontWeight: "bold" },
-  appointmentType: { fontSize: 12 },
-  appointmentIcon: { marginLeft: 8 },
-  fab: { position: "absolute", bottom: 20, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: "center", alignItems: "center", elevation: 5 },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  bottomSheet: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20 },
-  dragIndicator: { width: 40, height: 4, backgroundColor: "#ccc", borderRadius: 2, alignSelf: "center", marginBottom: 12 },
-  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  sheetTitle: { fontSize: 18, fontWeight: "bold" },
-  sheetSection: { marginBottom: 12 },
-  sectionLabel: { fontSize: 12, color: "#888" },
-  sectionValue: { fontSize: 14, fontWeight: "bold" },
-  statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, alignSelf: "flex-start" },
-  statusBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
-  sheetActions: { flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
-  acceptBtn: { flex: 1, padding: 12, borderRadius: 12, marginRight: 6, alignItems: "center" },
-  rejectBtn: { flex: 1, padding: 12, borderRadius: 12, marginLeft: 6, alignItems: "center" },
-  btnText: { color: "#fff", fontWeight: "bold" },
+  screen: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    paddingBottom: 120,
+  },
+
+  /* ---------------- HEADER ---------------- */
+
+  headerGradient: {
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    marginBottom: 10,
+  },
+
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  doctorInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  avatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 50,
+    backgroundColor: "#ddd",
+  },
+
+  greeting: {
+    fontSize: 14,
+    opacity: 0.8,
+  },
+
+  doctorName: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+
+  notificationBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: "#D81E5B",
+    paddingHorizontal: 6,
+    height: 18,
+    minWidth: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 10,
+  },
+
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  /* ---------------- STATS ---------------- */
+
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginTop: 5,
+  },
+
+  statItem: {
+    width: "32%",
+    padding: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  statLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+
+  statValue: {
+    fontSize: 22,
+    fontWeight: "700",
+  },
+
+
+  section: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  manageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+
+  manageBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+
+
+  upNextCard: {
+    borderRadius: 16,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+
+  upNextTime: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+
+  upNextPatient: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+
+  upNextCondition: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  upNextActions: {
+    flexDirection: "row",
+    marginTop: 16,
+    gap: 10,
+  },
+
+  joinButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  joinButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+
+  viewDetailsButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  viewDetailsButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+
+  emptyStateCard: {
+    padding: 24,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+    opacity: 0.8,
+  },
+
+  emptyText: {
+    marginTop: 6,
+    fontSize: 14,
+    textAlign: "center",
+  },
+
+  /* ---------------- AVAILABILITY SUMMARY ---------------- */
+
+  availabilitySummary: {
+    marginTop: 10,
+    padding: 18,
+    borderRadius: 20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  summaryItem: {
+    alignItems: "center",
+    flex: 1,
+  },
+
+  summaryLabel: {
+    color: "#EDE9FE",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+
+  summaryValue: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+
+  summaryDivider: {
+    width: 1,
+    height: "70%",
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+
+  daysPreview: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+  },
+
+  dayChip: {
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+
+  dayChipText: {
+    fontWeight: "700",
+    fontSize: 12,
+  },
+
+ 
+
+  scheduleScroll: {
+    paddingVertical: 12,
+  },
+
+  scheduleDate: {
+    padding: 12,
+    marginRight: 10,
+    borderRadius: 14,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    width: 70,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  dayText: {
+    fontSize: 12,
+  },
+
+  dateText: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+
+  appointmentDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 50,
+    backgroundColor: "#111",
+    marginTop: 4,
+  },
+
+  appointmentList: {
+    marginTop: 16,
+  },
+
+  appointmentCard: {
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  appointmentLeft: {
+    width: 70,
+  },
+
+  appointmentTime: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  appointmentRight: {
+    flex: 1,
+  },
+
+  appointmentPatient: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  appointmentType: {
+    fontSize: 12,
+    marginTop: 3,
+  },
+
+  appointmentIcon: {
+    marginLeft: 10,
+  },
+
+  /* ---------------- FAB ---------------- */
+
+  fab: {
+    position: "absolute",
+    bottom: 26,
+    right: 26,
+    width: 60,
+    height: 60,
+    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+
+  /* ---------------- MODAL ---------------- */
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+
+  availabilityModal: {
+    maxHeight: "85%",
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 30,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    elevation: 10,
+  },
+
+  availabilityModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+
+  availabilityModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+
+  availabilityModalContent: {
+    marginTop: 10,
+  },
+
+  /* QUICK ACTIONS */
+  quickActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+
+  quickActionBtn: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  quickActionText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  /* DAY CARDS */
+
+  dayCard: {
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+
+  dayCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  dayCardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  dayBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  dayBadgeText: {
+    fontWeight: "700",
+  },
+
+  dayName: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  dayStatus: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  toggle: {
+    width: 48,
+    height: 26,
+    borderRadius: 20,
+    padding: 3,
+    justifyContent: "center",
+  },
+
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+  },
+
+  /* TIME INPUTS */
+
+  timeInputs: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+  },
+
+  timeInputGroup: {
+    flex: 1,
+  },
+
+  timeLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+
+  timeInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 8,
+    fontSize: 14,
+  },
+
+  saveAvailabilityBtn: {
+    paddingVertical: 14,
+    marginTop: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+
+  saveAvailabilityBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  /* LOADING */
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  loadingText: {
+    fontSize: 15,
+  },
+
+
+
+bottomSheet: {
+  backgroundColor: "#fff",
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+  paddingHorizontal: 20,
+  paddingTop: 14,
+  paddingBottom: 30,
+  width: "100%",
+  shadowColor: "#000",
+  shadowOpacity: 0.15,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: -3 },
+  elevation: 10,
+},
+
+dragIndicator: {
+  width: 50,
+  height: 5,
+  backgroundColor: "#ccc",
+  borderRadius: 3,
+  alignSelf: "center",
+  marginBottom: 12,
+},
+
+sheetHeader: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 18,
+},
+
+sheetTitle: {
+  fontSize: 20,
+  fontWeight: "700",
+  color: "#222",
+},
+
+sheetSection: {
+  marginBottom: 18,
+},
+
+sectionLabel: {
+  fontSize: 14,
+  fontWeight: "600",
+  color: "#666",
+  marginBottom: 4,
+},
+
+sectionValue: {
+  fontSize: 16,
+  color: "#222",
+  fontWeight: "500",
+},
+
+statusBadge: {
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 8,
+  alignSelf: "flex-start",
+  marginTop: 6,
+},
+
+statusBadgeText: {
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#fff",
+  letterSpacing: 0.5,
+},
+
+sheetActions: {
+  marginTop: 8,
+  flexDirection: "row",
+  justifyContent: "space-between",
+},
+
+acceptBtn: {
+  flex: 1,
+  paddingVertical: 12,
+  borderRadius: 10,
+  alignItems: "center",
+  marginRight: 8,
+},
+
+rejectBtn: {
+  flex: 1,
+  paddingVertical: 12,
+  borderRadius: 10,
+  alignItems: "center",
+  marginLeft: 8,
+},
+
+btnText: {
+  fontSize: 16,
+  fontWeight: "700",
+  color: "#fff",
+},
+
 });
