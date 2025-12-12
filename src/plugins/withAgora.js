@@ -1,14 +1,8 @@
-// plugins/withAgora.ts
-import { 
-  ConfigPlugin, 
-  withPlugins, 
-  withAndroidManifest, 
-  withInfoPlist,
-  AndroidConfig 
-} from '@expo/config-plugins';
+// plugins/withAgora.js
+const { withPlugins, withAndroidManifest, withInfoPlist } = require('@expo/config-plugins');
 
 // Add Android permissions
-const withAgoraAndroid: ConfigPlugin = (config) => {
+const withAgoraAndroid = (config) => {
   return withAndroidManifest(config, async (config) => {
     const androidManifest = config.modResults;
     const { manifest } = androidManifest;
@@ -28,12 +22,8 @@ const withAgoraAndroid: ConfigPlugin = (config) => {
     ];
 
     permissions.forEach((permission) => {
-      const exists = manifest['uses-permission']?.some(
-        (p: any) => p.$['android:name'] === permission
-      );
-      
-      if (!exists) {
-        manifest['uses-permission']!.push({
+      if (!manifest['uses-permission'].some((p) => p.$['android:name'] === permission)) {
+        manifest['uses-permission'].push({
           $: { 'android:name': permission },
         });
       }
@@ -44,7 +34,7 @@ const withAgoraAndroid: ConfigPlugin = (config) => {
 };
 
 // Add iOS permissions
-const withAgoraIOS: ConfigPlugin = (config) => {
+const withAgoraIOS = (config) => {
   return withInfoPlist(config, (config) => {
     config.modResults.NSCameraUsageDescription = 
       config.modResults.NSCameraUsageDescription || 
@@ -58,8 +48,6 @@ const withAgoraIOS: ConfigPlugin = (config) => {
   });
 };
 
-const withAgora: ConfigPlugin = (config) => {
+module.exports = (config) => {
   return withPlugins(config, [withAgoraAndroid, withAgoraIOS]);
 };
-
-export default withAgora;
