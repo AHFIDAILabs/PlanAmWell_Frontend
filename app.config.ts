@@ -20,7 +20,7 @@ const config: ExpoConfig = {
       },
     ],
     // 🔹 Use absolute path
- require('./plugins/withAgora.js'),
+ require('./src/plugins/withAgora'),
   ],
   splash: {
     image: './src/assets/images/logo1.png',
