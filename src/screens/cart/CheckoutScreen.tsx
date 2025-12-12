@@ -302,6 +302,7 @@ const CheckoutScreen = () => {
     };
 
     return (
+        <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView 
             style={{ flex: 1, backgroundColor: '#F9F9F9' }} 
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -480,6 +481,7 @@ const CheckoutScreen = () => {
                 </View>
             </View>
         </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 };
 

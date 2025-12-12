@@ -17,6 +17,7 @@ const config: ExpoConfig = {
         color: '#D81E5B',
       },
     ],
+    './plugins/withAgora', // 🔹 Add Agora plugin
   ],
   splash: {
     image: './src/assets/images/logo1.png',
@@ -26,6 +27,11 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.planamwell.bundle',
+    infoPlist: {
+      // 🔹 Required for iOS camera and microphone access
+      NSCameraUsageDescription: 'This app needs access to your camera for video calls.',
+      NSMicrophoneUsageDescription: 'This app needs access to your microphone for video calls.',
+    },
   },
   android: {
     adaptiveIcon: {
@@ -33,7 +39,17 @@ const config: ExpoConfig = {
       backgroundColor: '#ffffff',
     },
     package: 'com.planamwell.bundle',
-    permissions: ['NOTIFICATIONS', 'VIBRATE'],
+    permissions: [
+      'NOTIFICATIONS',
+      'VIBRATE',
+      'CAMERA', // 🔹 Add camera permission
+      'RECORD_AUDIO', // 🔹 Add audio permission
+      'INTERNET',
+      'MODIFY_AUDIO_SETTINGS',
+      'ACCESS_NETWORK_STATE',
+      'BLUETOOTH',
+      'ACCESS_WIFI_STATE',
+    ],
     edgeToEdgeEnabled: true,
   },
   web: {
@@ -49,9 +65,8 @@ const config: ExpoConfig = {
     androidClientId: process.env.EXPO_PUBLIC_ANDROID_CLIENT_ID,
     openAIKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
     whisperKey: process.env.EXPO_PUBLIC_WHISPER_API_KEY,
-    // 🔹 Agora config
-    agoraAppId: process.env.EXPO_PUBLIC_AGORA_APP_ID,           // your Agora App ID
-    agoraAppCertificate: process.env.EXPO_PUBLIC_AGORA_APP_CERTIFICATE, // optional if needed
+    agoraAppId: process.env.EXPO_PUBLIC_AGORA_APP_ID,
+    agoraAppCertificate: process.env.EXPO_PUBLIC_AGORA_APP_CERTIFICATE,
   },
 };
 
