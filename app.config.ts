@@ -1,4 +1,6 @@
+// app.config.ts
 import { ExpoConfig } from '@expo/config-types';
+import path from 'path';
 
 const config: ExpoConfig = {
   name: 'PlanAmWell',
@@ -17,7 +19,8 @@ const config: ExpoConfig = {
         color: '#D81E5B',
       },
     ],
-    './plugins/withAgora', // 🔹 Add Agora plugin
+    // 🔹 Use absolute path
+    path.resolve(__dirname, './plugins/withAgora.js'),
   ],
   splash: {
     image: './src/assets/images/logo1.png',
@@ -28,7 +31,6 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: 'com.planamwell.bundle',
     infoPlist: {
-      // 🔹 Required for iOS camera and microphone access
       NSCameraUsageDescription: 'This app needs access to your camera for video calls.',
       NSMicrophoneUsageDescription: 'This app needs access to your microphone for video calls.',
     },
@@ -42,8 +44,8 @@ const config: ExpoConfig = {
     permissions: [
       'NOTIFICATIONS',
       'VIBRATE',
-      'CAMERA', // 🔹 Add camera permission
-      'RECORD_AUDIO', // 🔹 Add audio permission
+      'CAMERA',
+      'RECORD_AUDIO',
       'INTERNET',
       'MODIFY_AUDIO_SETTINGS',
       'ACCESS_NETWORK_STATE',
