@@ -1,0 +1,57 @@
+# .easignore
+
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+*.log
+*.lock
+package-lock.json
+yarn.lock
+
+# Development files
+.expo/
+.expo-shared/
+dist/
+build/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage/
+
+# Documentation
+docs/
+*.md
+README.md
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Large assets (if any)
+# Uncomment and adjust based on your project
+# src/assets/videos/
+# src/assets/large-files/
