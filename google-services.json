@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "301131519555",
+    "project_id": "planamwell-29a05",
+    "storage_bucket": "planamwell-29a05.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:301131519555:android:8c78e4c558595b261826f6",
+        "android_client_info": {
+          "package_name": "com.planamwell.bundle"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKQ9zhv5SlGRKm6NvFfcMJPPo9uPhKi-4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

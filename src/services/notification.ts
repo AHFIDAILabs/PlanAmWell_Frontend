@@ -1,34 +1,41 @@
 import axios, { AxiosResponse } from "axios";
 import * as SecureStore from "expo-secure-store";
-import { 
-  INotification, 
-  IAPIResponse, 
-  IAppointmentsSummary 
+import {
+  INotification,
+  IAPIResponse,
+  IAppointmentsSummary,
 } from "../types/backendType";
-import { TOKEN_KEY } from '../services/Auth';
-
+import { TOKEN_KEY } from "../services/Auth";
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 const API_URL = `${SERVER_URL}/api/v1/notifications`;
 
 /**
- * 🔐 Get auth token from SecureStore
+ * 🔐 Cached auth token (prevents repeated SecureStore reads)
  */
-const getAuthToken = async (): Promise<string | null> => {
-  try {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
-  } catch (error) {
-    console.error("Failed to get auth token:", error);
-    return null;
+let cachedAuthToken: string | null = null;
+
+/**
+ * 🔐 Get auth token safely
+ */
+const getAuthToken = async (): Promise<string> => {
+  if (cachedAuthToken) return cachedAuthToken;
+
+  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  if (!token) {
+    throw new Error("No auth token available for notifications");
   }
+
+  cachedAuthToken = token;
+  return token;
 };
 
 /**
- * 🔑 Create authorization header
+ * 🔑 Authorization header
  */
 const authHeader = async () => {
-const token = await getAuthToken();
-console.log("Notification token:", token);
+  const token = await getAuthToken();
+
   return {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -38,11 +45,11 @@ console.log("Notification token:", token);
 
 export const notificationService = {
   /**
-   * 📥 Get all notifications
+   * 📥 Get notifications
    */
-  getNotifications: async (
+  async getNotifications(
     filter: "all" | "unread" = "all"
-  ): Promise<IAPIResponse<INotification[]>> => {
+  ): Promise<IAPIResponse<INotification[]>> {
     const headers = await authHeader();
     const res: AxiosResponse<IAPIResponse<INotification[]>> = await axios.get(
       `${API_URL}?filter=${filter}`,
@@ -52,35 +59,33 @@ export const notificationService = {
   },
 
   /**
-   * 🔢 Get unread notification count
+   * 🔢 Get unread count
    */
-  getUnreadCount: async (): Promise<IAPIResponse<{ count: number }>> => {
+  async getUnreadCount(): Promise<IAPIResponse<{ count: number }>> {
     const headers = await authHeader();
-    const res: AxiosResponse<IAPIResponse<{ count: number }>> = await axios.get(
-      `${API_URL}/unread-count`,
-      headers
-    );
+    const res: AxiosResponse<IAPIResponse<{ count: number }>> =
+      await axios.get(`${API_URL}/unread-count`, headers);
     return res.data;
   },
 
   /**
-   * 📊 Get upcoming appointments summary
+   * 📊 Upcoming appointments summary
    */
-  getUpcomingAppointmentsSummary: async (): Promise<
+  async getUpcomingAppointmentsSummary(): Promise<
     IAPIResponse<IAppointmentsSummary>
-  > => {
+  > {
     const headers = await authHeader();
-    const res: AxiosResponse<IAPIResponse<IAppointmentsSummary>> = await axios.get(
-      `${API_URL}/appointments-summary`, 
-      headers
-    );
+    const res: AxiosResponse<IAPIResponse<IAppointmentsSummary>> =
+      await axios.get(`${API_URL}/appointments-summary`, headers);
     return res.data;
   },
 
   /**
-   * ✅ Mark notification as read
+   * ✅ Mark one as read
    */
-  markAsRead: async (notificationId: string): Promise<IAPIResponse<null>> => {
+  async markAsRead(
+    notificationId: string
+  ): Promise<IAPIResponse<null>> {
     const headers = await authHeader();
     const res: AxiosResponse<IAPIResponse<null>> = await axios.put(
       `${API_URL}/${notificationId}/read`,
@@ -91,9 +96,9 @@ export const notificationService = {
   },
 
   /**
-   * ✅ Mark all notifications as read
+   * ✅ Mark all as read
    */
-  markAllAsRead: async (): Promise<IAPIResponse<null>> => {
+  async markAllAsRead(): Promise<IAPIResponse<null>> {
     const headers = await authHeader();
     const res: AxiosResponse<IAPIResponse<null>> = await axios.put(
       `${API_URL}/read-all`,
@@ -106,9 +111,9 @@ export const notificationService = {
   /**
    * 🗑️ Delete notification
    */
-  deleteNotification: async (
+  async deleteNotification(
     notificationId: string
-  ): Promise<IAPIResponse<null>> => {
+  ): Promise<IAPIResponse<null>> {
     const headers = await authHeader();
     const res: AxiosResponse<IAPIResponse<null>> = await axios.delete(
       `${API_URL}/${notificationId}`,
@@ -118,17 +123,21 @@ export const notificationService = {
   },
 
   /**
-   * ➕ Create notification (admin/system use)
+   * ➕ Create notification (system/admin)
    */
-  createNotification: async (
+  async createNotification(
     data: Partial<INotification>
-  ): Promise<IAPIResponse<INotification>> => {
+  ): Promise<IAPIResponse<INotification>> {
     const headers = await authHeader();
-    const res: AxiosResponse<IAPIResponse<INotification>> = await axios.post(
-      API_URL,
-      data,
-      headers
-    );
+    const res: AxiosResponse<IAPIResponse<INotification>> =
+      await axios.post(API_URL, data, headers);
     return res.data;
+  },
+
+  /**
+   * 🧹 Clear cached token (call on logout)
+   */
+  clearCache() {
+    cachedAuthToken = null;
   },
 };

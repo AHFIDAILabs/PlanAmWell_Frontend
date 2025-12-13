@@ -1,174 +1,206 @@
-import React, { useCallback } from 'react';
+// src/screens/NotificationsScreen.tsx
+import React from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
+  StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import Toast from 'react-native-toast-message';
-import { useNotification } from '../../hooks/useNotifcation';
-import { INotification } from '../../types/backendType';
-import { notificationService } from '../../services/notification';
+import { useNotifications } from '../../context/notificatonContext';
 
-export const NotificationsScreen: React.FC = () => {
-  const navigation = useNavigation<any>();
-  const [filter, setFilter] = React.useState<'all' | 'unread'>('all');
-
+export const NotificationsScreen = () => {
   const {
     notifications,
+    unreadCount,
     loading,
-    fetchNotifications,
+    isSocketConnected,
     markAsRead,
-    markAllAsRead,
-    setNotifications,
-  } = useNotification();
+    refresh,
+    filter,
+    setFilter,
+  } = useNotifications();
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchNotifications(filter);
-    }, [filter])
+  const renderNotification = ({ item }: any) => (
+    <TouchableOpacity
+      style={[
+        styles.notificationItem,
+        !item.isRead && styles.unreadNotification,
+      ]}
+      onPress={() => markAsRead(item._id)}
+    >
+      <View style={styles.notificationHeader}>
+        <Text style={styles.notificationTitle}>{item.title}</Text>
+        {!item.isRead && <View style={styles.unreadDot} />}
+      </View>
+      <Text style={styles.notificationMessage}>{item.message}</Text>
+      <Text style={styles.notificationTime}>
+        {new Date(item.createdAt).toLocaleString()}
+      </Text>
+    </TouchableOpacity>
   );
 
-  const onRefresh = () => fetchNotifications(filter);
-
-  const handleNotificationPress = async (notification: INotification) => {
-    if (!notification.isRead) await markAsRead(notification._id);
-
-    if (notification.type === 'appointment' && notification.metadata?.appointmentId) {
-      navigation.navigate('ConsultationHistory');
-    } else if (notification.type === 'order' && notification.metadata?.orderId) {
-      navigation.navigate('OrderDetails', { orderId: notification.metadata.orderId });
-    }
-  };
-
-  const handleMarkAllRead = async () => {
-    await markAllAsRead();
-    Toast.show({ type: 'success', text1: 'All notifications marked as read' });
-  };
-
-  const handleDeleteNotification = async (notificationId: string) => {
-    try {
-      await notificationService.deleteNotification(notificationId);
-      setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
-      Toast.show({ type: 'success', text1: 'Notification deleted' });
-    } catch (error) {
-      Toast.show({ type: 'error', text1: 'Failed to delete notification' });
-    }
-  };
-
-  const renderNotification = ({ item }: { item: INotification }) => {
-    const iconMap: Record<string, string> = {
-      appointment: 'calendar',
-      order: 'shopping-bag',
-      article: 'file-text',
-      supplement: 'package',
-      system: 'bell',
-    };
-    const colorMap: Record<string, string> = {
-      appointment: '#D81E5B',
-      order: '#4CAF50',
-      article: '#2196F3',
-      supplement: '#FF9800',
-      system: '#9C27B0',
-    };
-
-    const icon = iconMap[item.type] || 'bell';
-    const color = colorMap[item.type] || '#757575';
-
-    return (
-      <TouchableOpacity
-        style={[styles.notificationCard, !item.isRead && styles.unreadCard]}
-        onPress={() => handleNotificationPress(item)}
-      >
-        <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-          <Feather name={icon as any} size={20} color={color} />
-        </View>
-
-        <View style={styles.notificationContent}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
-          <Text style={styles.notificationMessage} numberOfLines={2}>{item.message}</Text>
-          <Text style={styles.notificationTime}>
-            {new Date(item.createdAt).toLocaleTimeString()}
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>
+          Notifications ({unreadCount})
+        </Text>
+        
+        {/* ✅ Connection Status Indicator */}
+        <View
+          style={[
+            styles.connectionIndicator,
+            isSocketConnected ? styles.connected : styles.disconnected,
+          ]}
+        >
+          <Text style={styles.connectionText}>
+            {isSocketConnected ? '🟢 Live' : '🔴 Offline'}
           </Text>
         </View>
-
-        {!item.isRead && <View style={styles.unreadDot} />}
-
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => handleDeleteNotification(item._id)}
-        >
-          <Feather name="x" size={18} color="#999" />
-        </TouchableOpacity>
-      </TouchableOpacity>
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Feather name="arrow-left" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity onPress={handleMarkAllRead}>
-          <Text style={styles.markAllText}>Mark all read</Text>
-        </TouchableOpacity>
       </View>
 
+      {/* ✅ Filter Tabs */}
       <View style={styles.filterContainer}>
-        {['all', 'unread'].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterTab, filter === f && styles.activeFilterTab]}
-            onPress={() => setFilter(f as 'all' | 'unread')}
-          >
-            <Text style={[styles.filterText, filter === f && styles.activeFilterText]}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'all' && styles.activeFilter]}
+          onPress={() => setFilter('all')}
+        >
+          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
+            All
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'unread' && styles.activeFilter]}
+          onPress={() => setFilter('unread')}
+        >
+          <Text style={[styles.filterText, filter === 'unread' && styles.activeFilterText]}>
+            Unread
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#D81E5B" style={{ marginTop: 50 }} />
-      ) : (
-        <FlatList
-          data={notifications}
-          keyExtractor={(item) => item._id}
-          renderItem={renderNotification}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} colors={['#D81E5B']} />}
-          contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
-          ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 50 }}>No notifications</Text>}
-        />
-      )}
-    </SafeAreaView>
+      <FlatList
+        data={notifications}
+        keyExtractor={(item) => item._id}
+        renderItem={renderNotification}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={refresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+              {filter === 'unread' 
+                ? 'No unread notifications' 
+                : 'No notifications yet'}
+            </Text>
+          </View>
+        }
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
-  markAllText: { fontSize: 14, color: '#D81E5B', fontWeight: '600' },
-  filterContainer: { flexDirection: 'row', padding: 16, gap: 12, backgroundColor: '#FFF' },
-  filterTab: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20, backgroundColor: '#F5F5F5' },
-  activeFilterTab: { backgroundColor: '#D81E5B' },
-  filterText: { fontSize: 14, color: '#666', fontWeight: '500' },
-  activeFilterText: { color: '#FFF', fontWeight: '700' },
-  notificationCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  unreadCard: { borderLeftWidth: 4, borderLeftColor: '#D81E5B' },
-  iconContainer: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  notificationContent: { flex: 1 },
-  notificationTitle: { fontSize: 15, fontWeight: '700', color: '#222', marginBottom: 4 },
-  notificationMessage: { fontSize: 13, color: '#666', marginBottom: 4 },
-  notificationTime: { fontSize: 11, color: '#999' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D81E5B', marginRight: 8 },
-  deleteButton: { padding: 8 },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  connectionIndicator: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  connected: {
+    backgroundColor: '#e8f5e9',
+  },
+  disconnected: {
+    backgroundColor: '#ffebee',
+  },
+  connectionText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    padding: 8,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  filterTab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+  },
+  activeFilter: {
+    backgroundColor: '#2196F3',
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  activeFilterText: {
+    color: '#fff',
+  },
+  notificationItem: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  unreadNotification: {
+    backgroundColor: '#f0f8ff',
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  notificationTitle: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    flex: 1,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2196F3',
+  },
+  notificationMessage: {
+    color: '#666',
+    marginTop: 4,
+    fontSize: 14,
+  },
+  notificationTime: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 8,
+  },
+  emptyContainer: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#999',
+    fontSize: 16,
+  },
 });

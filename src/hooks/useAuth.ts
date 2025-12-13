@@ -24,6 +24,7 @@ import { Platform } from 'react-native';
 import { registerPushToken, removePushToken } from '../services/Auth';
 
 import { AxiosError } from 'axios';
+import { getExpoPushToken } from './usePushToken';
 
 const HAS_SEEN_ONBOARDING = 'HAS_SEEN_ONBOARDING';
 
@@ -45,44 +46,6 @@ export function useAuth() {
   const userLoadedRef = useRef(false);
   const didLoadRef = useRef(false);
 
-
-  async function registerForPushNotificationsAsync() {
-  let token;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-    });
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  
-  if (finalStatus !== 'granted') {
-    console.log('Failed to get push token for push notification!');
-    return null;
-  }
-  
-  try {
-    token = (await Notifications.getExpoPushTokenAsync({
-      projectId: Constants.expoConfig?.extra?.eas?.projectId,
-    })).data;
-    
-    console.log('Expo Push Token:', token);
-    return token;
-  } catch (error) {
-    console.error('Error getting push token:', error);
-    return null;
-  }
-}
 
 
   // ------------------------------------------------------------
@@ -121,19 +84,9 @@ export function useAuth() {
   // LOGOUT
   // ------------------------------------------------------------
 const handleLogout = useCallback(async () => {
-  // ✅ Remove push token before logging out
   if (userToken) {
-    try {
-      const pushToken = await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
-      });
-      if (pushToken?.data) {
-        await removePushToken(pushToken.data, userToken);
-        console.log('[useAuth] Push token removed');
-      }
-    } catch (error) {
-      console.error('[useAuth] Failed to remove push token:', error);
-    }
+    await removePushToken('', userToken); 
+    // backend should remove by userId
   }
 
   await logout();
@@ -142,8 +95,8 @@ const handleLogout = useCallback(async () => {
   setSessionId(null);
   setIsAnonymous(true);
   setIsAuthenticated(false);
-  userLoadedRef.current = false;
 }, [userToken]);
+
 
   // ------------------------------------------------------------
   // LOAD USER PROFILE
@@ -342,7 +295,7 @@ const handleLogin = useCallback(
 
       // ✅ Register push notifications
       try {
-        const pushToken = await registerForPushNotificationsAsync();
+        const pushToken = await getExpoPushToken ();
         if (pushToken) {
           await registerPushToken(pushToken, response.token);
           console.log('[useAuth] Push token registered');

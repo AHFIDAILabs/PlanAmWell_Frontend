@@ -20,7 +20,7 @@ const config: ExpoConfig = {
       },
     ],
     // 🔹 Use absolute path
- require('./src/plugins/withAgora'),
+'./src/plugins/withAgora', 
   ],
   splash: {
     image: './src/assets/images/logo1.png',
@@ -41,6 +41,7 @@ const config: ExpoConfig = {
       backgroundColor: '#ffffff',
     },
     package: 'com.planamwell.bundle',
+    googleServicesFile: './google-services.json',
     permissions: [
       'NOTIFICATIONS',
       'VIBRATE',
