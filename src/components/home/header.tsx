@@ -6,6 +6,8 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack'; // Optional: for better TypeScript typing
 import { AppStackParamList } from '../../types/App';
+import { useNotifications } from '../../context/notificatonContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 
 // Define the navigation prop type for this component
@@ -37,6 +39,7 @@ export default function Header({
 }: HeaderProps) {
     // 2. Use the useNavigation hook to get the navigation object
     const navigation = useNavigation<HeaderNavigationProp>();
+  const { unreadCount } = useNotifications();
 
     // Create styles that override the defaults if a prop is provided
     const resolvedTitleStyle = titleColor ? { color: titleColor } : {};
@@ -53,6 +56,7 @@ export default function Header({
     };
 
     return (
+        <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
         <View style={styles.container}>
             <View>
                 {/* Title with FadeInUp animation and dynamic color */}
@@ -80,13 +84,20 @@ export default function Header({
             {showNotification && (
                 // 3. Update the onPress handler
                 <TouchableOpacity onPress={handleNotificationPress}>
-                    <View style={styles.notifDot} />
+{unreadCount > 0 && (
+  <View style={styles.badgeContainer}>
+    <Animated.Text style={styles.badgeText}>
+      {unreadCount > 9 ? '9+' : unreadCount}
+    </Animated.Text>
+  </View>
+)}
                     <View style={styles.bell} >
                         <Feather name="bell" size={20} color="#D81E5B" />
                     </View>
                 </TouchableOpacity>
             )}
         </View>
+        </SafeAreaView>
     );
 }
 
@@ -130,4 +141,25 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#FFF',
     },
+    badgeContainer: {
+  position: 'absolute',
+  top: -4,
+  right: -4,
+  backgroundColor: '#D81E5B',
+  minWidth: 18,
+  height: 18,
+  borderRadius: 9,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 5,
+  zIndex: 20,
+  borderWidth: 2,
+  borderColor: '#FFF',
+},
+badgeText: {
+  color: '#FFF',
+  fontSize: 10,
+  fontWeight: '700',
+},
+
 });

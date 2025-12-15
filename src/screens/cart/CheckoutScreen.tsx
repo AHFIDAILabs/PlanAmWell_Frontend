@@ -23,6 +23,7 @@ import { CheckoutDetails } from '../../services/checkout';
 // --- Date Picker Imports ---
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { format } from 'date-fns'; 
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- Gender Options ---
 const GENDER_OPTIONS = [

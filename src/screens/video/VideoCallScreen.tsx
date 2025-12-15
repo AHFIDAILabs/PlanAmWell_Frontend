@@ -1,4 +1,4 @@
-// screens/VideoCallScreen.tsx - FULLY CORRECTED VERSION
+// screens/VideoCallScreen.tsx - ENHANCED & FIXED VERSION
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
@@ -9,41 +9,31 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoCall, VideoTokenResponse } from '../../hooks/useVideoCall';
-
-// --- CORRECTED AGORA IMPORTS ---
-// 1. Import the Engine Creator Function as default
-import RtcEngine from 'react-native-agora';
-
-// 2. Import all required components, enums, and types as NAMED EXPORTS
 import {
+  createAgoraRtcEngine,
   ChannelProfileType,
   ClientRoleType,
-  IRtcEngine, // Type definition for the engine instance
+  IRtcEngine,
+  RtcSurfaceView,
+  VideoCanvas,
 } from 'react-native-agora';
-
-import AgoraRtcRenderView from 'react-native-agora';
-// --------------------------------
 
 interface Props {
   route: any;
   navigation: any;
 }
 
-// ⚠️ Note: We must use a type assertion for the view components here
-// because the Agora package's type definition file is often incorrect for JSX usage.
-const RtcLocalView = AgoraRtcRenderView as any;
-const RtcRemoteView = AgoraRtcRenderView as any;
-
-
 export default function VideoCallScreen({ route, navigation }: Props) {
   const { appointmentId, name, patientId, role } = route.params;
   const { startCall, endCall } = useVideoCall();
 
-  // Use ref to store engine instance
+  // Engine ref
   const engineRef = useRef<IRtcEngine | null>(null);
+  
   // State management
   const [tokenData, setTokenData] = useState<VideoTokenResponse | null>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -53,6 +43,10 @@ export default function VideoCallScreen({ route, navigation }: Props) {
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor'>('excellent');
+
+  // Cleanup ref to prevent multiple cleanups
+  const isCleaningUp = useRef(false);
 
   useEffect(() => {
     initCall();
@@ -65,157 +59,235 @@ export default function VideoCallScreen({ route, navigation }: Props) {
     // Cleanup on unmount
     return () => {
       clearInterval(timer);
-      leaveCall();
+      cleanup();
     };
   }, []);
 
   const initCall = async () => {
     try {
+      console.log('🎥 Initializing video call for appointment:', appointmentId);
+      
       // Step 1: Get token from backend
       const data = await startCall(appointmentId);
       setTokenData(data);
+      console.log('✅ Token received:', { channelName: data.channelName, uid: data.uid });
 
-      // 💥 Step 2: CORRECT ENGINE CREATION & Initialization (No createClient)
-      // RtcEngine is the creator function (createAgoraRtcEngine)
-      const engineInstance: IRtcEngine = RtcEngine(); 
-      engineRef.current = engineInstance;
+      // Step 2: Create Agora Engine
+      const engine = createAgoraRtcEngine();
+      engineRef.current = engine;
 
-      // Initialize the engine with the App ID
-      await engineInstance.initialize({ appId: data.appId });
+      // Step 3: Initialize with App ID
+      await engine.initialize({
+        appId: data.appId,
+        channelProfile: ChannelProfileType.ChannelProfileCommunication,
+      });
 
-      // Step 3: Enable video
-      await engineInstance.enableVideo();
+      // Step 4: Setup event listeners BEFORE enabling video
+      setupEventListeners(engine);
 
-      // Step 4: Set channel profile
-      // Use the corrected enum name
-      await engineInstance.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
+      // Step 5: Enable audio and video
+      await engine.enableAudio();
+      await engine.enableVideo();
 
-      // Step 5: Set client role (broadcaster can send and receive)
-      // Use the corrected enum name
-      await engineInstance.setClientRole(ClientRoleType.ClientRoleBroadcaster); 
+      // Step 6: Set client role
+      await engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
 
-      // Step 6: Setup event listeners with proper types
-    // FIX 1: "UserJoined" -> "userJoined" (or "onUserJoined")
-    engineInstance.addListener('onUserJoined', (connection: any, uid: number) => {
-        console.log('✅ User joined:', uid);
-        setRemoteUid(uid);
-    });
+      // Step 7: Enable speaker by default (for video calls)
+      await engine.setDefaultAudioRouteToSpeakerphone(true);
+      await engine.setEnableSpeakerphone(true);
 
-    // FIX 2: "UserOffline" -> "userOffline" (or "onUserOffline")
-    engineInstance.addListener('onUserOffline', (connection: any, uid: number) => {
-        console.log('❌ User offline:', uid);
-        setRemoteUid(null);
-    });
-
-    // FIX 3: "JoinChannelSuccess" -> "onJoinChannelSuccess"
-    engineInstance.addListener('onJoinChannelSuccess', (connection: any, elapsed: number) => {
-        console.log('✅ Joined channel:', connection.channelId, 'with UID:', connection.localUid);
-        setIsConnected(true);
-    });
-    
-    // FIX 4: "Error" -> "onError"
-    engineInstance.addListener('onError', (err: number, msg: string) => {
-        console.error('⚠️ Agora error code:', err, msg);
-        Alert.alert('Connection Error', `Error code: ${err}`);
-    });
-
-      // Step 7: Start local preview
-      await engineInstance.startPreview();
+      // Step 8: Start preview
+      await engine.startPreview();
       setIsInitialized(true);
 
-      // Step 8: Join channel
-      await engineInstance.joinChannel(data.token, data.channelName, data.uid, {});
+      // Step 9: Join channel
+      await engine.joinChannel(data.token, data.channelName, data.uid, {
+        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+      });
 
-      console.log('🎥 Video call initialized successfully');
+      console.log('✅ Video call initialized successfully');
     } catch (error: any) {
       console.error('❌ Video call initialization failed:', error);
       Alert.alert(
         'Connection Failed',
-        error?.message || 'Failed to join video call. Please try again.'
+        error?.message || 'Failed to join video call. Please try again.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
-      navigation.goBack();
+    }
+  };
+
+  const setupEventListeners = (engine: IRtcEngine) => {
+    // User joined channel
+    engine.addListener('onUserJoined', (connection, uid) => {
+      console.log('✅ Remote user joined:', uid);
+      setRemoteUid(uid);
+    });
+
+    // User left channel
+    engine.addListener('onUserOffline', (connection, uid, reason) => {
+      console.log('❌ Remote user offline:', uid, 'Reason:', reason);
+      if (remoteUid === uid) {
+        setRemoteUid(null);
+      }
+    });
+
+    // Successfully joined channel
+    engine.addListener('onJoinChannelSuccess', (connection, elapsed) => {
+      console.log('✅ Joined channel:', connection.channelId, 'UID:', connection.localUid);
+      setIsConnected(true);
+    });
+
+    // Connection state changed
+    engine.addListener('onConnectionStateChanged', (connection, state, reason) => {
+      console.log('🔄 Connection state changed:', state, 'Reason:', reason);
+      if (state === 3) { // Connected
+        setIsConnected(true);
+      } else if (state === 1 || state === 4) { // Disconnected or Failed
+        setIsConnected(false);
+      }
+    });
+
+    // Network quality
+    engine.addListener('onNetworkQuality', (connection, quality) => {
+      if (quality <= 2) {
+        setConnectionQuality('excellent');
+      } else if (quality <= 4) {
+        setConnectionQuality('good');
+      } else {
+        setConnectionQuality('poor');
+      }
+    });
+
+    // Error occurred
+    engine.addListener('onError', (err, msg) => {
+      console.error('⚠️ Agora error:', err, msg);
+      if (err === 17) { // Join channel rejected
+        Alert.alert('Connection Error', 'Failed to join call. Please try again.');
+      }
+    });
+
+    // Remote video state changed
+    engine.addListener('onRemoteVideoStateChanged', (connection, uid, state, reason) => {
+      console.log('📹 Remote video state changed:', uid, state, reason);
+    });
+
+    // Audio volume indication (optional - for showing speaking indicator)
+    engine.addListener('onAudioVolumeIndication', (connection, speakers, totalVolume) => {
+      // Can be used to show visual indicator when someone is speaking
+    });
+  };
+
+  const cleanup = async () => {
+    if (isCleaningUp.current) {
+      console.log('⚠️ Cleanup already in progress');
+      return;
+    }
+
+    isCleaningUp.current = true;
+    const engine = engineRef.current;
+
+    if (engine) {
+      try {
+        console.log('🧹 Cleaning up Agora engine...');
+
+        // Stop preview
+        try {
+          await engine.stopPreview();
+        } catch (e) {
+          console.warn('Stop preview error:', e);
+        }
+
+        // Leave channel
+        try {
+          await engine.leaveChannel();
+        } catch (e) {
+          console.warn('Leave channel error:', e);
+        }
+
+        // Remove all listeners
+        engine.removeAllListeners();
+
+        // Release engine resources
+        engine.release();
+
+        engineRef.current = null;
+        console.log('✅ Agora engine cleaned up');
+      } catch (error) {
+        console.error('❌ Cleanup error:', error);
+      }
+    }
+
+    // Notify backend (only if doctor and call was active)
+    if (tokenData && role === 'doctor' && isConnected) {
+      try {
+        await endCall(appointmentId, undefined);
+        console.log('✅ Backend notified of call end');
+      } catch (error) {
+        console.error('❌ Failed to notify backend:', error);
+      }
     }
   };
 
   const leaveCall = async () => {
-    const engine = engineRef.current;
-    if (engine) {
-      try {
-        await engine.stopPreview();
-        await engine.leaveChannel();
-        engine.removeAllListeners();
-        // The modern SDK uses release to clean up, not destroy
-        await engine.release(); 
-        engineRef.current = null;
-        console.log('🔴 Left call and released engine');
-      } catch (err: any) {
-        console.error('Error cleaning up Agora:', err);
-      }
-    }
-    
-    // Notify backend
-    if (tokenData && role === 'doctor') {
-      await endCall(appointmentId);
-    }
-    
+    await cleanup();
     navigation.goBack();
   };
 
   const toggleMute = async () => {
     const engine = engineRef.current;
-    if (engine) {
-      try {
-        await engine.muteLocalAudioStream(!isMuted);
-        setIsMuted(!isMuted);
-      } catch (err) {
-        console.error('Toggle mute error:', err);
-      }
+    if (!engine) return;
+
+    try {
+      await engine.muteLocalAudioStream(!isMuted);
+      setIsMuted(!isMuted);
+      console.log(`🎤 Audio ${!isMuted ? 'muted' : 'unmuted'}`);
+    } catch (error) {
+      console.error('Toggle mute error:', error);
     }
   };
 
   const toggleVideo = async () => {
     const engine = engineRef.current;
-    if (engine) {
-      try {
-        // use enableLocalVideo as muteLocalVideoStream is often related to network publish state
-        await engine.enableLocalVideo(isVideoOff); 
-        setIsVideoOff(!isVideoOff);
-      } catch (err) {
-        console.error('Toggle video error:', err);
-      }
+    if (!engine) return;
+
+    try {
+      await engine.muteLocalVideoStream(!isVideoOff);
+      setIsVideoOff(!isVideoOff);
+      console.log(`📹 Video ${!isVideoOff ? 'disabled' : 'enabled'}`);
+    } catch (error) {
+      console.error('Toggle video error:', error);
     }
   };
 
   const toggleSpeaker = async () => {
     const engine = engineRef.current;
-    if (engine) {
-      try {
-        // setEnableSpeakerphone is the correct method
-        await engine.setEnableSpeakerphone(!isSpeakerOn);
-        setIsSpeakerOn(!isSpeakerOn);
-      } catch (err) {
-        console.error('Toggle speaker error:', err);
-      }
+    if (!engine) return;
+
+    try {
+      await engine.setEnableSpeakerphone(!isSpeakerOn);
+      setIsSpeakerOn(!isSpeakerOn);
+      console.log(`🔊 Speaker ${!isSpeakerOn ? 'disabled' : 'enabled'}`);
+    } catch (error) {
+      console.error('Toggle speaker error:', error);
     }
   };
 
   const switchCamera = async () => {
     const engine = engineRef.current;
-    if (engine) {
-      try {
-        await engine.switchCamera();
-      } catch (err) {
-        console.error('Switch camera error:', err);
-      }
+    if (!engine) return;
+
+    try {
+      await engine.switchCamera();
+      console.log('🔄 Camera switched');
+    } catch (error) {
+      console.error('Switch camera error:', error);
     }
   };
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs
-      .toString()
-      .padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleEndCall = () => {
@@ -239,7 +311,8 @@ export default function VideoCallScreen({ route, navigation }: Props) {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#10B981" />
-          <Text style={styles.loadingText}>Connecting to call... </Text>
+          <Text style={styles.loadingText}>Connecting to call...</Text>
+          <Text style={styles.loadingSubtext}>{name || 'Participant'}</Text>
         </View>
       </SafeAreaView>
     );
@@ -253,11 +326,17 @@ export default function VideoCallScreen({ route, navigation }: Props) {
           <View
             style={[
               styles.statusDot,
-              { backgroundColor: isConnected ? '#10B981' : '#EF4444' },
+              { 
+                backgroundColor: isConnected 
+                  ? (connectionQuality === 'poor' ? '#F59E0B' : '#10B981')
+                  : '#EF4444' 
+              },
             ]}
           />
           <Text style={styles.statusText}>
-            {isConnected ? 'Connected' : 'Connecting...'}
+            {isConnected 
+              ? (connectionQuality === 'poor' ? 'Poor Connection' : 'Connected')
+              : 'Connecting...'}
           </Text>
         </View>
         <Text style={styles.duration}>{formatDuration(callDuration)}</Text>
@@ -267,14 +346,13 @@ export default function VideoCallScreen({ route, navigation }: Props) {
       <View style={styles.videoContainer}>
         {/* Remote Video */}
         {remoteUid ? (
-          // 💥 CORRECTED JSX: Use the direct component name
-          <RtcRemoteView
+          <RtcSurfaceView
             style={styles.remoteVideo}
-            // The modern SDK expects the remote user's UID and the channel ID
-            uid={remoteUid}
-            channelId={tokenData.channelName} 
-            renderMode={1} // 1 = Hidden mode (aspect fill)
-            zOrderMediaOverlay={false}
+            canvas={{
+              uid: remoteUid,
+              renderMode: 1, // Hidden (aspect fill)
+              sourceType: 1, // Remote
+            }}
           />
         ) : (
           <View style={styles.remoteVideoPlaceholder}>
@@ -282,23 +360,28 @@ export default function VideoCallScreen({ route, navigation }: Props) {
             <Text style={styles.placeholderText}>
               Waiting for {role === 'doctor' ? 'patient' : 'doctor'}...
             </Text>
+            <Text style={styles.placeholderSubtext}>
+              {name || 'Participant'}
+            </Text>
           </View>
         )}
 
         {/* Local Video Preview */}
         <View style={styles.localVideoContainer}>
           {!isVideoOff ? (
-            // 💥 CORRECTED JSX: Use the direct component name
-            <RtcLocalView
+            <RtcSurfaceView
               style={styles.localVideo}
-              uid={tokenData.uid} // Local view must have the local UID (or 0 for older SDKs)
-              channelId={tokenData.channelName}
-              renderMode={1} // 1 = Hidden mode (aspect fill)
+              canvas={{
+                uid: 0, // 0 represents local user
+                renderMode: 1, // Hidden (aspect fill)
+                sourceType: 0, // Local camera
+              }}
               zOrderMediaOverlay={true}
             />
           ) : (
             <View style={styles.videoOffPlaceholder}>
               <Ionicons name="videocam-off" size={32} color="#fff" />
+              <Text style={styles.videoOffText}>Camera Off</Text>
             </View>
           )}
         </View>
@@ -346,7 +429,12 @@ export default function VideoCallScreen({ route, navigation }: Props) {
             style={styles.endCallButton}
             onPress={handleEndCall}
           >
-            <Ionicons name="call" size={32} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
+            <Ionicons 
+              name="call" 
+              size={32} 
+              color="#fff" 
+              style={{ transform: [{ rotate: '135deg' }] }} 
+            />
           </TouchableOpacity>
 
           {/* Speaker Toggle */}
@@ -366,10 +454,20 @@ export default function VideoCallScreen({ route, navigation }: Props) {
           </TouchableOpacity>
 
           {/* Flip Camera */}
-          <TouchableOpacity style={styles.controlButton} onPress={switchCamera}>
+          <TouchableOpacity 
+            style={styles.controlButton} 
+            onPress={switchCamera}
+          >
             <Ionicons name="camera-reverse" size={28} color="#fff" />
             <Text style={styles.controlLabel}>Flip</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Participant Name */}
+        <View style={styles.participantInfo}>
+          <Text style={styles.participantName}>
+            {role === 'doctor' ? 'Patient' : 'Doctor'}: {name || 'Unknown'}
+          </Text>
         </View>
       </View>
     </SafeAreaView>
@@ -385,12 +483,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   loadingText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
+  },
+  loadingSubtext: {
+    color: '#9CA3AF',
+    fontSize: 14,
   },
   header: {
     flexDirection: 'row',
@@ -405,9 +507,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   statusText: {
     color: '#fff',
@@ -416,8 +518,9 @@ const styles = StyleSheet.create({
   },
   duration: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   videoContainer: {
     flex: 1,
@@ -439,6 +542,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginTop: 16,
     fontWeight: '500',
+  },
+  placeholderSubtext: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    marginTop: 4,
   },
   localVideoContainer: {
     position: 'absolute',
@@ -462,14 +570,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#374151',
   },
+  videoOffText: {
+    color: '#9CA3AF',
+    fontSize: 10,
+    marginTop: 4,
+  },
   controls: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    paddingTop: 20,
   },
   controlsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
+    marginBottom: 16,
   },
   controlButton: {
     width: 60,
@@ -495,7 +610,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
     justifyContent: 'center',
     alignItems: 'center',
-    // The rotation for the call icon is now applied directly to the icon in the JSX, 
-    // so it doesn't mess up the touchable area.
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  participantInfo: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  participantName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

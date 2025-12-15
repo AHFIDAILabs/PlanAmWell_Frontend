@@ -240,6 +240,7 @@ export interface IAppointment {
   _id?: string;
   userId: string;
   doctorId: string | IDoctor;
+  consultationType?: "video" | "in-person" | "chat" | "audio";
 
   scheduledAt: Date;                 // requested appointment time
   proposedAt?: Date;                 // doctor-proposed new time (if rescheduled)

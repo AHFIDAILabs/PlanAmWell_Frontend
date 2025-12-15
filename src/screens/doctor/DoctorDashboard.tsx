@@ -26,6 +26,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { notificationService } from "../../services/notification";
 import DoctorBottomBar from "../../components/common/DoctorBottomBar";
 import { Alert } from "react-native";
+import AppointmentModal from "../../components/appointment/AppointmentModal";
 
 
 
@@ -662,57 +663,14 @@ console.log(navigation.getState().routeNames);
       </Modal>
 
       {/* Appointment Modal */}
-      {selectedAppointment && (
-        <Modal visible={showModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={styles.bottomSheet}>
-              <View style={styles.dragIndicator} />
-              <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>Appointment Details</Text>
-                <TouchableOpacity onPress={() => setShowModal(false)}>
-                  <Ionicons name="close-circle" size={28} color="#333" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sheetSection}>
-                <Text style={styles.sectionLabel}>👤 Patient</Text>
-                <Text style={styles.sectionValue}>{selectedAppointment.patientSnapshot?.name}</Text>
-              </View>
-              <View style={styles.sheetSection}>
-                <Text style={styles.sectionLabel}>💡 Reason</Text>
-                <Text style={styles.sectionValue}>{selectedAppointment.reason || "No details provided"}</Text>
-              </View>
-              <View style={styles.sheetSection}>
-                <Text style={styles.sectionLabel}>⏰ Scheduled</Text>
-                <Text style={styles.sectionValue}>{selectedAppointment.scheduledAt.toLocaleString()}</Text>
-              </View>
-              <View style={styles.sheetSection}>
-                <Text style={styles.sectionLabel}>📌 Status</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedAppointment.status) }]}>
-                  <Text style={styles.statusBadgeText}>{selectedAppointment.status.toUpperCase()}</Text>
-                </View>
-              </View>
-              {selectedAppointment.notes && (
-                <View style={styles.sheetSection}>
-                  <Text style={styles.sectionLabel}>📝 Notes</Text>
-                  <Text style={styles.sectionValue}>{selectedAppointment.notes}</Text>
-                </View>
-              )}
-              <View style={styles.sheetActions}>
-                {selectedAppointment.status === "pending" && (
-                  <>
-                    <TouchableOpacity style={[styles.acceptBtn, { backgroundColor: "#4CAF50" }]} onPress={() => handleAccept(selectedAppointment)}>
-                      <Text style={styles.btnText}>✅ Accept</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.rejectBtn, { backgroundColor: "#F44336" }]} onPress={() => handleReject(selectedAppointment)}>
-                      <Text style={styles.btnText}>❌ Reject</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
+   <AppointmentModal
+  appointment={selectedAppointment}
+  visible={showModal}
+  onClose={() => setShowModal(false)}
+  onAccept={handleAccept}
+  onReject={handleReject}
+/>
+
 
             <DoctorBottomBar activeRoute="DoctorDashboardScreen" messagesCount={0} />
 

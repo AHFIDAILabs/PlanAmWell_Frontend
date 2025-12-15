@@ -1,5 +1,5 @@
 // src/screens/NotificationsScreen.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,18 @@ import {
   TouchableOpacity,
   RefreshControl,
   StyleSheet,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNotifications } from '../../context/notificatonContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import socketService from '../../services/socketService';
+import { useNavigation } from '@react-navigation/native';
+import { IAppointment } from '../../types/backendType';
+import AppointmentModal from '../../components/appointment/AppointmentModal';
+import { useAuth } from '../../hooks/useAuth';
+import { getDoctorAppointments, updateAppointment } from '../../services/Appointment';
+import Toast from 'react-native-toast-message';
 
 export const NotificationsScreen = () => {
   const {
@@ -22,13 +32,176 @@ export const NotificationsScreen = () => {
     setFilter,
   } = useNotifications();
 
+  const navigation = useNavigation<any>();
+  const [selectedAppointment, setSelectedAppointment] = useState<IAppointment | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [appointments, setAppointments] = useState<IAppointment[]>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const { user } = useAuth();
+
+  // ✅ Fetch appointments when screen loads (for doctors only)
+useEffect(() => {
+  if (user?.roles === 'doctor') {
+    fetchAppointments();
+  }
+}, [user?.roles]);
+
+
+  const fetchAppointments = async () => {
+    try {
+      setLoadingAppointments(true);
+      const data = await getDoctorAppointments();
+      
+      if (!Array.isArray(data)) {
+        setAppointments([]);
+        return;
+      }
+
+      const appointmentsWithDates = data.map(appt => ({
+        ...appt,
+        scheduledAt: new Date(appt.scheduledAt),
+        patientName:
+          appt.patientSnapshot?.name ||
+          `${(appt.userId as any)?.firstName || ""} ${(appt.userId as any)?.lastName || ""}`.trim() ||
+          "Anonymous",
+      }));
+
+      setAppointments(appointmentsWithDates);
+    } catch (error: any) {
+      console.error('Failed to fetch appointments:', error);
+      setAppointments([]);
+    } finally {
+      setLoadingAppointments(false);
+    }
+  };
+
+  /**
+   * 🧪 Test Socket.IO connection
+   */
+  const testConnection = () => {
+    const info = socketService.getConnectionInfo();
+    console.log('📊 Full Connection Info:', info);
+    
+    if (info.connected) {
+      socketService.ping();
+      
+      Alert.alert(
+        '✅ Socket Connected',
+        `Transport: ${info.transport}\nSocket ID: ${info.socketId}`,
+        [
+          {
+            text: 'Send Test Ping',
+            onPress: () => {
+              socketService.ping();
+              console.log('🏓 Test ping sent');
+            },
+          },
+          {
+            text: 'OK',
+            style: 'cancel',
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        '❌ Socket Disconnected',
+        'Would you like to try reconnecting?',
+        [
+          {
+            text: 'Reconnect',
+            onPress: () => {
+              console.log('🔄 Manual reconnection triggered');
+              socketService.reconnect();
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+    }
+  };
+
+  const handleAccept = async (appt: IAppointment) => {
+    try {
+      await updateAppointment(appt._id!, { status: "confirmed" });
+      Toast.show({ type: "success", text1: "Appointment confirmed" });
+      setShowModal(false);
+      setSelectedAppointment(null);
+      fetchAppointments(); // Refresh appointments list
+      refresh(); // Refresh notifications
+    } catch (error: any) {
+      Toast.show({ 
+        type: "error", 
+        text1: "Failed to confirm", 
+        text2: error.response?.data?.message || error.message 
+      });
+    }
+  };
+
+  const handleReject = async (appt: IAppointment) => {
+    try {
+      await updateAppointment(appt._id!, { status: "rejected" });
+      Toast.show({ type: "success", text1: "Appointment rejected" });
+      setShowModal(false);
+      setSelectedAppointment(null);
+      fetchAppointments(); // Refresh appointments list
+      refresh(); // Refresh notifications
+    } catch (error: any) {
+      Toast.show({ 
+        type: "error", 
+        text1: "Failed to reject", 
+        text2: error.response?.data?.message || error.message 
+      });
+    }
+  };
+
+ const handleNotificationPress = async (notification: any) => {
+  if (!notification.isRead) {
+    await markAsRead(notification._id);
+  }
+
+  if (notification.type !== 'appointment') return;
+
+  const appointmentId = notification.metadata?.appointmentId;
+  if (!appointmentId) {
+    Alert.alert('Error', 'Appointment ID missing');
+    return;
+  }
+
+ // 🚫 Doctors NEVER navigate from notifications
+if (user?.roles === 'doctor') {
+  let appointment = appointments.find(a => a._id === appointmentId);
+
+  if (!appointment) {
+    await fetchAppointments();
+    appointment = appointments.find(a => a._id === appointmentId);
+  }
+
+  if (!appointment) {
+    Alert.alert('Appointment not found', 'Pull to refresh and try again.');
+    return;
+  }
+
+  setSelectedAppointment(appointment);
+  setShowModal(true);
+  return;
+}
+
+// 👤 Users only
+navigation.navigate('MyAppointments', { appointmentId });
+};
+
+
   const renderNotification = ({ item }: any) => (
     <TouchableOpacity
       style={[
         styles.notificationItem,
         !item.isRead && styles.unreadNotification,
       ]}
-      onPress={() => markAsRead(item._id)}
+      onPress={() => handleNotificationPress(item)}
+      disabled={loadingAppointments}
     >
       <View style={styles.notificationHeader}>
         <Text style={styles.notificationTitle}>{item.title}</Text>
@@ -42,63 +215,98 @@ export const NotificationsScreen = () => {
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          Notifications ({unreadCount})
-        </Text>
-        
-        {/* ✅ Connection Status Indicator */}
-        <View
-          style={[
-            styles.connectionIndicator,
-            isSocketConnected ? styles.connected : styles.disconnected,
-          ]}
-        >
-          <Text style={styles.connectionText}>
-            {isSocketConnected ? '🟢 Live' : '🔴 Offline'}
+    <SafeAreaView style={{ flex: 1 }}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
+            Notifications ({unreadCount})
           </Text>
-        </View>
-      </View>
-
-      {/* ✅ Filter Tabs */}
-      <View style={styles.filterContainer}>
-        <TouchableOpacity
-          style={[styles.filterTab, filter === 'all' && styles.activeFilter]}
-          onPress={() => setFilter('all')}
-        >
-          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
-            All
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterTab, filter === 'unread' && styles.activeFilter]}
-          onPress={() => setFilter('unread')}
-        >
-          <Text style={[styles.filterText, filter === 'unread' && styles.activeFilterText]}>
-            Unread
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item._id}
-        renderItem={renderNotification}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
-              {filter === 'unread' 
-                ? 'No unread notifications' 
-                : 'No notifications yet'}
+          
+          {/* ✅ Connection Status Indicator */}
+          <TouchableOpacity
+            style={[
+              styles.connectionIndicator,
+              isSocketConnected ? styles.connected : styles.disconnected,
+            ]}
+            onPress={testConnection}
+          >
+            <Text style={styles.connectionText}>
+              {isSocketConnected ? '🟢 Live' : '🔴 Offline'}
             </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ✅ Filter Tabs */}
+        <View style={styles.filterContainer}>
+          <TouchableOpacity
+            style={[styles.filterTab, filter === 'all' && styles.activeFilter]}
+            onPress={() => setFilter('all')}
+          >
+            <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterTab, filter === 'unread' && styles.activeFilter]}
+            onPress={() => setFilter('unread')}
+          >
+            <Text style={[styles.filterText, filter === 'unread' && styles.activeFilterText]}>
+              Unread
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item._id}
+          renderItem={renderNotification}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={refresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {filter === 'unread' 
+                  ? 'No unread notifications' 
+                  : 'No notifications yet'}
+              </Text>
+              
+              {/* Debug Info */}
+              {!isSocketConnected && (
+                <TouchableOpacity
+                  style={styles.reconnectButton}
+                  onPress={() => socketService.reconnect()}
+                >
+                  <Text style={styles.reconnectButtonText}>
+                    🔄 Reconnect Socket
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          }
+        />
+
+        {/* ✅ Appointment Modal */}
+        <AppointmentModal
+  appointment={selectedAppointment}
+  visible={showModal}
+  onClose={() => {
+    setShowModal(false);
+    setSelectedAppointment(null);
+  }}
+  onAccept={handleAccept}
+  onReject={handleReject}
+/>
+
+        {/* ✅ Loading Indicator */}
+        {loadingAppointments && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingText}>Loading appointments...</Text>
           </View>
-        }
-      />
-    </View>
+        )}
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -202,5 +410,32 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#999',
     fontSize: 16,
+    marginBottom: 16,
+  },
+  reconnectButton: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#2196F3',
+    borderRadius: 8,
+  },
+  reconnectButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -9,6 +9,7 @@ import {
   Image,
   Modal,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -64,22 +65,83 @@ export const ConsultationHistoryScreen: React.FC = () => {
   };
 
   const handleCancelAppointment = async (appointmentId: string) => {
-    try {
-      await updateAppointment(appointmentId, { status: "cancelled" });
-      Toast.show({
-        type: "success",
-        text1: "Cancelled",
-        text2: "Appointment cancelled successfully",
-      });
-      setModalVisible(false);
-      fetchAppointments();
-    } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: error.message || "Failed to cancel appointment",
-      });
+    Alert.alert(
+      'Cancel Appointment',
+      'Are you sure you want to cancel this appointment?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await updateAppointment(appointmentId, { status: "cancelled" });
+              Toast.show({
+                type: "success",
+                text1: "Cancelled",
+                text2: "Appointment cancelled successfully",
+              });
+              setModalVisible(false);
+              fetchAppointments();
+            } catch (error: any) {
+              Toast.show({
+                type: "error",
+                text1: "Error",
+                text2: error.message || "Failed to cancel appointment",
+              });
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ✅ NEW: Check if user can join video call
+  const canJoinCall = (appointment: IAppointment): boolean => {
+    if (appointment.status !== 'confirmed') return false;
+
+    const now = new Date();
+    const scheduledTime = new Date(appointment.scheduledAt);
+    const timeDiff = scheduledTime.getTime() - now.getTime();
+    const minutesDiff = Math.floor(timeDiff / (1000 * 60));
+
+    // Can join 15 minutes before to 2 hours after
+    return minutesDiff <= 15 && minutesDiff >= -120;
+  };
+
+  // ✅ NEW: Handle join video call
+  const handleJoinCall = (appointment: IAppointment) => {
+    if (!canJoinCall(appointment)) {
+      const now = new Date();
+      const scheduledTime = new Date(appointment.scheduledAt);
+      const timeDiff = scheduledTime.getTime() - now.getTime();
+      const minutesDiff = Math.floor(timeDiff / (1000 * 60));
+
+      if (minutesDiff > 15) {
+        Alert.alert(
+          'Too Early',
+          `You can join the call 15 minutes before the scheduled time.\n\nTime remaining: ${minutesDiff} minutes`
+        );
+      } else {
+        Alert.alert(
+          'Call Window Expired',
+          'The call window has expired. Please reschedule if needed.'
+        );
+      }
+      return;
     }
+
+    // Navigate to video call screen
+    const doctor = typeof appointment.doctorId === 'object' 
+      ? appointment.doctorId as IDoctor 
+      : null;
+
+    navigation.navigate('VideoCallScreen', {
+      appointmentId: appointment._id,
+      name: doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : 'Doctor',
+      doctorId: doctor?._id,
+      role: 'user',
+    });
   };
 
   const getFilteredAppointments = () => {
@@ -126,16 +188,19 @@ export const ConsultationHistoryScreen: React.FC = () => {
     const diff = date.getTime() - now.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     
     if (days > 0) return `in ${days} day${days > 1 ? "s" : ""}`;
     if (hours > 0) return `in ${hours} hour${hours > 1 ? "s" : ""}`;
-    return "Soon";
+    if (minutes > 0) return `in ${minutes} min${minutes > 1 ? "s" : ""}`;
+    return "Now";
   };
 
   const renderAppointmentCard = ({ item }: { item: IAppointment }) => {
     const doctor = typeof item.doctorId === "object" ? (item.doctorId as IDoctor) : null;
     const statusConfig = getStatusConfig(item.status);
     const isUpcoming = item.status === "confirmed" && item.scheduledAt >= new Date();
+    const canJoin = canJoinCall(item);
 
     return (
       <TouchableOpacity
@@ -178,7 +243,9 @@ export const ConsultationHistoryScreen: React.FC = () => {
             {formatAppointmentTime(item.scheduledAt)}
           </Text>
           {isUpcoming && (
-            <Text style={styles.countdown}>• {getTimeUntil(item.scheduledAt)}</Text>
+            <Text style={[styles.countdown, canJoin && { color: '#10B981', fontWeight: '700' }]}>
+              • {getTimeUntil(item.scheduledAt)}
+            </Text>
           )}
         </View>
 
@@ -193,8 +260,11 @@ export const ConsultationHistoryScreen: React.FC = () => {
         )}
 
         {/* Action Button */}
-        {isUpcoming && (
-          <TouchableOpacity style={styles.joinButton}>
+        {canJoin && (
+          <TouchableOpacity 
+            style={styles.joinButton}
+            onPress={() => handleJoinCall(item)}
+          >
             <Feather name="video" size={18} color="#FFF" />
             <Text style={styles.joinButtonText}>Join Consultation</Text>
           </TouchableOpacity>
@@ -219,7 +289,6 @@ export const ConsultationHistoryScreen: React.FC = () => {
       {/* Tabs */}
       <View style={styles.tabContainer}>
         {(["upcoming", "pending", "past"] as TabType[]).map((tab) => {
-          const count = getFilteredAppointments().length;
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity
@@ -230,11 +299,6 @@ export const ConsultationHistoryScreen: React.FC = () => {
               <Text style={[styles.tabText, isActive && styles.activeTabText]}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </Text>
-              {isActive && count > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{count}</Text>
-                </View>
-              )}
             </TouchableOpacity>
           );
         })}
@@ -343,8 +407,14 @@ export const ConsultationHistoryScreen: React.FC = () => {
 
               {/* Actions */}
               <View style={styles.modalActions}>
-                {selectedAppointment.status === "confirmed" && (
-                  <TouchableOpacity style={styles.joinCallButton}>
+                {canJoinCall(selectedAppointment) && (
+                  <TouchableOpacity 
+                    style={styles.joinCallButton}
+                    onPress={() => {
+                      setModalVisible(false);
+                      handleJoinCall(selectedAppointment);
+                    }}
+                  >
                     <Feather name="video" size={20} color="#FFF" />
                     <Text style={styles.joinCallText}>Join Call</Text>
                   </TouchableOpacity>
@@ -403,13 +473,6 @@ const styles = StyleSheet.create({
   activeTab: { backgroundColor: "#D81E5B" },
   tabText: { fontSize: 14, color: "#666", fontWeight: "500" },
   activeTabText: { color: "#FFF", fontWeight: "700" },
-  badge: {
-    backgroundColor: "#FFF",
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeText: { fontSize: 11, fontWeight: "700", color: "#D81E5B" },
 
   card: {
     backgroundColor: "#FFF",
@@ -442,7 +505,7 @@ const styles = StyleSheet.create({
   countdown: { fontSize: 12, color: "#4CAF50", fontWeight: "600" },
 
   joinButton: {
-    backgroundColor: "#D81E5B",
+    backgroundColor: "#10B981",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -511,7 +574,7 @@ const styles = StyleSheet.create({
 
   modalActions: { marginTop: 20, gap: 12 },
   joinCallButton: {
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#10B981",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
