@@ -7,6 +7,7 @@ import {
     TouchableOpacity, 
     Image,
     ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -17,7 +18,7 @@ import BottomBar from '../../components/common/BottomBar';
 import EditProfileModal from '../../components/profile/EditProfileModal';
 import { notificationService } from '../../services/notification';
 import { IUpcomingAppointment } from '../../types/backendType';
-
+import { useVideoCall } from '../../hooks/useVideoCall';
 interface ProfileMenuItemProps {
     icon: keyof typeof Feather.glyphMap;
     title: string;
@@ -56,20 +57,11 @@ const ProfileMenuItem: React.FC<ProfileMenuItemProps> = ({
     </TouchableOpacity>
 );
 
-interface UpcomingAppointment {
-    _id: string;
-    scheduledAt: string;
-    doctorId: {
-        firstName: string;
-        lastName: string;
-        specialization: string;
-        profileImage?: any;
-    };
-}
-
 const ProfileScreen = () => {
     const navigation = useNavigation<any>(); 
     const { user, handleLogout, refreshUser, loading: authLoading, isAuthenticated, isAnonymous } = useAuth();
+     const { getCallStatus } = useVideoCall();
+
 
     const [isEditModalVisible, setIsEditModalVisible] = useState(false);
     const [imageUri, setImageUri] = useState<string>('');
@@ -77,6 +69,7 @@ const ProfileScreen = () => {
     const [upcomingAppointments, setUpcomingAppointments] = useState<IUpcomingAppointment[]>([]);
     const [pendingCount, setPendingCount] = useState(0);
     const [loadingAppointments, setLoadingAppointments] = useState(false);
+    const [joiningCall, setJoiningCall] = useState<string | null>(null);
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -122,21 +115,20 @@ const ProfileScreen = () => {
     };
 
     // Refresh on screen focus
-  // Update the useFocusEffect to force refresh
-useFocusEffect(
-  React.useCallback(() => {
-    // Force refresh counts every time screen is focused
-    fetchUnreadCount();
-    fetchAppointmentsSummary();
-    
-    // Set up an interval to refresh counts every 30 seconds while on this screen
-    const interval = setInterval(() => {
-      fetchUnreadCount();
-    }, 30000); // 30 seconds
+    useFocusEffect(
+        React.useCallback(() => {
+            // Force refresh counts every time screen is focused
+            fetchUnreadCount();
+            fetchAppointmentsSummary();
+            
+            // Set up an interval to refresh counts every 30 seconds while on this screen
+            const interval = setInterval(() => {
+                fetchUnreadCount();
+            }, 30000); // 30 seconds
 
-    return () => clearInterval(interval);
-  }, [])
-);
+            return () => clearInterval(interval);
+        }, [])
+    );
 
     const getImageUri = (): string => {
         if (!user?.userImage) return '';
@@ -168,6 +160,71 @@ useFocusEffect(
         if (hours > 0) return `${hours}h`;
         return 'Soon';
     };
+
+const handleAppointmentPress = async (appointment: IUpcomingAppointment) => {
+    try {
+        setJoiningCall(appointment._id);
+
+        // Single API call to check call status and get token
+        const response = await getCallStatus(appointment._id);
+
+       if (!response.success) {
+    Alert.alert(
+      'Too Early',
+      response.message || 'Call cannot be joined yet'
+    );
+    return;
+  }
+        const { isActive, token } = response.data;
+        const doctorName = `${appointment.doctorId.firstName} ${appointment.doctorId.lastName}`;
+
+        // Navigate directly to video call if active or allow join attempt
+        navigation.navigate('VideoCallScreen', {
+            appointmentId: appointment._id,
+            name: doctorName,
+            role: 'User', // always 'User' when patient
+            autoJoin: isActive, // autoJoin only if call is active
+            fromAppointmentList: true,
+            token, // optional: pass token if your backend provides it
+        });
+
+        // If call is not active, you could also show an alert to inform user
+        if (!isActive) {
+            Alert.alert(
+                'Video Call Pending',
+                'The doctor has not started the call yet. You will join when the call starts.',
+                [{ text: 'OK', style: 'default' }]
+            );
+        }
+    } catch (error: any) {
+        console.error('Failed to check call status:', error);
+
+        // Allow user to try joining anyway
+        Alert.alert(
+            'Unable to Check Call Status',
+            'Would you like to try joining the call anyway?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Try Joining',
+                    onPress: () => {
+                        const doctorName = `${appointment.doctorId.firstName} ${appointment.doctorId.lastName}`;
+                        navigation.navigate('VideoCallScreen', {
+                            appointmentId: appointment._id,
+                            name: doctorName,
+                            role: 'User',
+                            autoJoin: true,
+                            fromAppointmentList: true,
+                        });
+                    },
+                },
+            ]
+        );
+    } finally {
+        setJoiningCall(null);
+    }
+};
+
 
     if (authLoading) {
         return (
@@ -268,8 +325,12 @@ useFocusEffect(
                             upcomingAppointments.map((appt) => (
                                 <TouchableOpacity
                                     key={appt._id}
-                                    style={styles.appointmentCard}
-                                    onPress={() => navigation.navigate('ConsultationHistory')}
+                                    style={[
+                                        styles.appointmentCard,
+                                        joiningCall === appt._id && styles.appointmentCardDisabled
+                                    ]}
+                                    onPress={() => handleAppointmentPress(appt)}
+                                    disabled={joiningCall === appt._id}
                                 >
                                     <Image
                                         source={{ uri: getDoctorImageUri(appt.doctorId) }}
@@ -291,11 +352,16 @@ useFocusEffect(
                                             })}
                                         </Text>
                                     </View>
-                                    <View style={styles.appointmentBadge}>
-                                        <Text style={styles.appointmentBadgeText}>
-                                            {getTimeUntil(appt.scheduledAt)}
-                                        </Text>
-                                    </View>
+                                    {joiningCall === appt._id ? (
+                                        <ActivityIndicator size="small" color="#D81E5B" />
+                                    ) : (
+                                        <View style={styles.appointmentBadge}>
+                                            <Feather name="video" size={14} color="#FFF" />
+                                            <Text style={styles.appointmentBadgeText}>
+                                                {getTimeUntil(appt.scheduledAt)}
+                                            </Text>
+                                        </View>
+                                    )}
                                 </TouchableOpacity>
                             ))
                         )}
@@ -430,6 +496,9 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         marginBottom: 8,
     },
+    appointmentCardDisabled: {
+        opacity: 0.6,
+    },
     appointmentAvatar: {
         width: 48,
         height: 48,
@@ -441,6 +510,9 @@ const styles = StyleSheet.create({
     appointmentSpec: { fontSize: 12, color: '#666', marginTop: 2 },
     appointmentTime: { fontSize: 12, color: '#D81E5B', marginTop: 4, fontWeight: '600' },
     appointmentBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
         backgroundColor: '#D81E5B',
         paddingHorizontal: 10,
         paddingVertical: 6,

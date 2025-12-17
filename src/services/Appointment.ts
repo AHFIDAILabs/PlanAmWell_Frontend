@@ -23,6 +23,12 @@ interface UpdateAppointmentData {
     notes?: string;
     proposedAt?: Date | string;
     paymentStatus?: "pending" | "paid" | "failed";
+    userId?: string;
+    doctorId?: string;
+    duration?: number;
+    reason?: string;
+    shareUserInfo?: boolean;
+    consultationType?: "video" | "in-person" | "chat" | "audio";
 }
 
 interface ApiResponse<T> {
@@ -109,8 +115,6 @@ export const getDoctorAppointments = async (
     throw error;
   }
 };
-
-// ... rest of your service methods remain the same
 
 /**
  * 📅 Create a new appointment (User)
@@ -383,3 +387,32 @@ export const getStatusIcon = (status: IAppointment['status']): string => {
             return 'help-circle';
     }
 };
+
+// services/Appointment.ts
+export const getAppointmentById = async (appointmentId: string) => {
+  try {
+    console.log(`[AppointmentService] Fetching appointment ${appointmentId}...`);
+    const token = await getAuthToken();
+
+    const response: AxiosResponse<ApiResponse<IAppointment>> = await axios.get(
+      `${API_URL}/appointment/${appointmentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.data.success && response.data.data) {
+      console.log('[AppointmentService] ✅ Appointment fetched successfully');
+      return response.data.data;
+    }
+
+    throw new Error(response.data.message || 'Failed to fetch appointment');
+
+  } catch (error: any) {
+    console.error('[AppointmentService] ❌ Fetch error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+

@@ -42,7 +42,7 @@ export interface IDoctor {
     name?: string;
        gender?: string;
     userImage?: IImage;
-    roles?: string;
+    roles?: string[];
      homeAddress?: string;
      dateOfBirth?: string;
     city?: string;
@@ -253,7 +253,15 @@ export interface IAppointment {
     | "cancelled"
     | "completed"
     | "rejected"
-    | "rescheduled";
+    | "rescheduled"
+    | "in-progress";
+
+  callStatus?: "not-started" | "in-progress" | "ended";
+  callStartedAt?: Date;
+  callEndedAt?: Date;
+  callEndedBy?: "Doctor" | "User";
+  callDuration?: number;             // in minutes
+  callQuality?: "excellent" | "good" | "fair" | "poor";
 
   paymentStatus?: "pending" | "paid" | "failed";
 

@@ -31,18 +31,23 @@ export default function VideoCallModal({
   const { loading, getVideoToken } = useVideoCall();
   const [error, setError] = useState<string | null>(null);
 
-  const handleStartCall = async () => {
-    if (loading) return; // Prevent double-click
-
-    setError(null);
-
-    try {
-      const data = await getVideoToken(appointmentId);
-      onJoin(data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to get video token");
-    }
-  };
+const handleStartCall = async () => {
+  setError(null);
+  
+  try {
+    console.log('🎥 Initializing video call for appointment:', appointmentId);
+    console.log('📍 Server URL:', process.env.EXPO_PUBLIC_SERVER_URL);
+    
+    const data = await getVideoToken(appointmentId);
+    console.log('✅ Token received:', data);
+    
+    onJoin(data);
+  } catch (err: any) {
+    console.error('❌ Video call error:', err);
+    const errorMessage = err?.response?.data?.message || err.message || 'Failed to start call';
+    setError(errorMessage);
+  }
+};
 
   return (
     <Modal visible={visible} transparent animationType="slide">

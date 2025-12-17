@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from "react";
+// DoctorAppointmentsScreen.tsx
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -22,7 +23,36 @@ import { Ionicons } from "@expo/vector-icons";
 
 const { height } = Dimensions.get("window");
 
-export default function DoctorAppointmentsScreen() {
+/* ---------------- HELPERS ---------------- */
+const canJoinConsultation = (appt: IAppointment | null | undefined) => {
+  if (!appt) return false;
+  if (appt.status !== "confirmed") return false;
+
+  const now = new Date();
+  const scheduled = new Date(appt.scheduledAt);
+  const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
+
+  if (diffMinutes > 15) return false;
+  if (appt.consultationType === "in-person") return false;
+
+  return true;
+};
+
+const getCountdownText = (appt: IAppointment | null | undefined) => {
+  if (!appt) return "";
+  const now = new Date();
+  const scheduled = new Date(appt.scheduledAt);
+  const diffMs = scheduled.getTime() - now.getTime();
+
+  if (diffMs <= 0) return "Consultation in progress";
+
+  const mins = Math.floor(diffMs / 60000);
+  const secs = Math.floor((diffMs % 60000) / 1000);
+
+  return `Starts in ${mins}m ${secs}s`;
+};
+
+export default function DoctorAppointmentsScreen({ navigation }: any) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const doctor = (user as any)?.doctor || (user as IDoctor);
@@ -33,9 +63,15 @@ export default function DoctorAppointmentsScreen() {
 
   const [selectedAppointment, setSelectedAppointment] = useState<IAppointment | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [tick, setTick] = useState(Date.now());
 
-  // Animation
   const slideAnim = useRef(new Animated.Value(height)).current;
+
+  /* -------- Countdown tick -------- */
+  useEffect(() => {
+    const interval = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const loadedDoctorId = (user as any)?.doctor?._id || (user as IDoctor)?._id || null;
@@ -65,7 +101,7 @@ export default function DoctorAppointmentsScreen() {
     setSelectedAppointment(appointment);
     setModalVisible(true);
     Animated.timing(slideAnim, {
-      toValue: height * 0.25, // Modal top position (75% height)
+      toValue: height * 0.25,
       duration: 400,
       easing: Easing.out(Easing.ease),
       useNativeDriver: false,
@@ -84,21 +120,31 @@ export default function DoctorAppointmentsScreen() {
     });
   };
 
+  const handleJoinConsultation = () => {
+    if (!selectedAppointment) return;
+
+    closeModal();
+
+    navigation.navigate("VideoCallScreen", {
+      appointmentId: selectedAppointment._id,
+      patientId:
+        typeof selectedAppointment.userId === "object" && selectedAppointment.userId !== null
+          ? (selectedAppointment.userId as any)._id
+          : selectedAppointment.userId,
+      role: "doctor",
+      consultationType: selectedAppointment.consultationType || "video",
+    });
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "confirmed":
-        return "#4CAF50"; // green
-      case "pending":
-        return "#FFA500"; // orange
-      case "rescheduled":
-        return "#FF9800"; // darker orange
-      case "completed":
-        return "#2196F3"; // blue
+      case "confirmed": return "#4CAF50";
+      case "pending": return "#FFA500";
+      case "rescheduled": return "#FF9800";
+      case "completed": return "#2196F3";
       case "cancelled":
-      case "rejected":
-        return "#F44336"; // red
-      default:
-        return "#9E9E9E"; // grey
+      case "rejected": return "#F44336";
+      default: return "#9E9E9E";
     }
   };
 
@@ -109,14 +155,11 @@ export default function DoctorAppointmentsScreen() {
           Patient: {item.patientSnapshot?.name || "Anonymous"}
         </Text>
         <Text style={[styles.status, { color: getStatusColor(item.status) }]}>
-          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+          {item.status}
         </Text>
       </View>
       <Text style={[styles.detail, { color: colors.textMuted }]}>
-        Date: {new Date(item.scheduledAt).toLocaleString()}
-      </Text>
-      <Text style={[styles.detail, { color: colors.textMuted }]}>
-        Duration: {item.duration || 30} mins
+        {new Date(item.scheduledAt).toLocaleString()}
       </Text>
       <TouchableOpacity
         style={[styles.button, { backgroundColor: colors.primary }]}
@@ -149,48 +192,38 @@ export default function DoctorAppointmentsScreen() {
         />
       )}
 
-      {/* Animated Bottom Sheet */}
       {modalVisible && (
         <Pressable style={styles.modalOverlay} onPress={closeModal}>
-          <Animated.View
-            style={[
-              styles.modalContainer,
-              { top: slideAnim, backgroundColor: colors.card },
-            ]}
-          >
+          <Animated.View style={[styles.modalContainer, { top: slideAnim, backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Appointment Details
-              </Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Appointment Details</Text>
               <TouchableOpacity onPress={closeModal}>
                 <Ionicons name="close" size={28} color={colors.text} />
               </TouchableOpacity>
             </View>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Patient Name: <Text style={styles.modalValue}>{selectedAppointment?.patientSnapshot?.name || "Anonymous"}</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Email: <Text style={styles.modalValue}>{selectedAppointment?.patientSnapshot?.email || "N/A"}</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Phone: <Text style={styles.modalValue}>{selectedAppointment?.patientSnapshot?.phone || "N/A"}</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Status: <Text style={{ color: getStatusColor(selectedAppointment?.status || "") }}>{selectedAppointment?.status}</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Scheduled At: <Text style={styles.modalValue}>{selectedAppointment ? new Date(selectedAppointment.scheduledAt).toLocaleString() : ""}</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Duration: <Text style={styles.modalValue}>{selectedAppointment?.duration || 30} mins</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Reason: <Text style={styles.modalValue}>{selectedAppointment?.reason || "N/A"}</Text>
-              </Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>
-                Notes: <Text style={styles.modalValue}>{selectedAppointment?.notes || "N/A"}</Text>
-              </Text>
+
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }}>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>Patient: <Text style={styles.modalValue}>{selectedAppointment?.patientSnapshot?.name || "Anonymous"}</Text></Text>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>Status: <Text style={{ color: getStatusColor(selectedAppointment?.status || "") }}>{selectedAppointment?.status}</Text></Text>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>Time: <Text style={styles.modalValue}>{selectedAppointment ? new Date(selectedAppointment.scheduledAt).toLocaleString() : ""}</Text></Text>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>Type: <Text style={styles.modalValue}>{selectedAppointment?.consultationType || "video"}</Text></Text>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>Reason: <Text style={styles.modalValue}>{selectedAppointment?.reason || "N/A"}</Text></Text>
+
+              {selectedAppointment && selectedAppointment.status === "confirmed" && (
+                <Text style={[styles.countdown, { color: colors.textMuted }]}>
+                  {getCountdownText(selectedAppointment)}
+                </Text>
+              )}
+
+              {canJoinConsultation(selectedAppointment) && (
+                <TouchableOpacity
+                  style={[styles.joinButton, { backgroundColor: colors.primary }]}
+                  onPress={handleJoinConsultation}
+                >
+                  <Ionicons name="videocam" size={18} color="#fff" />
+                  <Text style={styles.joinButtonText}>Join Consultation</Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
           </Animated.View>
         </Pressable>
@@ -205,54 +238,27 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { paddingHorizontal: 20, paddingVertical: 12 },
   headerTitle: { fontSize: 22, fontWeight: "700" },
-  card: {
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+
+  card: { borderRadius: 14, padding: 16, marginBottom: 12, elevation: 2 },
+  row: { flexDirection: "row", justifyContent: "space-between" },
   patientName: { fontWeight: "600" },
   status: { fontWeight: "700" },
-  detail: { fontSize: 13 },
+  detail: { fontSize: 13, marginTop: 4 },
+
   button: { marginTop: 10, borderRadius: 10, paddingVertical: 8, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "700" },
+
   empty: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  modalContainer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: height * 0.75,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 10,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginBottom: 10,
-    alignItems: "center",
-  },
+  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  modalContainer: { position: "absolute", left: 0, right: 0, height: height * 0.75, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", padding: 20 },
   modalTitle: { fontSize: 20, fontWeight: "700" },
-  modalLabel: { fontWeight: "600", marginTop: 10 },
+  modalLabel: { marginTop: 10, fontWeight: "600" },
   modalValue: { fontWeight: "400" },
+
+  countdown: { marginTop: 12, textAlign: "center" },
+
+  joinButton: { marginTop: 20, paddingVertical: 14, borderRadius: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+  joinButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
