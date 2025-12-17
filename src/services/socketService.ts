@@ -216,22 +216,21 @@ class SocketService {
     }, delay);
   }
 
-  // ... rest of methods remain the same
-
-  onNotification(callback: (notification: any) => void) {
-    if (!this.socket) {
-      console.warn('⚠️ Socket not initialized');
-      return;
-    }
-    this.socket.on('new-notification', callback);
-    console.log('👂 Listening for new notifications');
+onNotification(event: string, callback: (data: any) => void) {
+  if (!this.socket) {
+    console.warn('⚠️ Socket not initialized');
+    return;
   }
+  this.socket.on(event, callback);
+  console.log(`👂 Listening for event "${event}"`);
+}
 
-  offNotification(callback: (notification: any) => void) {
-    if (!this.socket) return;
-    this.socket.off('new-notification', callback);
-  }
 
+offNotification(event: string, callback: (data: any) => void) {
+  if (!this.socket) return;
+  this.socket.off(event, callback);
+  console.log(`🛑 Stopped listening for event "${event}"`);
+}
   markNotificationRead(notificationId: string) {
     if (!this.socket?.connected) {
       console.warn('⚠️ Socket not connected');

@@ -393,7 +393,7 @@ return {
     error,
     getVideoToken, 
     startCall,
-    startCallWithErrorHandling, // New: handles errors automatically
+    startCallWithErrorHandling, 
     endCall, 
     getCallStatus, 
     reportCallIssue,

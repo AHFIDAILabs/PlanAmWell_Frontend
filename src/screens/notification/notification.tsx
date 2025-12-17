@@ -1,4 +1,4 @@
-// Fixed NotificationsScreen.tsx - Handles userId extraction properly
+// Enhanced NotificationsScreen.tsx - WITH CALL REJOIN NOTIFICATIONS
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -50,6 +50,7 @@ export const NotificationsScreen = () => {
   const [showModal, setShowModal] = useState(false);
   const [appointments, setAppointments] = useState<IAppointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const [activeCallAlerts, setActiveCallAlerts] = useState<Set<string>>(new Set());
   const { user, isDoctor } = useAuth();
   const { getCallStatus } = useVideoCall();
 
@@ -71,6 +72,95 @@ export const NotificationsScreen = () => {
         "Anonymous",
     })) as IAppointment[];
   };
+
+  // ✅ NEW: Listen for patient rejoining calls
+  useEffect(() => {
+    if (!isCurrentUserDoctor) return;
+
+    console.log('🎧 Setting up patient-rejoin-call listener for doctor');
+
+    const handlePatientRejoin = (data: any) => {
+      console.log('🔔 Patient rejoined call:', data);
+      
+      const { appointmentId, patientName, channelName } = data;
+
+      // Prevent duplicate alerts
+      if (activeCallAlerts.has(appointmentId)) {
+        console.log('⏭️ Alert already shown for this appointment');
+        return;
+      }
+
+      setActiveCallAlerts(prev => new Set(prev).add(appointmentId));
+
+      // Show alert to doctor
+      Alert.alert(
+        '📞 Patient Waiting',
+        `${patientName} has joined the video call and is waiting for you.`,
+        [
+          {
+            text: 'Ignore',
+            style: 'cancel',
+            onPress: () => {
+              setActiveCallAlerts(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(appointmentId);
+                return newSet;
+              });
+            },
+          },
+          {
+            text: 'Join Now',
+            onPress: async () => {
+              try {
+                // Fetch appointment details
+                const appointment = await getAppointmentById(appointmentId);
+                
+                if (appointment) {
+                  navigation.navigate('VideoCallScreen', {
+                    appointmentId: appointment._id,
+                    name: patientName,
+                    role: 'Doctor',
+                    autoJoin: true,
+                    fromNotification: true,
+                  });
+                }
+              } catch (error) {
+                console.error('Failed to join call:', error);
+                Toast.show({
+                  type: 'error',
+                  text1: 'Failed to join call',
+                  text2: 'Please try again from appointments',
+                });
+              } finally {
+                setActiveCallAlerts(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(appointmentId);
+                  return newSet;
+                });
+              }
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+
+      // Auto-dismiss alert from set after 30 seconds
+      setTimeout(() => {
+        setActiveCallAlerts(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(appointmentId);
+          return newSet;
+        });
+      }, 30000);
+    };
+
+    socketService.onNotification('patient-rejoin-call', handlePatientRejoin);
+
+    return () => {
+      console.log('🧹 Cleaning up patient-rejoin-call listener');
+      socketService.offNotification('patient-rejoin-call', handlePatientRejoin);
+    };
+  }, [isCurrentUserDoctor, navigation, activeCallAlerts]);
 
   // Fetch appointments when screen loads (for doctors only)
   useEffect(() => {
@@ -138,10 +228,8 @@ export const NotificationsScreen = () => {
     try {
       console.log('🟢 Accepting appointment:', appt._id);
       
-      // ✅ Create update payload with only IDs (not populated objects)
       const updatePayload = {
         status: "confirmed" as const,
-        // Only include userId if it exists and needs to be sent
         ...(appt.userId && { userId: extractId(appt.userId) }),
       };
 
@@ -157,7 +245,6 @@ export const NotificationsScreen = () => {
       setShowModal(false);
       setSelectedAppointment(null);
       
-      // Refresh data
       await fetchAppointments();
       refresh();
       
@@ -171,15 +258,12 @@ export const NotificationsScreen = () => {
     }
   };
 
-  // ✅ FIXED: Extract only the ID before sending to backend
   const handleReject = async (appt: IAppointment) => {
     try {
       console.log('🔴 Rejecting appointment:', appt._id);
       
-      // ✅ Create update payload with only IDs (not populated objects)
       const updatePayload = {
         status: "rejected" as const,
-        // Only include userId if it exists and needs to be sent
         ...(appt.userId && { userId: extractId(appt.userId) }),
       };
 
@@ -195,7 +279,6 @@ export const NotificationsScreen = () => {
       setShowModal(false);
       setSelectedAppointment(null);
       
-      // Refresh data
       await fetchAppointments();
       refresh();
       
@@ -209,74 +292,70 @@ export const NotificationsScreen = () => {
     }
   };
 
-const handleNotificationPress = async (notification: any) => {
-  try {
-    // Mark as read
-    if (!notification.isRead) await markAsRead(notification._id);
-
-    if (notification.type !== 'appointment') return;
-
-    const appointmentId = notification.metadata?.appointmentId;
-    if (!appointmentId) {
-      Alert.alert('Error', 'Appointment ID missing');
-      return;
-    }
-
-    // ✅ Fetch appointment directly
-    let appointment: IAppointment | null = null;
+  const handleNotificationPress = async (notification: any) => {
     try {
-      appointment = await getAppointmentById(appointmentId);
-      if (appointment) {
-        appointment.scheduledAt = new Date(appointment.scheduledAt); // ensure Date object
+      if (!notification.isRead) await markAsRead(notification._id);
+
+      if (notification.type !== 'appointment') return;
+
+      const appointmentId = notification.metadata?.appointmentId;
+      if (!appointmentId) {
+        Alert.alert('Error', 'Appointment ID missing');
+        return;
       }
-    } catch {
-      appointment = null;
+
+      let appointment: IAppointment | null = null;
+      try {
+        appointment = await getAppointmentById(appointmentId);
+        if (appointment) {
+          appointment.scheduledAt = new Date(appointment.scheduledAt);
+        }
+      } catch {
+        appointment = null;
+      }
+
+      if (!appointment) {
+        Alert.alert('Appointment not found', 'Try refreshing and try again.');
+        return;
+      }
+
+      const now = new Date();
+      const diffMinutes = (appointment.scheduledAt.getTime() - now.getTime()) / 60000;
+
+      const callStatus = await getCallStatus(appointment._id!);
+      const canJoin =
+        (callStatus.success && callStatus.data?.isActive) ||
+        (currentRole === 'Doctor' && diffMinutes <= 15 && appointment.status === 'confirmed');
+
+      if (canJoin) {
+        const doctorDetails = appointment.doctorId;
+        const doctorName =
+          typeof doctorDetails === 'object' && doctorDetails !== null && 'firstName' in doctorDetails
+            ? `${doctorDetails.firstName} ${doctorDetails.lastName}`
+            : 'Doctor';
+
+        navigation.navigate('VideoCallScreen', {
+          appointmentId: appointment._id,
+          name: doctorName,
+          role: currentRole === 'Doctor' ? 'Doctor' : 'User',
+          autoJoin: true,
+          fromNotification: true,
+        });
+        return;
+      }
+
+      if (currentRole === 'Doctor') {
+        setSelectedAppointment(appointment);
+        setShowModal(true);
+        return;
+      }
+
+      navigation.navigate('MyAppointments', { appointmentId });
+    } catch (error: any) {
+      console.error('Error handling notification:', error);
+      Alert.alert('Error', error.message || 'Something went wrong');
     }
-
-    if (!appointment) {
-      Alert.alert('Appointment not found', 'Try refreshing and try again.');
-      return;
-    }
-
-    // Proceed with the existing call checks...
-    const now = new Date();
-    const diffMinutes = (appointment.scheduledAt.getTime() - now.getTime()) / 60000;
-
-    const callStatus = await getCallStatus(appointment._id!);
-    const canJoin =
-      (callStatus.success && callStatus.data?.isActive) ||
-      (currentRole === 'Doctor' && diffMinutes <= 15 && appointment.status === 'confirmed');
-
-    if (canJoin) {
-      const doctorDetails = appointment.doctorId;
-      const doctorName =
-        typeof doctorDetails === 'object' && doctorDetails !== null && 'firstName' in doctorDetails
-          ? `${doctorDetails.firstName} ${doctorDetails.lastName}`
-          : 'Doctor';
-
-      navigation.navigate('VideoCallScreen', {
-        appointmentId: appointment._id,
-        name: doctorName,
-        role: currentRole === 'Doctor' ? 'Doctor' : 'User',
-        autoJoin: true,
-        fromNotification: true,
-      });
-      return;
-    }
-
-    // fallback: show modal or navigate
-    if (currentRole === 'Doctor') {
-      setSelectedAppointment(appointment);
-      setShowModal(true);
-      return;
-    }
-
-    navigation.navigate('MyAppointments', { appointmentId });
-  } catch (error: any) {
-    console.error('Error handling notification:', error);
-    Alert.alert('Error', error.message || 'Something went wrong');
-  }
-};
+  };
 
   const navigateToAppointments = () => {
     if (currentRole === 'Doctor') {
@@ -425,7 +504,6 @@ const handleNotificationPress = async (notification: any) => {
   );
 };
 
-// Styles remain the same...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
