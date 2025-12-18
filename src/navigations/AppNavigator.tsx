@@ -28,6 +28,7 @@ import DoctorProfileScreen from "../screens/doctor/DoctorProfileScreen";
 import DoctorAvailabilityScreen from "../screens/doctor/DoctorAvailabilityScreen";
 import { ConsultationHistoryScreen } from "../screens/appointments/ConsultationHistoryScreen";
 
+
 import { AppStackParamList } from "../types/App";
 import DoctorAppointmentsScreen from "../screens/doctor/DoctorAppointmentsScreen";
 import VideoCallScreen from "../screens/video/VideoCallScreen";

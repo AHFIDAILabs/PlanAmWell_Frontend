@@ -1,5 +1,3 @@
-// src/screens/VideoCallScreen.tsx — REMOTE VIDEO FIXED & CLEANED
-
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -32,13 +30,7 @@ interface RouteParams {
 }
 
 export default function VideoCallScreen({ route, navigation }: any) {
-  const {
-    appointmentId,
-    name = 'Participant',
-    role,
-    autoJoin = false,
-    fromAppointmentList = false,
-  } = route.params as RouteParams;
+  const { appointmentId, name = 'Participant', role, autoJoin = false, fromAppointmentList = false } = route.params as RouteParams;
 
   const { startCall, endCall } = useVideoCall();
   const engineRef = useRef<IRtcEngine | null>(null);
@@ -57,28 +49,21 @@ export default function VideoCallScreen({ route, navigation }: any) {
   // -------------------- PERMISSIONS --------------------
   const requestPermissions = async () => {
     if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.CAMERA,
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        ]);
-
-        const cameraGranted = granted['android.permission.CAMERA'] === PermissionsAndroid.RESULTS.GRANTED;
-        const audioGranted = granted['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED;
-
-        return cameraGranted && audioGranted;
-      } catch (err) {
-        console.error('Permission error:', err);
-        return false;
-      }
+      const granted = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      ]);
+      const cameraGranted = granted['android.permission.CAMERA'] === PermissionsAndroid.RESULTS.GRANTED;
+      const audioGranted = granted['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED;
+      return cameraGranted && audioGranted;
     }
     return true;
   };
 
-  // -------------------- AGORA LISTENERS --------------------
+
+// -------------------- AGORA LISTENERS --------------------
 const setupListeners = (engine: IRtcEngine) => {
   engine.registerEventHandler({
-    // Correctly type parameters
     onJoinChannelSuccess: (connection, elapsed) => {
       console.log('✅ Joined channel successfully', {
         channel: connection.channelId,
@@ -88,21 +73,24 @@ const setupListeners = (engine: IRtcEngine) => {
       setIsConnected(true);
     },
 
-    onUserJoined: (connection, uid, elapsed) => {
+    onUserJoined: (_, uid) => {
       console.log('👤 Remote user joined:', uid);
       setRemoteUid(uid);
+      // Removed manual engine.setupRemoteVideo as RtcSurfaceView handles this
     },
 
-    onUserOffline: (connection, uid, reason) => {
+    onUserOffline: (_, uid, reason) => {
       console.log('👋 Remote user left:', uid, 'Reason:', reason);
-      setRemoteUid(prev => (prev === uid ? null : prev));
+      if (remoteUid === uid) {
+        setRemoteUid(null);
+      }
     },
 
-    onRemoteVideoStateChanged: (connection, uid, state, reason, elapsed) => {
-      console.log('📹 Remote video state changed:', { uid, state, reason });
+    onRemoteVideoStateChanged: (_, uid, state, reason, elapsed) => {
+      console.log('📹 Remote video state:', { uid, state, reason });
     },
 
-    onNetworkQuality: (connection, remoteUid, txQuality, rxQuality) => {
+    onNetworkQuality: (_, uid, txQuality, rxQuality) => {
       const quality = txQuality <= 2 ? 'excellent' : txQuality <= 3 ? 'good' : 'poor';
       setConnectionQuality(quality);
     },
@@ -113,6 +101,8 @@ const setupListeners = (engine: IRtcEngine) => {
 
 
 
+
+  // -------------------- INIT CALL --------------------
   const initCall = async () => {
     if (isConnecting || isInitialized) return;
 
@@ -141,30 +131,27 @@ const setupListeners = (engine: IRtcEngine) => {
 
       await engine.enableAudio();
       await engine.enableVideo();
-
       await engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
       await engine.setDefaultAudioRouteToSpeakerphone(true);
       await engine.setEnableSpeakerphone(true);
-
       await engine.startPreview();
+
       setIsInitialized(true);
       setIsConnecting(false);
 
-      await engine.joinChannel(data.token, data.channelName, data.uid, {
-        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-      });
+      await engine.joinChannel(data.token, data.channelName, data.uid, { clientRoleType: ClientRoleType.ClientRoleBroadcaster });
+
+      // Explicitly ensure local video/audio is unmuted after join
+      await engine.muteLocalVideoStream(false);
+      await engine.muteLocalAudioStream(false);
     } catch (error: any) {
       console.error('❌ Init failed:', error);
-      Alert.alert(
-        'Connection Failed',
-        error?.message || 'Unable to start call.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      Alert.alert('Connection Failed', error?.message || 'Unable to start call.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       setIsConnecting(false);
     }
   };
 
- 
+  // -------------------- CLEANUP --------------------
   const cleanup = async () => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -180,27 +167,14 @@ const setupListeners = (engine: IRtcEngine) => {
     }
 
     if (role === 'Doctor' && isConnected) {
-      try {
-        await endCall(appointmentId);
-      } catch {}
+      try { await endCall(appointmentId); } catch {}
     }
   };
 
- 
-useEffect(() => {
-  if ((autoJoin || fromAppointmentList) && appointmentId) {
-    initCall();
-  }
-
-  return () => {
-   
-    (async () => {
-      await cleanup();
-    })();
-  };
-}, []);
-
-
+  useEffect(() => {
+    if ((autoJoin || fromAppointmentList) && appointmentId) initCall();
+    return () => { cleanup(); };
+  }, []);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -208,31 +182,23 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [isConnected]);
 
- 
   const toggleMute = async () => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    await engine.muteLocalAudioStream(!isMuted);
-    setIsMuted(!isMuted);
+    const engine = engineRef.current; if (!engine) return;
+    await engine.muteLocalAudioStream(!isMuted); setIsMuted(!isMuted);
   };
 
   const toggleVideo = async () => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    await engine.muteLocalVideoStream(!isVideoOff);
-    setIsVideoOff(!isVideoOff);
+    const engine = engineRef.current; if (!engine) return;
+    await engine.muteLocalVideoStream(!isVideoOff); setIsVideoOff(!isVideoOff);
   };
 
   const toggleSpeaker = async () => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    await engine.setEnableSpeakerphone(!isSpeakerOn);
-    setIsSpeakerOn(!isSpeakerOn);
+    const engine = engineRef.current; if (!engine) return;
+    await engine.setEnableSpeakerphone(!isSpeakerOn); setIsSpeakerOn(!isSpeakerOn);
   };
 
   const switchCamera = async () => {
-    const engine = engineRef.current;
-    if (!engine) return;
+    const engine = engineRef.current; if (!engine) return;
     await engine.switchCamera();
   };
 
@@ -243,14 +209,7 @@ useEffect(() => {
     ]);
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-
-  if (isConnecting) {
+ if (isConnecting) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" />
@@ -263,35 +222,47 @@ useEffect(() => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
-      
       <View style={styles.videoContainer}>
+        {/* Remote Video */}
         {remoteUid ? (
           <RtcSurfaceView
             style={styles.remoteVideo}
-            canvas={{ uid: remoteUid, renderMode: 1, sourceType: 1 }}
+            canvas={{
+              uid: remoteUid,
+              renderMode: 1, // RenderModeHidden
+            }}
           />
         ) : (
           <View style={styles.waitingContainer}>
             <Ionicons name="person-outline" size={80} color="#666" />
-            <Text style={styles.waitingText}>Waiting for {name}...</Text>
+            <Text style={styles.waitingText}>
+              <Text>Waiting for </Text>
+              <Text>{name}</Text>
+              <Text>...</Text>
+            </Text>
             <ActivityIndicator size="small" color="#666" style={{ marginTop: 12 }} />
           </View>
         )}
 
-  
+        {/* Local Video Pip */}
         {!isVideoOff && tokenData && (
           <View style={styles.localVideoContainer}>
             <RtcSurfaceView
               style={styles.localVideo}
-              canvas={{ uid: tokenData.uid, renderMode: 1, sourceType: 0 }}
-              zOrderMediaOverlay
+              canvas={{
+                uid: tokenData.uid,
+                renderMode: 1,
+                sourceType: 0, // VideoSourceCamera
+              }}
+              zOrderMediaOverlay={true}
+              zOrderOnTop={true}
             />
-            <View style={styles.localLabel}><Text style={styles.localLabelText}>You</Text></View>
+            <View style={styles.localLabel}>
+              <Text style={styles.localLabelText}>You</Text>
+            </View>
           </View>
         )}
 
-     
         {isVideoOff && (
           <View style={[styles.localVideoContainer, styles.videoOffContainer]}>
             <Ionicons name="videocam-off" size={32} color="#fff" />
@@ -300,15 +271,22 @@ useEffect(() => {
         )}
       </View>
 
- 
       <View style={styles.controlsContainer}>
         <View style={styles.controls}>
-          <TouchableOpacity style={[styles.controlButton, isMuted && styles.controlButtonActive]} onPress={toggleMute}>
+          <TouchableOpacity 
+            style={[styles.controlButton, isMuted && styles.controlButtonActive]} 
+            onPress={toggleMute}
+          >
             <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={26} color={isMuted ? '#EF4444' : '#fff'} />
-            <Text style={styles.controlLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+            <Text style={styles.controlLabel}>
+              {isMuted ? <Text>Unmute</Text> : <Text>Mute</Text>}
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.controlButton, isVideoOff && styles.controlButtonActive]} onPress={toggleVideo}>
+          <TouchableOpacity 
+            style={[styles.controlButton, isVideoOff && styles.controlButtonActive]} 
+            onPress={toggleVideo}
+          >
             <Ionicons name={isVideoOff ? 'videocam-off' : 'videocam'} size={26} color={isVideoOff ? '#EF4444' : '#fff'} />
             <Text style={styles.controlLabel}>Video</Text>
           </TouchableOpacity>
@@ -317,7 +295,10 @@ useEffect(() => {
             <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.controlButton, !isSpeakerOn && styles.controlButtonActive]} onPress={toggleSpeaker}>
+          <TouchableOpacity 
+            style={[styles.controlButton, !isSpeakerOn && styles.controlButtonActive]} 
+            onPress={toggleSpeaker}
+          >
             <Ionicons name={isSpeakerOn ? 'volume-high' : 'volume-mute'} size={26} color={!isSpeakerOn ? '#EF4444' : '#fff'} />
             <Text style={styles.controlLabel}>Speaker</Text>
           </TouchableOpacity>
@@ -331,7 +312,6 @@ useEffect(() => {
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },

@@ -1,47 +1,77 @@
+// src/components/appointment/AppointmentModal.tsx
 import React from "react";
-import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Image,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { IAppointment } from "../../types/backendType";
+import { IAppointment, IDoctor } from "../../types/backendType";
+import { getDoctorImageUri } from "../../services/Doctor";
 
 interface Props {
   appointment: IAppointment | null;
   visible: boolean;
   onClose: () => void;
-  onAccept?: (appt: IAppointment) => void;
-  onReject?: (appt: IAppointment) => void;
+  onAccept?: (appt: IAppointment) => void; // only for doctors
+  onReject?: (appt: IAppointment) => void; // only for doctors
+  onBookAgain?: () => void;                // only for users
+  getEffectiveStatus: (appt: IAppointment) => string;
+  role: "user" | "doctor";
 }
 
-export default function AppointmentModal({ appointment, visible, onClose, onAccept, onReject }: Props) {
+export default function AppointmentModal({
+  appointment,
+  visible,
+  onClose,
+  onAccept,
+  onReject,
+  onBookAgain,
+  getEffectiveStatus,
+  role,
+}: Props) {
   if (!appointment) return null;
 
+  const doctor = typeof appointment.doctorId === "object" ? (appointment.doctorId as IDoctor) : null;
+  const effectiveStatus = getEffectiveStatus(appointment);
+
   const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    const d = typeof date === "string" ? new Date(date) : date;
+    return d.toLocaleString("en-US", {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'confirmed': return '#4CAF50';
-      case 'pending': return '#FF9800';
-      case 'rejected': return '#F44336';
-      case 'cancelled': return '#9E9E9E';
-      case 'completed': return '#2196F3';
-      default: return '#9E9E9E';
+      case "confirmed": return "#10B981";
+      case "pending": return "#FBBF24";
+      case "rejected":
+      case "cancelled": return "#9CA3AF";
+      case "in-progress": return "#EF4444";
+      case "call-ended": return "#6B7280";
+      case "completed": return "#6B7280";
+      case "rescheduled": return "#3B82F6";
+      default: return "#D1D5DB";
     }
   };
+
+  console.log("Modal role:", role, "effectiveStatus:", effectiveStatus);
+
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          {/* Drag Indicator */}
           <View style={styles.dragIndicator} />
 
           {/* Header */}
@@ -52,59 +82,69 @@ export default function AppointmentModal({ appointment, visible, onClose, onAcce
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Status Badge */}
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(appointment.status) }]}>
-              <Text style={styles.statusText}>{appointment.status.toUpperCase()}</Text>
+
+          <ScrollView 
+            contentContainerStyle={{ paddingBottom: 16 }}
+            showsVerticalScrollIndicator={false}
+          >
+     
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(effectiveStatus) }]}>
+              <Text style={styles.statusText}>{effectiveStatus.toUpperCase()}</Text>
             </View>
 
-            {/* Patient Info */}
+            {doctor && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="person" size={20} color="#666" />
+                  <Text style={styles.sectionLabel}>Doctor</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Image source={{ uri: getDoctorImageUri(doctor) }} style={styles.avatar} />
+                  <Text style={styles.sectionValue}>
+                    Dr. {doctor.firstName} {doctor.lastName} - {doctor.specialization}
+                  </Text>
+                </View>
+              </View>
+            )}
+
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Ionicons name="person" size={20} color="#666" />
                 <Text style={styles.sectionLabel}>Patient</Text>
               </View>
-              <Text style={styles.sectionValue}>
-                {appointment.patientSnapshot?.name || 'Unknown Patient'}
-              </Text>
+              <Text style={styles.sectionValue}>{appointment.patientSnapshot?.name || "Unknown"}</Text>
             </View>
 
-            {/* Scheduled Time */}
+      
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Ionicons name="calendar" size={20} color="#666" />
                 <Text style={styles.sectionLabel}>Scheduled Time</Text>
               </View>
-              <Text style={styles.sectionValue}>
-                {formatDate(appointment.scheduledAt)}
-              </Text>
+              <Text style={styles.sectionValue}>{formatDate(appointment.scheduledAt)}</Text>
             </View>
 
-            {/* Reason */}
+        
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Ionicons name="document-text" size={20} color="#666" />
                 <Text style={styles.sectionLabel}>Reason for Visit</Text>
               </View>
-              <Text style={styles.sectionValue}>
-                {appointment.reason || "No details provided"}
-              </Text>
+              <Text style={styles.sectionValue}>{appointment.reason || "No details provided"}</Text>
             </View>
 
-            {/* Consultation Type */}
+         
             {appointment.consultationType && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Ionicons name="videocam" size={20} color="#666" />
                   <Text style={styles.sectionLabel}>Consultation Type</Text>
                 </View>
-                <Text style={styles.sectionValue}>
-                  {appointment.consultationType}
-                </Text>
+                <Text style={styles.sectionValue}>{appointment.consultationType}</Text>
               </View>
             )}
 
-            {/* Additional Notes */}
+
             {appointment.notes && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -116,33 +156,31 @@ export default function AppointmentModal({ appointment, visible, onClose, onAcce
             )}
           </ScrollView>
 
-          {/* Action Buttons - Only show for pending appointments */}
-          {appointment.status === "pending" && onAccept && onReject && (
-            <View style={styles.actions}>
-              <TouchableOpacity 
-                style={[styles.button, styles.rejectButton]} 
-                onPress={() => onReject(appointment)}
-              >
-                <Ionicons name="close-circle" size={20} color="#fff" />
-                <Text style={styles.buttonText}>Reject</Text>
-              </TouchableOpacity>
+    
+          <View style={{ paddingVertical: 16 }}>
+            {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
+              <View style={styles.actions}>
+                <TouchableOpacity style={[styles.button, styles.rejectButton]} onPress={() => onReject(appointment)}>
+                  <Text style={styles.buttonText}>Reject</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.button, styles.acceptButton]} onPress={() => onAccept(appointment)}>
+                  <Text style={styles.buttonText}>Accept</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-              <TouchableOpacity 
-                style={[styles.button, styles.acceptButton]} 
-                onPress={() => onAccept(appointment)}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.buttonText}>Accept</Text>
+            {role === "user" && effectiveStatus === "call-ended" && onBookAgain && (
+              <TouchableOpacity style={[styles.button, styles.acceptButton]} onPress={onBookAgain}>
+                <Text style={styles.buttonText}>Book Again</Text>
               </TouchableOpacity>
-            </View>
-          )}
+            )}
 
-          {/* Close Button for non-pending appointments */}
-          {appointment.status !== "pending" && (
-            <TouchableOpacity style={[styles.button, styles.closeButton]} onPress={onClose}>
-              <Text style={styles.buttonText}>Close</Text>
-            </TouchableOpacity>
-          )}
+            {(!((role === "doctor" && effectiveStatus === "pending") || (role === "user" && effectiveStatus === "call-ended"))) && (
+              <TouchableOpacity style={[styles.button, styles.closeButton]} onPress={onClose}>
+                <Text style={styles.buttonText}>Close</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </Modal>
@@ -162,7 +200,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 34,
-    maxHeight: "85%",
+    maxHeight: "90%",
   },
   dragIndicator: {
     width: 40,
@@ -178,76 +216,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#222",
-  },
-  statusBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: "flex-start",
-    marginBottom: 20,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: 0.5,
-  },
-  section: {
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#666",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  sectionValue: {
-    fontSize: 16,
-    color: "#222",
-    fontWeight: "500",
-    lineHeight: 22,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 20,
-  },
-  button: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  acceptButton: {
-    backgroundColor: "#4CAF50",
-  },
-  rejectButton: {
-    backgroundColor: "#F44336",
-  },
-  closeButton: {
-    backgroundColor: "#2196F3",
-    marginTop: 20,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#fff",
-  },
+  headerTitle: { fontSize: 22, fontWeight: "700", color: "#222" },
+  statusBadge: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, alignSelf: "flex-start", marginBottom: 20 },
+  statusText: { fontSize: 12, fontWeight: "700", color: "#fff", letterSpacing: 0.5 },
+  section: { marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 8 },
+  sectionLabel: { fontSize: 13, fontWeight: "600", color: "#666", textTransform: "uppercase", letterSpacing: 0.5 },
+  sectionValue: { fontSize: 16, color: "#222", fontWeight: "500", lineHeight: 22 },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#EEE" },
+  actions: { flexDirection: "row", gap: 12, marginTop: 16 },
+  button: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  acceptButton: { backgroundColor: "#4CAF50" },
+  rejectButton: { backgroundColor: "#F44336" },
+  closeButton: { backgroundColor: "#2196F3" },
+  buttonText: { fontSize: 16, fontWeight: "700", color: "#fff" },
 });

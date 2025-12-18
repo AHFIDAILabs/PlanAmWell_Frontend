@@ -311,32 +311,92 @@ export const useVideoCall = () => {
   /** 
    * Get call status
    */
- const getCallStatus = useCallback(
-    async (appointmentId: string) => {
-      try {
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
-        if (!token) throw new Error("Authentication required");
+/** 
+ * Get call status - FIXED to handle correct response structure
+ */
+// hooks/useVideoCall.ts - FIXED getCallStatus Method
 
-        const response = await axios.get(
-          `${API_URL}/call-status/${appointmentId}`, 
-          { 
-            headers: { Authorization: `Bearer ${token}` }, 
-            timeout: 10000 
-          }
-        );
-        
-return {
-        success: true,
-        data: response.data, 
-        message: 'Call status fetched'
-    };      } catch (error: any) {
-        console.error('Failed to get call status:', error);
-        const parsedError = parseError(error);
-        throw parsedError;
+const getCallStatus = useCallback(
+  async (appointmentId: string) => {
+    try {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (!token) {
+        console.error('❌ No auth token found');
+        throw new Error("Authentication required");
       }
-    }, 
-    [parseError]
-  );
+
+      console.log('📞 Fetching call status for:', appointmentId);
+
+      const response = await axios.get(
+        `${API_URL}/call-status/${appointmentId}`, 
+        { 
+          headers: { Authorization: `Bearer ${token}` }, 
+          timeout: 10000 
+        }
+      );
+
+      console.log('✅ Raw backend response:', JSON.stringify(response.data, null, 2));
+
+      // ✅ CRITICAL FIX: Extract from nested data.data structure
+      const backendData = response.data;
+      
+      if (!backendData || typeof backendData !== 'object') {
+        throw new Error('Invalid response format');
+      }
+
+      // ✅ Handle both possible response structures
+      const callData = backendData.data || backendData;
+
+      const normalizedResponse = {
+        success: backendData.success !== false, // Default to true unless explicitly false
+        data: {
+          isActive: callData.isActive === true,  // Explicit boolean check
+          callStatus: callData.callStatus || 'idle',
+          channelName: callData.channelName || null,
+          participantCount: callData.participantCount || 0,
+          startedBy: callData.startedBy || null,
+          startedAt: callData.startedAt || null,
+          endedAt: callData.endedAt || null,
+        },
+        message: backendData.message || 'Call status fetched successfully'
+      };
+
+      console.log('✅ Normalized response:', JSON.stringify(normalizedResponse, null, 2));
+
+      return normalizedResponse;
+
+    } catch (error: any) {
+      console.error('❌ getCallStatus error:', error);
+      
+      // Log detailed error info
+      if (axios.isAxiosError(error)) {
+        console.error('   Status:', error.response?.status);
+        console.error('   Data:', error.response?.data);
+        console.error('   Message:', error.message);
+      }
+
+      // ✅ Return safe default instead of throwing
+      const safeDefault = {
+        success: false,
+        data: {
+          isActive: false,
+          callStatus: 'idle',
+          channelName: null,
+          participantCount: 0,
+          startedBy: null,
+          startedAt: null,
+          endedAt: null,
+        },
+        message: error.response?.data?.message || error.message || 'Failed to fetch call status'
+      };
+
+      console.log('⚠️ Returning safe default:', safeDefault);
+
+      return safeDefault;
+    }
+  }, 
+  []
+);
 
   /** 
    * Report call issues

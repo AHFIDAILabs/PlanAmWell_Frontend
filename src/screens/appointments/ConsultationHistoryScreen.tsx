@@ -277,7 +277,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      {/* Header */}
+     
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Feather name="arrow-left" size={24} color="#333" />
@@ -286,7 +286,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Tabs */}
+      
       <View style={styles.tabContainer}>
         {(["upcoming", "pending", "past"] as TabType[]).map((tab) => {
           const isActive = activeTab === tab;
@@ -304,7 +304,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
         })}
       </View>
 
-      {/* List */}
+ 
       {loading ? (
         <ActivityIndicator size="large" color="#D81E5B" style={{ marginTop: 50 }} />
       ) : (
@@ -327,14 +327,14 @@ export const ConsultationHistoryScreen: React.FC = () => {
         />
       )}
 
-      {/* Detail Modal */}
+  
       {selectedAppointment && (
         <Modal visible={modalVisible} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.dragIndicator} />
 
-              {/* Modal Header */}
+           
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Appointment Details</Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)}>
@@ -342,7 +342,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* Doctor Info */}
+             
               {typeof selectedAppointment.doctorId === "object" && (
                 <View style={styles.modalDoctorRow}>
                   <Image
@@ -363,7 +363,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Details */}
+         
               <View style={styles.modalSection}>
                 <Text style={styles.sectionLabel}>📅 Date & Time</Text>
                 <Text style={styles.sectionValue}>
@@ -390,7 +390,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Status Badge */}
+         
               <View style={styles.modalSection}>
                 <Text style={styles.sectionLabel}>Status</Text>
                 <View
@@ -405,7 +405,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Actions */}
+      
               <View style={styles.modalActions}>
                 {canJoinCall(selectedAppointment) && (
                   <TouchableOpacity 

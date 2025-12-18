@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Animated,
   Switch,
 } from "react-native";
 import Toast from "react-native-toast-message";
@@ -20,7 +19,7 @@ import { createAppointment } from "../../services/Appointment";
 import { AppStackParamList } from "../../types/App";
 import { useAuth } from "../../hooks/useAuth";
 
-type DoctorRouteProps = RouteProp<AppStackParamList, "DoctorScreen">;
+type DoctorRouteProps = RouteProp<AppStackParamList, "BookAppointmentScreen">;
 
 const DURATION_OPTIONS = [15, 30, 45, 60];
 
@@ -29,7 +28,8 @@ export const BookAppointmentScreen: React.FC = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
 
-  const doctor = route.params?.doctor;
+  // Get doctor from route params; fallback to empty object
+  const doctor = route.params?.doctor ?? { firstName: "", lastName: "", _id: "" };
 
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -45,6 +45,7 @@ export const BookAppointmentScreen: React.FC = () => {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Autofill user info
   useEffect(() => {
     if (shareUserInfo && user) {
       setName(user.name || "");
@@ -57,7 +58,7 @@ export const BookAppointmentScreen: React.FC = () => {
     }
   }, [shareUserInfo, user]);
 
-  // Generate next 14 days for mini-calendar
+  // Generate next 14 days
   const next14Days = useMemo(() => {
     const arr: { date: Date; day: string; dayNum: number }[] = [];
     for (let i = 0; i < 14; i++) {
@@ -78,6 +79,14 @@ export const BookAppointmentScreen: React.FC = () => {
         type: "error",
         text1: "Missing info",
         text2: "Select date, time, and provide a reason.",
+      });
+    }
+
+    if (!doctor._id) {
+      return Toast.show({
+        type: "error",
+        text1: "Doctor info missing",
+        text2: "Cannot book appointment without doctor details.",
       });
     }
 
@@ -138,22 +147,15 @@ export const BookAppointmentScreen: React.FC = () => {
                 style={[styles.datePill, selected && { backgroundColor: "#D81E5B" }]}
                 onPress={() => setSelectedDate(d.date)}
               >
-                <Text style={[styles.dateDay, selected && { color: "#fff", fontWeight: "700" }]}>
-                  {d.day}
-                </Text>
-                <Text style={[styles.dateNum, selected && { color: "#fff", fontWeight: "700" }]}>
-                  {d.dayNum}
-                </Text>
+                <Text style={[styles.dateDay, selected && { color: "#fff", fontWeight: "700" }]}>{d.day}</Text>
+                <Text style={[styles.dateNum, selected && { color: "#fff", fontWeight: "700" }]}>{d.dayNum}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         {/* Time Picker */}
-        <TouchableOpacity
-          style={styles.inputButton}
-          onPress={() => setShowTimePicker(true)}
-        >
+        <TouchableOpacity style={styles.inputButton} onPress={() => setShowTimePicker(true)}>
           <Text style={styles.inputButtonText}>
             {selectedTime ? selectedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Select Time"}
           </Text>
@@ -179,9 +181,7 @@ export const BookAppointmentScreen: React.FC = () => {
                 style={[styles.durationOption, selected && { backgroundColor: "#D81E5B" }]}
                 onPress={() => setDuration(d)}
               >
-                <Text style={[styles.durationText, selected && { color: "#fff", fontWeight: "700" }]}>
-                  {d} mins
-                </Text>
+                <Text style={[styles.durationText, selected && { color: "#fff", fontWeight: "700" }]}>{d} mins</Text>
               </TouchableOpacity>
             );
           })}
@@ -247,20 +247,10 @@ const styles = StyleSheet.create({
   dateDay: { fontSize: 12, color: "#555" },
   dateNum: { fontSize: 18, fontWeight: "600", color: "#222" },
 
-  inputButton: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
+  inputButton: { borderWidth: 1, borderColor: "#ccc", padding: 14, borderRadius: 12, marginBottom: 16 },
   inputButtonText: { fontSize: 16, color: "#333" },
 
-  durationRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
+  durationRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 16 },
   durationOption: {
     paddingVertical: 12,
     paddingHorizontal: 20,
@@ -288,6 +278,4 @@ const styles = StyleSheet.create({
 
   button: { backgroundColor: "#D81E5B", paddingVertical: 16, borderRadius: 20, alignItems: "center", marginTop: 10 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

@@ -1,5 +1,5 @@
 // DoctorAppointmentsScreen.tsx
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -24,18 +24,35 @@ import { Ionicons } from "@expo/vector-icons";
 const { height } = Dimensions.get("window");
 
 /* ---------------- HELPERS ---------------- */
-const canJoinConsultation = (appt: IAppointment | null | undefined) => {
-  if (!appt) return false;
-  if (appt.status !== "confirmed") return false;
+const getEffectiveStatus = (
+  appt: IAppointment,
+  callStatusMap: Record<string, string>
+): string => {
+  if (!appt?._id) return appt.status;
 
-  const now = new Date();
-  const scheduled = new Date(appt.scheduledAt);
-  const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
+  const now = Date.now();
+  const scheduledAt = new Date(appt.scheduledAt).getTime();
+  const diffMinutes = (scheduledAt - now) / 60000;
 
-  if (diffMinutes > 15) return false;
-  if (appt.consultationType === "in-person") return false;
+  // Terminal backend states
+  if (["cancelled", "rejected", "completed"].includes(appt.status)) {
+    return appt.status;
+  }
 
-  return true;
+  // Ended window
+  if (diffMinutes <= -120) return "call-ended";
+
+  // Live call overrides
+  const liveStatus = callStatusMap[appt._id];
+  if (liveStatus) return liveStatus; // 'in-progress' or 'call-ended'
+
+  // Confirmed but not started yet
+  if (appt.status === "confirmed") {
+    if (diffMinutes > 15) return "confirmed-upcoming"; // upcoming, not joinable
+    if (diffMinutes <= 15 && diffMinutes >= 0) return "about-to-start"; // can show countdown
+  }
+
+  return appt.status; // fallback: pending, etc.
 };
 
 const getCountdownText = (appt: IAppointment | null | undefined) => {
@@ -48,10 +65,61 @@ const getCountdownText = (appt: IAppointment | null | undefined) => {
 
   const mins = Math.floor(diffMs / 60000);
   const secs = Math.floor((diffMs % 60000) / 1000);
-
   return `Starts in ${mins}m ${secs}s`;
 };
 
+const canJoinConsultation = (appt: (IAppointment & { status?: string }) | null | undefined) => {
+  if (!appt) return false;
+  const status = typeof appt.status === "string" ? appt.status : undefined;
+  if (!status || !["confirmed", "about-to-start"].includes(status)) return false;
+
+  const now = new Date();
+  const scheduled = new Date(appt.scheduledAt);
+  const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
+
+  if (diffMinutes > 15) return false; // too early
+  if (appt.consultationType === "in-person") return false;
+
+  return true;
+};
+
+const statusLabelMap: Record<string, string> = {
+  pending: "Pending",
+  confirmed: "Confirmed",
+  "confirmed-upcoming": "Confirmed",
+  "about-to-start": "Confirmed",
+  "call-ended": "Call Ended",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  rejected: "Rejected",
+  "in-progress": "In Progress",
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "confirmed":
+    case "confirmed-upcoming":
+    case "about-to-start":
+      return "#4CAF50";
+    case "pending":
+      return "#FFA500";
+    case "rescheduled":
+      return "#FF9800";
+    case "completed":
+      return "#2196F3";
+    case "cancelled":
+    case "rejected":
+      return "#F44336";
+    case "call-ended":
+      return "#6B7280";
+    case "in-progress":
+      return "#EF4444";
+    default:
+      return "#9E9E9E";
+  }
+};
+
+/* ---------------- SCREEN ---------------- */
 export default function DoctorAppointmentsScreen({ navigation }: any) {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -60,10 +128,10 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
   const [appointments, setAppointments] = useState<IAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [doctorId, setDoctorId] = useState<string | null>(null);
-
   const [selectedAppointment, setSelectedAppointment] = useState<IAppointment | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [tick, setTick] = useState(Date.now());
+  const [callStatusMap, setCallStatusMap] = useState<Record<string, string>>({}); // live call states
 
   const slideAnim = useRef(new Animated.Value(height)).current;
 
@@ -136,39 +204,30 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "confirmed": return "#4CAF50";
-      case "pending": return "#FFA500";
-      case "rescheduled": return "#FF9800";
-      case "completed": return "#2196F3";
-      case "cancelled":
-      case "rejected": return "#F44336";
-      default: return "#9E9E9E";
-    }
-  };
-
-  const renderAppointment = ({ item }: { item: IAppointment }) => (
-    <View style={[styles.card, { backgroundColor: colors.card }]}>
-      <View style={styles.row}>
-        <Text style={[styles.patientName, { color: colors.text }]}>
-          Patient: {item.patientSnapshot?.name || "Anonymous"}
+  const renderAppointment = ({ item }: { item: IAppointment }) => {
+    const effectiveStatus = getEffectiveStatus(item, callStatusMap);
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <View style={styles.row}>
+          <Text style={[styles.patientName, { color: colors.text }]}>
+            Patient: {item.patientSnapshot?.name || "Anonymous"}
+          </Text>
+          <Text style={[styles.status, { color: getStatusColor(effectiveStatus) }]}>
+            {statusLabelMap[effectiveStatus] || effectiveStatus}
+          </Text>
+        </View>
+        <Text style={[styles.detail, { color: colors.textMuted }]}>
+          {new Date(item.scheduledAt).toLocaleString()}
         </Text>
-        <Text style={[styles.status, { color: getStatusColor(item.status) }]}>
-          {item.status}
-        </Text>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.primary }]}
+          onPress={() => openModal(item)}
+        >
+          <Text style={styles.buttonText}>View Details</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={[styles.detail, { color: colors.textMuted }]}>
-        {new Date(item.scheduledAt).toLocaleString()}
-      </Text>
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: colors.primary }]}
-        onPress={() => openModal(item)}
-      >
-        <Text style={styles.buttonText}>View Details</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -192,9 +251,15 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
         />
       )}
 
-      {modalVisible && (
-        <Pressable style={styles.modalOverlay} onPress={closeModal}>
-          <Animated.View style={[styles.modalContainer, { top: slideAnim, backgroundColor: colors.card }]}>
+      {/* Modal */}
+      {modalVisible && selectedAppointment && (
+        <Pressable style={styles.modalOverlay} onPress={closeModal} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              { top: slideAnim, backgroundColor: colors.card, maxHeight: height * 0.85 },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Appointment Details</Text>
               <TouchableOpacity onPress={closeModal}>
@@ -202,20 +267,39 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }}>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Patient: <Text style={styles.modalValue}>{selectedAppointment?.patientSnapshot?.name || "Anonymous"}</Text></Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Status: <Text style={{ color: getStatusColor(selectedAppointment?.status || "") }}>{selectedAppointment?.status}</Text></Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Time: <Text style={styles.modalValue}>{selectedAppointment ? new Date(selectedAppointment.scheduledAt).toLocaleString() : ""}</Text></Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Type: <Text style={styles.modalValue}>{selectedAppointment?.consultationType || "video"}</Text></Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Reason: <Text style={styles.modalValue}>{selectedAppointment?.reason || "N/A"}</Text></Text>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalLabel, { color: colors.text }]}>
+                Patient: <Text style={styles.modalValue}>{selectedAppointment.patientSnapshot?.name || "Anonymous"}</Text>
+              </Text>
 
-              {selectedAppointment && selectedAppointment.status === "confirmed" && (
+              <Text style={[styles.modalLabel, { color: colors.text }]}>
+                Status:{" "}
+                <Text style={{ color: getStatusColor(getEffectiveStatus(selectedAppointment, callStatusMap)) }}>
+                  {statusLabelMap[getEffectiveStatus(selectedAppointment, callStatusMap)]}
+                </Text>
+              </Text>
+
+              <Text style={[styles.modalLabel, { color: colors.text }]}>
+                Scheduled Time: <Text style={styles.modalValue}>{new Date(selectedAppointment.scheduledAt).toLocaleString()}</Text>
+              </Text>
+
+              <Text style={[styles.modalLabel, { color: colors.text }]}>
+                Consultation Type: <Text style={styles.modalValue}>{selectedAppointment.consultationType || "Video"}</Text>
+              </Text>
+
+              <Text style={[styles.modalLabel, { color: colors.text }]}>
+                Reason: <Text style={styles.modalValue}>{selectedAppointment.reason || "N/A"}</Text>
+              </Text>
+
+              {/* Countdown */}
+              {["confirmed", "about-to-start"].includes(getEffectiveStatus(selectedAppointment, callStatusMap)) && (
                 <Text style={[styles.countdown, { color: colors.textMuted }]}>
                   {getCountdownText(selectedAppointment)}
                 </Text>
               )}
 
-              {canJoinConsultation(selectedAppointment) && (
+              {/* Join Button */}
+              {canJoinConsultation({ ...(selectedAppointment as any), status: getEffectiveStatus(selectedAppointment, callStatusMap) }) && (
                 <TouchableOpacity
                   style={[styles.joinButton, { backgroundColor: colors.primary }]}
                   onPress={handleJoinConsultation}

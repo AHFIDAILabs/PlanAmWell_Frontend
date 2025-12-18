@@ -28,6 +28,8 @@ import DoctorBottomBar from "../../components/common/DoctorBottomBar";
 import { Alert } from "react-native";
 import AppointmentModal from "../../components/appointment/AppointmentModal";
 import { useVideoCall } from "../../hooks/useVideoCall";
+import {useAppointmentCallStatus} from "../../hooks/useAppointmentCallStatus";
+
 
 
 const formatTime = (date: Date) =>
@@ -54,6 +56,11 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   const [checkingCallStatus, setCheckingCallStatus] = useState(false);
 
   const { getCallStatus } = useVideoCall();
+const {
+  getEffectiveStatus,
+  refreshCallStatus,
+} = useAppointmentCallStatus();
+
 
   useEffect(() => {
     if (authLoading) return;
@@ -134,7 +141,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   const getNextAppointment = () => {
     const now = new Date();
     const futureConfirmed = appointments
-      .filter(a => a.status === "confirmed" && new Date(a.scheduledAt) <= now)
+      .filter(a => a.status === "confirmed" && new Date(a.scheduledAt) >= now)
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
     return futureConfirmed[0] || null;
   };
@@ -244,110 +251,135 @@ const handleAccept = async (appt: IAppointment) => {
 };
 
 
-const handleJoinCall = async (appointment: IAppointment) => {
-  if (!appointment._id) {
-    Toast.show({
-      type: 'error',
-      text1: 'Error',
-      text2: 'Invalid appointment',
-    });
-    return;
-  }
+// DoctorDashboardScreen.tsx - FIXED handleJoinCall
 
-    const navigateToCall = (autoJoin: boolean) => {
-        const navParams = {
-            appointmentId: appointment._id,
-            name: appointment.patientSnapshot?.name,
-            patientId: appointment.userId,
-            role: 'doctor',
-            autoJoin: autoJoin,
-            fromAppointmentList: true,
-        };
-        
-       
-        const parentNavigator = navigation.getParent();
-        if (parentNavigator && parentNavigator.navigate) {
-            console.log("-> Navigating via Parent Stack (VideoCallScreen)");
-            parentNavigator.navigate('VideoCallScreen', navParams);
-        } else {
-            console.log("-> Navigating via Current Stack (VideoCallScreen) - Fallback");
-            navigation.navigate('VideoCallScreen', navParams);
-        }
+const handleJoinCall = async (appointment: IAppointment) => {
+  if (!appointment._id) {
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'Invalid appointment',
+    });
+    return;
+  }
+
+  const navigateToCall = () => {
+    const navParams = {
+      appointmentId: appointment._id,
+      name: appointment.patientSnapshot?.name || 'Patient',
+      patientId: appointment.userId,
+      role: 'doctor' as const,
+      autoJoin: true,
+      fromAppointmentList: true,
     };
 
+    // Try multiple navigation strategies
+    try {
+      // Strategy 1: Try parent navigator
+      const parentNavigator = navigation.getParent();
+      if (parentNavigator && typeof parentNavigator.navigate === 'function') {
+        console.log('✅ Navigating via Parent Stack');
+        parentNavigator.navigate('VideoCallScreen', navParams);
+        return;
+      }
+    } catch (parentError) {
+      console.warn('⚠️ Parent navigation failed:', parentError);
+    }
 
-  try {
-    setCheckingCallStatus(true);
+    // Strategy 2: Try current navigator
+    try {
+      console.log('✅ Navigating via Current Stack');
+      navigation.navigate('VideoCallScreen', navParams);
+    } catch (currentError) {
+      console.error('❌ Current navigation failed:', currentError);
+      Toast.show({
+        type: 'error',
+        text1: 'Navigation Error',
+        text2: 'Unable to open video call. Please try again.',
+      });
+    }
+  };
 
-   
-    const response = await getCallStatus(appointment._id);
+  try {
+    setCheckingCallStatus(true);
+
+    // Get call status from backend
+    const response = await getCallStatus(appointment._id);
+
+    console.log('📞 Call status response:', {
+      success: response?.success,
+      hasData: !!response?.data,
+      isActive: response?.data?.isActive,
+      callStatus: response?.data?.callStatus,
+    });
+
+    // ✅ FIXED: Check response structure properly
+    if (!response || !response.success) {
+      throw new Error(response?.message || 'Failed to check call status');
+    }
+
+    // ✅ FIXED: Access isActive from correct location
+    const { isActive, callStatus } = response.data;
+
+    if (isActive === true) {
+      // Call is active - join immediately
+      console.log('✅ Call is active (status:', callStatus, '), joining...');
+      navigateToCall();
+    } else {
+      // Call not active - show options
+      console.log('ℹ️ Call not active (status:', callStatus, '), showing options...');
+      
+      Alert.alert(
+        'Start Video Call?',
+        `This will start the video consultation with ${
+          appointment.patientSnapshot?.name || 'the patient'
+        }.`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Start Call',
+            onPress: () => {
+              console.log('✅ User chose to start call');
+              navigateToCall();
+            },
+          },
+          {
+            text: 'View Appointment',
+            onPress: () => {
+              console.log('ℹ️ User chose to view appointment');
+              openAppointmentModal(appointment);
+            },
+          },
+        ]
+      );
+    }
+  } catch (error: any) {
+    console.error('❌ Failed to check call status:', error);
     
-
-    const coreStatusData = response?.data?.data; 
-    
-    console.log('[Call Status Trace] Core Status Data:', JSON.stringify(coreStatusData));
-
-
-    if (!response?.success || !coreStatusData) { 
-   
-      throw new Error(response?.message || 'Failed to check call status: Backend returned invalid structure.');
-    }
-
- 
-    const { isActive, callStatus } = coreStatusData; 
-
-    if (isActive) {
-     
-      console.log('📞 Call is active, joining...');
-      navigateToCall(true); 
-    } else {
-     
-      Alert.alert(
-        'Start Video Call?',
-        `This will start the video consultation with ${appointment.patientSnapshot?.name || 'the patient'}.`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Start Call',
-            onPress: () => {
-                console.log("-> Start Call button pressed in Alert.");
-                navigateToCall(true); 
-            },
-          },
-          {
-            text: 'View Appointment',
-            onPress: () => openAppointmentModal(appointment),
-          },
-        ]
-      );
-    }
-  } catch (error: any) {
-    console.error('Failed to check call status (CATCH BLOCK):', error);
-    
-    
-    Alert.alert(
-      'Unable to Check Status',
-      error.message || 'Would you like to start the call anyway?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Start Call',
-          onPress: () => {
-                console.log("-> Start Call (Fallback) button pressed in Alert.");
-                navigateToCall(true);
-            },
-        },
-      ]
-    );
-  } finally {
-    setCheckingCallStatus(false);
-  }
+    // Fallback - let doctor try anyway
+    Alert.alert(
+      'Unable to Check Status',
+      'Would you like to start the call anyway?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Start Call',
+          onPress: () => {
+            console.log('✅ User chose to start call (fallback)');
+            navigateToCall();
+          },
+        },
+      ]
+    );
+  } finally {
+    setCheckingCallStatus(false);
+  }
 };
 
 
@@ -417,6 +449,7 @@ const handleJoinCall = async (appointment: IAppointment) => {
     () => Object.values(availability).filter((d: any) => d?.available).length,
     [availability]
   );
+
 
   const totalWeeklyHours = useMemo(() => {
     return Object.values(availability)
@@ -800,12 +833,14 @@ const handleJoinCall = async (appointment: IAppointment) => {
 
   
    <AppointmentModal
-  appointment={selectedAppointment}
-  visible={showModal}
-  onClose={() => setShowModal(false)}
-  onAccept={handleAccept}
-  onReject={handleReject}
-/>
+              appointment={selectedAppointment}
+              visible={showModal}
+              onClose={() => setShowModal(false)}
+              onAccept={handleAccept}
+              onReject={handleReject} 
+              getEffectiveStatus={getEffectiveStatus}
+
+               role={"doctor"}/>
 
 
             <DoctorBottomBar activeRoute="DoctorDashboardScreen" messagesCount={0} />
