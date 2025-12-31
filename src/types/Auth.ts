@@ -24,6 +24,7 @@ export interface AuthResponse {
     success: boolean;
     sessionId: string;
     token: string;
+    refreshToken: string;
     isAnonymous: boolean;
     user?: IUser;
 }

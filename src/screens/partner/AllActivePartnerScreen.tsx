@@ -1,45 +1,33 @@
-import React, { useEffect, useState, useRef } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  FlatList, 
-  ActivityIndicator, 
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
   TouchableOpacity,
+  Image,
+  ActivityIndicator,
   Dimensions,
-  Linking
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { usePartners } from "../../hooks/usePartners";
-import PartnerDetailScreen from "../../screens/partner/PartnerDetailScreen";
+import PartnerDetailScreen from "./PartnerDetailScreen";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { BottomTabsScreen } from "react-native-screens";
+import BottomBar from "../../components/common/BottomBar";
 
 const { width } = Dimensions.get("window");
-const CARD_WIDTH = width * 0.7;
+const CARD_HEIGHT = 100;
 
-export default function PartnerCard() {
+export default function AllActivePartnerScreen() {
   const { partners, loading, error, fetchActivePartners } = usePartners();
   const [selectedPartner, setSelectedPartner] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
     fetchActivePartners();
   }, []);
-
-  // Auto-scroll effect
-  useEffect(() => {
-    if (!partners.length) return;
-
-    const interval = setInterval(() => {
-      const nextIndex = (currentIndex + 1) % partners.length;
-      setCurrentIndex(nextIndex);
-      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
-    }, 3000); // scroll every 3s
-
-    return () => clearInterval(interval);
-  }, [currentIndex, partners]);
 
   const openModal = (partner: any) => {
     setSelectedPartner(partner);
@@ -66,8 +54,8 @@ export default function PartnerCard() {
 
   const renderItem = ({ item }: any) => (
     <TouchableOpacity style={styles.card} onPress={() => openModal(item)}>
-      {item.partnerImage?.url ? (
-        <Image source={{ uri: item.partnerImage.url }} style={styles.image} />
+      {item.partnerImage?.imageUrl ? (
+        <Image source={{ uri: item.partnerImage.imageUrl }} style={styles.image} />
       ) : (
         <View style={styles.placeholderImage}>
           <Text style={styles.placeholderText}>{item.name.charAt(0).toUpperCase()}</Text>
@@ -79,12 +67,7 @@ export default function PartnerCard() {
         <View style={styles.socialContainer}>
           {item.socialLinks?.map((link: string, idx: number) => (
             <TouchableOpacity key={idx} onPress={() => openLink(link)}>
-              <Ionicons 
-                name={getSocialIcon(link) as any} 
-                size={20} 
-                color="#4CAF50" 
-                style={{ marginRight: 8 }} 
-              />
+              <Ionicons name={getSocialIcon(link) as any} size={20} color="#4CAF50" style={{ marginRight: 8 }} />
             </TouchableOpacity>
           ))}
         </View>
@@ -94,53 +77,49 @@ export default function PartnerCard() {
 
   if (loading)
     return <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />;
-  if (error) return <Text style={styles.error}>{error}</Text>;
+
+  if (error)
+    return <Text style={styles.error}>{error}</Text>;
+
+  if (!partners.length)
+    return <Text style={styles.noData}>No active partners found.</Text>;
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+    <View style={styles.container}>
       <FlatList
-        ref={flatListRef}
         data={partners}
         keyExtractor={item => item._id}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={CARD_WIDTH + 16} // card width + margin
-        decelerationRate="fast"
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
+        contentContainerStyle={{ paddingVertical: 16 }}
+        ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
       />
 
       {/* Partner Detail Modal */}
-      <PartnerDetailScreen 
-        visible={modalVisible} 
-        partner={selectedPartner} 
-        onClose={closeModal} 
-      />
+      <PartnerDetailScreen visible={modalVisible} partner={selectedPartner} onClose={closeModal} />
     </View>
+    <BottomBar activeRoute={"AllActivePartnerScreen"} cartItemCount={0} />    
+    
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#fff", paddingHorizontal: 16 },
   card: {
-    width: CARD_WIDTH,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F0F0F0",
     borderRadius: 12,
     padding: 12,
-    marginRight: 16,
+    height: CARD_HEIGHT,
     elevation: 2,
-    shadowColor: "#FFECEF",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
-  image: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginRight: 12,
-  },
+  image: { width: 70, height: 70, borderRadius: 35, marginRight: 12 },
   placeholderImage: {
     width: 70,
     height: 70,
@@ -149,19 +128,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
-    shadowColor: "#FFECEF",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
   },
-  placeholderText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 28,
-  },
+  placeholderText: { color: "#FFF", fontWeight: "bold", fontSize: 28 },
   info: { flex: 1 },
   name: { fontSize: 16, fontWeight: "bold", color: "#333" },
   profession: { fontSize: 14, color: "#666", marginTop: 2 },
   socialContainer: { flexDirection: "row", marginTop: 4 },
   error: { color: "red", textAlign: "center", marginTop: 20 },
+  noData: { textAlign: "center", marginTop: 20, color: "#888" },
 });

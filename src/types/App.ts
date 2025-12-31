@@ -42,6 +42,5 @@ VideoCallScreen: {
   role: 'doctor' | 'user';
 
 };
-
-};
-
+AllActivePartnerScreen: undefined;
+}

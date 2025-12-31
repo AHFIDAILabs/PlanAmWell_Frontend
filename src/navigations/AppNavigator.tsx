@@ -1,7 +1,8 @@
-// Navigation/AppNavigator.tsx
-import React from "react";
+// Navigation/AppNavigator.tsx - FIXED
+import React, { useEffect } from "react";
 import { createStackNavigator } from "@react-navigation/stack";
 import { View, ActivityIndicator, StyleSheet, Text } from "react-native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { useAuth } from "../hooks/useAuth";
 import AuthStack from "./AuthStack";
 import HomeScreen from "../screens/home/HomeScreen";
@@ -18,20 +19,20 @@ import { DoctorScreen } from "../screens/doctor/DoctorScreen";
 import ArticleDetailScreen from "../screens/advocacy/articleDetailScreen";
 import AllArticlesScreen from "../screens/advocacy/AllContentScreen";
 import SettingsScreen from "../screens/setting/Setting";
-import {NotificationsScreen} from "../screens/notification/notification";
+import { NotificationsScreen } from "../screens/notification/notification";
 import AllDoctorsScreen from "../screens/doctor/AllDoctorsScreen";
 import DoctorDashboardScreen from "../screens/doctor/DoctorDashboard";
 import { IDoctor } from "../types/backendType";
-import {BookAppointmentScreen} from "../screens/appointments/BookAppointmentScreen"
+import { BookAppointmentScreen } from "../screens/appointments/BookAppointmentScreen";
 import { MyAppointmentsScreen } from "../screens/appointments/MyAppointmentsScreen";
 import DoctorProfileScreen from "../screens/doctor/DoctorProfileScreen";
 import DoctorAvailabilityScreen from "../screens/doctor/DoctorAvailabilityScreen";
 import { ConsultationHistoryScreen } from "../screens/appointments/ConsultationHistoryScreen";
-
-
-import { AppStackParamList } from "../types/App";
+import AllActivePartnerScreen from "../screens/partner/AllActivePartnerScreen";
 import DoctorAppointmentsScreen from "../screens/doctor/DoctorAppointmentsScreen";
 import VideoCallScreen from "../screens/video/VideoCallScreen";
+
+import { AppStackParamList } from "../types/App";
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
@@ -44,7 +45,12 @@ const LoadingScreen = () => (
 
 // Helper to check if user is a doctor
 const isDoctor = (user: any): user is IDoctor => {
-  return user && 'specialization' in user && 'licenseNumber' in user;
+  return user && "specialization" in user && "licenseNumber" in user;
+};
+
+// Helper to check if user is an approved doctor
+const isApprovedDoctor = (user: any): boolean => {
+  return isDoctor(user) && user.status === "approved";
 };
 
 export default function AppNavigator() {
@@ -53,83 +59,75 @@ export default function AppNavigator() {
   if (loading) return <LoadingScreen />;
 
   const getInitialRoute = (): keyof AppStackParamList => {
-    // console.log('🔍 Determining initial route...');
-    // console.log('   hasSeenOnboarding:', hasSeenOnboarding);
-    // console.log('   isAuthenticated:', isAuthenticated);
-    // console.log('   isAnonymous:', isAnonymous);
-    // console.log('   user:', user);
-
-   
     if (!hasSeenOnboarding) {
-      console.log('   → AuthStack (Onboarding)');
       return "AuthStack";
     }
 
-
     if (isAuthenticated && isAnonymous) {
-      console.log('   → HomeScreen (Guest)');
       return "HomeScreen";
     }
 
-   
     if (isAuthenticated && !isAnonymous && user) {
-    
-      if (isDoctor(user)) {
-        console.log('   User is a doctor, status:', user.status);
-    
-        if (user.status === 'approved') {
-          console.log('   → DoctorDashScreen (Approved Doctor)');
-          return "DoctorDashScreen";
-        } else {
-          console.log('   → HomeScreen (Doctor not approved)');
-          return "HomeScreen";
-        }
+      if (isApprovedDoctor(user)) {
+        return "DoctorDashScreen";
       }
-     
-      console.log('   → HomeScreen (Regular User)');
       return "HomeScreen";
     }
 
-
-    console.log('   → AuthStack (Not authenticated)');
     return "AuthStack";
   };
 
   const initialRoute = getInitialRoute();
 
   return (
-    <RootStack.Navigator 
+    <RootStack.Navigator
       initialRouteName={initialRoute}
       screenOptions={{ headerShown: false }}
     >
+      {/* Auth */}
       <RootStack.Screen name="AuthStack" component={AuthStack} />
-      
+
+      {/* Main Screens */}
       <RootStack.Screen name="HomeScreen" component={HomeScreen} />
       <RootStack.Screen name="ProductsScreen" component={ProductsScreen} />
       <RootStack.Screen name="ProductList" component={Productlist} />
       <RootStack.Screen name="AllDoctorScreen" component={AllDoctorsScreen} />
-      
+
+      {/* Profile & Settings */}
       <RootStack.Screen name="ProfileScreen" component={ProfileScreen} />
-      
-      <RootStack.Screen name="CheckoutScreen" component={CheckoutScreen} />
-      <RootStack.Screen name="PaymentMethodScreen" component={PaymentMethodScreen} />
-      <RootStack.Screen name="WebViewScreen" component={WebViewScreen} />
-      <RootStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
       <RootStack.Screen name="SettingsScreen" component={SettingsScreen} />
       <RootStack.Screen name="PrivacySettingsScreen" component={PrivacySettingsScreen} />
       <RootStack.Screen name="HelpSupportScreen" component={HelpSupportScreen} />
+
+      {/* Cart & Payment */}
+      <RootStack.Screen name="CheckoutScreen" component={CheckoutScreen} />
+      <RootStack.Screen name="PaymentMethodScreen" component={PaymentMethodScreen} />
+      <RootStack.Screen name="WebViewScreen" component={WebViewScreen} />
+
+      {/* Notifications */}
+      <RootStack.Screen name="NotificationsScreen" component={NotificationsScreen} />
+
+      {/* Doctor Screens */}
       <RootStack.Screen name="DoctorScreen" component={DoctorScreen} />
-      <RootStack.Screen name="ArticleDetailScreen" component={ArticleDetailScreen} />
-      <RootStack.Screen name="AllArticleScreen" component={AllArticlesScreen} />
       <RootStack.Screen name="DoctorDashScreen" component={DoctorDashboardScreen} />
-      <RootStack.Screen name="BookAppointmentScreen" component={BookAppointmentScreen} />
-      <RootStack.Screen name="MyAppointments" component={MyAppointmentsScreen} />
       <RootStack.Screen name="DoctorAppointment" component={DoctorAppointmentsScreen} />
       <RootStack.Screen name="DoctorProfileScreen" component={DoctorProfileScreen} />
-      <RootStack.Screen name="DoctorAvailability" component={DoctorAvailabilityScreen}/>
+      <RootStack.Screen name="DoctorAvailability" component={DoctorAvailabilityScreen} />
+
+      {/* Appointments */}
+      <RootStack.Screen name="BookAppointmentScreen" component={BookAppointmentScreen} />
+      <RootStack.Screen name="MyAppointments" component={MyAppointmentsScreen} />
       <RootStack.Screen name="ConsultationHistory" component={ConsultationHistoryScreen} />
       <RootStack.Screen name="VideoCallScreen" component={VideoCallScreen} />
-      
+
+      {/* Advocacy */}
+      <RootStack.Screen name="ArticleDetailScreen" component={ArticleDetailScreen} />
+      <RootStack.Screen name="AllArticleScreen" component={AllArticlesScreen} />
+
+      {/* Partners */}
+      <RootStack.Screen name="AllActivePartnerScreen" component={AllActivePartnerScreen} />
+
+      {/* Modals */}
       <RootStack.Screen
         name="AmWellChatModal"
         component={AmWellChatModal}

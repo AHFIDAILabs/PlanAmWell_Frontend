@@ -1,15 +1,15 @@
-import React, { useContext, useState } from "react";
+// components/common/BottomBar.tsx - FIXED
+import React, { useContext, useState, useMemo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { CartContext } from "../../context/CartContext";
 import CartModal from "../product/cartModal";
 
 interface BottomBarProps {
   activeRoute: string;
-cartItemCount: number // Mock cart count
-
+  cartItemCount?: number;
 }
 
 const BottomBar = ({ activeRoute }: BottomBarProps) => {
@@ -17,22 +17,73 @@ const BottomBar = ({ activeRoute }: BottomBarProps) => {
   const { cart } = useContext(CartContext);
 
   const [cartModalVisible, setCartModalVisible] = useState(false);
-const cartCount = cart?.items?.length || 0;
+  const cartCount = cart?.items?.length || 0;
+
   const openCart = () => setCartModalVisible(true);
 
-  const tabs = [
+  const allTabs = [
     { name: "Home", icon: "home", route: "HomeScreen" },
     { name: "Doctors", icon: "heart", route: "AllDoctorScreen" },
     { name: "Cart", icon: "shopping-cart", action: openCart },
     { name: "Products", icon: "box", route: "ProductsScreen" },
     { name: "Profile", icon: "user", route: "ProfileScreen" },
+    { name: "Partners", icon: "users", route: "AllActivePartnerScreen" },
+    { name: "Notifications", icon: "bell", route: "NotificationsScreen" },
   ];
+
+  // Dynamically choose which tabs to display
+  const displayedTabs = useMemo(() => {
+    const homeTab = allTabs.find((tab) => tab.route === "HomeScreen")!;
+    const cartTab = allTabs.find((tab) => tab.name === "Cart")!;
+    const activeTab = allTabs.find(
+      (tab) =>
+        tab.route === activeRoute &&
+        ![homeTab.route, cartTab.name].includes(tab.route || tab.name)
+    );
+    const remainingTabs = allTabs.filter(
+      (tab) => tab !== homeTab && tab !== cartTab && tab !== activeTab
+    );
+
+    // Shuffle remaining tabs randomly
+    const shuffled = remainingTabs.sort(() => Math.random() - 0.5);
+
+    const finalTabs = [homeTab, cartTab];
+    if (activeTab) finalTabs.push(activeTab);
+
+    // Fill remaining slots (max 5)
+    for (let i = 0; finalTabs.length < 5 && i < shuffled.length; i++) {
+      finalTabs.push(shuffled[i]);
+    }
+
+    return finalTabs;
+  }, [activeRoute]);
+
+  const handleNavigate = (tab: typeof allTabs[0]) => {
+    if (tab.action) {
+      tab.action();
+      return;
+    }
+
+    // ✅ Special handling for Home - use reset to ensure it's the root
+    if (tab.route === "HomeScreen") {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "HomeScreen" }],
+        })
+      );
+      return;
+    }
+
+    // ✅ Regular navigation for other tabs
+    navigation.navigate(tab.route as never);
+  };
 
   return (
     <>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
-          {tabs.map((tab) => {
+          {displayedTabs.map((tab) => {
             const isActive = activeRoute === tab.route;
             const color = isActive ? "#D81E5B" : "#777";
 
@@ -40,16 +91,13 @@ const cartCount = cart?.items?.length || 0;
               <TouchableOpacity
                 key={tab.name}
                 style={styles.tabButton}
-                onPress={() =>
-                  tab.action ? tab.action() : navigation.navigate(tab.route as never)
-                }
+                onPress={() => handleNavigate(tab)}
               >
                 {tab.name === "Cart" && cartCount > 0 && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
                   </View>
                 )}
-
                 <Feather name={tab.icon as any} size={24} color={color} />
                 <Text style={[styles.tabText, { color }]}>{tab.name}</Text>
               </TouchableOpacity>

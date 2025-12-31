@@ -16,7 +16,7 @@ export default function AboutCard() {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#FFECEF', padding: 20, borderRadius: 16 },
+  card: { backgroundColor: '#FFECEF', padding: 20, borderRadius: 16 , marginTop: 16},
   title: { fontFamily: 'Inter_700Bold', color: '#D81E5B', fontSize: 17, marginBottom: 8 },
   desc: { color: '#444', lineHeight: 22, marginBottom: 16 },
   link: { color: '#D81E5B', fontFamily: 'Inter_600SemiBold' },

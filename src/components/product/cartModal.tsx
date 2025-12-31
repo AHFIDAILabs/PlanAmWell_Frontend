@@ -7,12 +7,15 @@ import {
   Modal,
   Animated,
   FlatList,
+  Dimensions,
+  Platform,
 } from "react-native";
 import { CartContext } from "../../context/CartContext";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { AppStackParamList } from "../../types/App";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface CartModalProps {
   visible: boolean;
@@ -20,11 +23,12 @@ interface CartModalProps {
 }
 
 type NavigationProp = StackNavigationProp<AppStackParamList>;
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const CartModal = ({ visible, onClose }: CartModalProps) => {
   const { cart, removeItem, refreshCart, updateItem } = useContext(CartContext);
   const navigation = useNavigation<NavigationProp>();
-  const slideAnim = useRef(new Animated.Value(400)).current;
+  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useEffect(() => {
     if (visible) {
@@ -90,7 +94,10 @@ const CartModal = ({ visible, onClose }: CartModalProps) => {
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
 
       <Animated.View
-        style={[styles.modalContainer, { transform: [{ translateY: slideAnim }] }]}
+        style={[
+          styles.modalContainer,
+          { transform: [{ translateY: slideAnim }] },
+        ]}
       >
         <View style={styles.header}>
           <Text style={styles.headerTitle}>My Cart</Text>
@@ -105,15 +112,18 @@ const CartModal = ({ visible, onClose }: CartModalProps) => {
               data={cart.items}
               renderItem={renderItem}
               keyExtractor={(item, index) => item.drugId ?? index.toString()}
-              contentContainerStyle={{ paddingBottom: 40 }}
+              contentContainerStyle={{
+                paddingBottom: Platform.OS === "ios" ? 120 : 100,
+              }}
+              style={{ maxHeight: SCREEN_HEIGHT * 0.6 }}
             />
 
-            <View style={styles.footer}>
+            <SafeAreaView edges={["bottom"]} style={styles.footer}>
               <Text style={styles.totalText}>Total: ₦{totalAmount}</Text>
               <TouchableOpacity style={styles.checkoutBtn} onPress={handleCheckoutPress}>
                 <Text style={styles.checkoutText}>Checkout</Text>
               </TouchableOpacity>
-            </View>
+            </SafeAreaView>
           </>
         ) : (
           <View style={styles.emptyContainer}>
@@ -128,7 +138,6 @@ const CartModal = ({ visible, onClose }: CartModalProps) => {
 
 export default CartModal;
 
-// -------------------- Styles --------------------
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
   modalContainer: {
@@ -154,14 +163,13 @@ const styles = StyleSheet.create({
   itemName: { flex: 1, fontWeight: "600", fontSize: 15 },
   itemPrice: { marginRight: 15, fontWeight: "700", color: "#D81E5B" },
   removeBtn: { backgroundColor: "#FFE6EC", padding: 6, borderRadius: 6 },
-  footer: { paddingVertical: 15, borderTopWidth: 1, borderTopColor: "#EEE" },
+  footer: { paddingVertical: 15, borderTopWidth: 1, borderTopColor: "#EEE", backgroundColor: "#FFF" },
   totalText: { fontSize: 17, fontWeight: "700", marginBottom: 10 },
   checkoutBtn: {
     backgroundColor: "#D81E5B",
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10,
   },
   checkoutText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
   emptyContainer: { marginTop: 120, justifyContent: "center", alignItems: "center" },
@@ -179,4 +187,3 @@ const styles = StyleSheet.create({
   qtyBtn: { padding: 5 },
   qtyText: { paddingHorizontal: 8, fontSize: 15, fontWeight: "700", color: "#222" },
 });
-

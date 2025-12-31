@@ -1,8 +1,9 @@
+// components/common/DoctorBottomBar.tsx - FIXED
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
 import { IDoctor } from "../../types/backendType";
@@ -14,35 +15,44 @@ interface DoctorBottomBarProps {
   messagesCount?: number;
 }
 
-
-
 const DoctorBottomBar = ({ activeRoute, messagesCount = 0 }: DoctorBottomBarProps) => {
-const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
+  const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
   const { colors } = useTheme();
-  const { user } = useAuth(); // Get logged-in doctor
+  const { user } = useAuth();
 
   const tabs = [
     { name: "Home", icon: "home-outline", route: "DoctorDashScreen" },
     { name: "Appointments", icon: "calendar-outline", route: "DoctorAppointment" },
-    { name: "Messages", icon: "chatbubble-outline", route: "DoctorMessagesScreen" },
     { name: "Profile", icon: "person-outline", route: "DoctorProfileScreen" },
+    { name: "Notifications", icon: "notifications-outline", route: "NotificationsScreen" },
   ];
 
-  const openAddAppointment = () => console.log("Add New Appointment");
-
-const handleNavigate = (tab: typeof tabs[0]) => {
-  if (tab.route === "DoctorProfileScreen") {
-    // Extract doctor from AuthEntity
-    const doctor = (user as any)?.doctor || user; // fallback if user is doctor itself
-    if (!doctor) {
-      console.warn("No doctor found in user object");
+  const handleNavigate = (tab: typeof tabs[0]) => {
+    // ✅ Special handling for Home - use reset to ensure it's the root
+    if (tab.route === "DoctorDashScreen") {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "DoctorDashScreen" }],
+        })
+      );
       return;
     }
-    (navigation.navigate as any)(tab.route, { doctor });
-  } else {
-    (navigation.navigate as any)(tab.route);
-  }
-};
+
+    // ✅ Special handling for Profile - pass doctor data
+    if (tab.route === "DoctorProfileScreen") {
+      const doctor = (user as any)?.doctor || user;
+      if (!doctor) {
+        console.warn("❌ No doctor found in user object");
+        return;
+      }
+      navigation.navigate(tab.route, { doctor } as any);
+      return;
+    }
+
+    // ✅ Regular navigation for other tabs
+    navigation.navigate(tab.route as any);
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -96,7 +106,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: "600",
   },
-
   badge: {
     position: "absolute",
     bottom: 52,

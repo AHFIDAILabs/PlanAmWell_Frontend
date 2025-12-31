@@ -4,17 +4,19 @@ import { IProduct } from '../types/backendType';
 const API_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 
 export interface ChatbotMessage {
-    message: string;
+    message?: string;
     userId?: string;
     sessionId?: string;
+    file?: { uri: string; type: string; name: string }; // for voice messages
 }
 
 export interface ChatbotResponse {
     success: boolean;
     response: string;
-    intent: 'buy' | 'info' | 'appointment' | 'general' | 'greeting';
+    intent: 'buy' | 'info' | 'appointment' | 'general' | 'greeting' | 'health';
     products: IProduct[];
     sessionId: string;
+    audioUrl?: string; // optional: URL for bot audio playback
 }
 
 export interface ConversationHistory {
@@ -29,6 +31,7 @@ export interface ConversationHistory {
             products?: IProduct[];
             intent?: string;
             timestamp: Date;
+            audioUrl?: string;
         }>;
         isActive: boolean;
         lastActivity: Date;
@@ -36,10 +39,29 @@ export interface ConversationHistory {
 }
 
 export const chatbotService = {
-    // Send message to chatbot
+    // Send message (text or audio)
     sendMessage: async (data: ChatbotMessage): Promise<ChatbotResponse> => {
         try {
-            const response = await axios.post(`${API_URL}/api/v1/chatbot/message`, data);
+            let response;
+            if (data.file) {
+                // Send as multipart/form-data
+                const formData = new FormData();
+                formData.append('file', {
+                    uri: data.file.uri,
+                    name: data.file.name,
+                    type: data.file.type,
+                } as any);
+                if (data.userId) formData.append('userId', data.userId);
+                if (data.sessionId) formData.append('sessionId', data.sessionId);
+
+                response = await axios.post(`${API_URL}/api/v1/chatbot/message`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+            } else {
+                // Send as JSON
+                response = await axios.post(`${API_URL}/api/v1/chatbot/message`, data);
+            }
+
             return response.data;
         } catch (error: any) {
             console.error('Error sending message to chatbot:', error.response?.data || error.message);
@@ -69,18 +91,16 @@ export const chatbotService = {
         }
     },
 
-    // Get user conversations (authenticated users only)
+    // Get user conversations (authenticated)
     getUserConversations: async (userId: string, token: string): Promise<any> => {
         try {
             const response = await axios.get(`${API_URL}/api/v1/chatbot/conversations/${userId}`, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
+                headers: { Authorization: `Bearer ${token}` },
             });
             return response.data;
         } catch (error: any) {
             console.error('Error fetching user conversations:', error.response?.data || error.message);
             throw error;
         }
-    }
+    },
 };

@@ -177,10 +177,13 @@ export interface AuthResponse {
 /**
  * Notification Interface
  */
+export type NotificationOwnerType = "User" | "Doctor";
+
 export interface INotification {
   _id: string;
   userId: string;
-  type: "supplement" | "order" | "appointment" | "article" | "system";
+  userType: NotificationOwnerType; // 👈 add this
+  type: "supplement" | "order" | "appointment" | "article" | "system" | "call_ended";
   title: string;
   message: string;
   isRead: boolean;
@@ -195,6 +198,7 @@ export interface INotification {
   };
   createdAt: string;
 }
+
 
 /**
  * Generic API Response Interface
@@ -236,14 +240,15 @@ export interface IAppointmentsSummary {
 }
 
 
+
 export interface IAppointment {
   _id?: string;
   userId: string;
   doctorId: string | IDoctor;
   consultationType?: "video" | "in-person" | "chat" | "audio";
 
-  scheduledAt: Date;                 // requested appointment time
-  proposedAt?: Date;                 // doctor-proposed new time (if rescheduled)
+  scheduledAt: Date;
+  proposedAt?: Date;
 
   duration?: number;
 
@@ -256,21 +261,22 @@ export interface IAppointment {
     | "rescheduled"
     | "in-progress";
 
-  callStatus?: "not-started" | "in-progress" | "ended";
+  // ✅ FIXED: Added "ringing" and "idle" to callStatus
+  callStatus?: "idle" | "ringing" | "in-progress" | "ended";
+  
   callStartedAt?: Date;
   callEndedAt?: Date;
-  callEndedBy?: "Doctor" | "User";
-  callDuration?: number;             // in minutes
+  callEndedBy?: "Doctor" | "User" | "system";
+  callDuration?: number;
   callQuality?: "excellent" | "good" | "fair" | "poor";
 
   paymentStatus?: "pending" | "paid" | "failed";
 
-  reason?: string;                   // reason for visit
-  notes?: string;                    // doctor or user notes
+  reason?: string;
+  notes?: string;
 
   shareUserInfo?: boolean;
 
-  // snapshot of user info if they toggle "Share My Info"
   patientSnapshot?: {
     name?: string;
     email?: string;

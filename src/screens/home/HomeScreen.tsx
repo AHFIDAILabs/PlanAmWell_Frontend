@@ -18,7 +18,7 @@ import { IProduct } from '../../types/backendType';
 import { AppStackParamList } from '../../types/App';
 import Toast from 'react-native-toast-message';
 import AdvocacyCarousel from '../../components/advocacy/AdvocacyCarousel';
-
+import SocialSticky  from '../../components/socials/socialMedia';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CAROUSEL_CARD_MARGIN = 10;
@@ -180,6 +180,7 @@ export default function HomeScreen() {
     
     return (
         <View style={[styles.fullContainer, darkMode && styles.fullContainerDark]}> 
+        <SocialSticky />
             <ScrollView 
                 showsVerticalScrollIndicator={false} 
                 contentContainerStyle={{ 
@@ -201,11 +202,14 @@ export default function HomeScreen() {
 
                 <AdvocacyCarousel />
 
-                <SectionHeader title="Our Partners" />
-                <View style={styles.partnerRow}>
+<SectionHeader 
+  title="Our Partners" 
+  onLinkPress={() => navigation.navigate("AllActivePartnerScreen" as any)} 
+/>
+                
                     <PartnerCard />
-                    <PartnerCard />
-                </View>
+                   
+               
 
                 <AboutCard />
             </ScrollView>
