@@ -313,7 +313,7 @@ export const NotificationsScreen = () => {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <View style={styles.container}>
-        {/* ...rest of your UI unchanged... */}
+
         <FlatList
           data={notifications}
           keyExtractor={(item) => item._id}
@@ -325,11 +325,11 @@ export const NotificationsScreen = () => {
               <Text style={styles.emptyText}>
                 {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
               </Text>
-              {!isSocketConnected && (
+              {/* {!isSocketConnected && (
                 <TouchableOpacity style={styles.reconnectButton} onPress={() => socketService.reconnect()}>
                   <Text style={styles.reconnectButtonText}>🔄 Reconnect Socket</Text>
                 </TouchableOpacity>
-              )}
+              )} */}
             </View>
           }
         />
