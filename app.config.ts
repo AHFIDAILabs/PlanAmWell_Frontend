@@ -7,6 +7,12 @@ const config: ExpoConfig = {
   slug: 'PlanAmWell',
   version: '1.0.0',
   orientation: 'portrait',
+    updates: {
+    url: `https://u.expo.dev/b17d8d1f-7620-4a54-9baa-9166dc7a27ea`,
+  },
+  runtimeVersion: {
+    policy: 'appVersion',
+  },
   icon: './src/assets/images/logo1.png',
   userInterfaceStyle: 'light',
   newArchEnabled: true,
