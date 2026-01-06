@@ -13,7 +13,7 @@ const config: ExpoConfig = {
   runtimeVersion: {
     policy: 'appVersion',
   },
-  icon: './src/assets/images/logo1.png',
+  icon: './src/assets/plan.png',
   userInterfaceStyle: 'light',
   newArchEnabled: true,
   plugins: [
@@ -21,7 +21,7 @@ const config: ExpoConfig = {
     [
       'expo-notifications',
       {
-        icon: './src/assets/images/logo1.png',
+        icon: './src/assets/plan.png',
         color: '#D81E5B',
       },
     ],
@@ -29,7 +29,7 @@ const config: ExpoConfig = {
 './src/plugins/withAgora', 
   ],
   splash: {
-    image: './src/assets/images/logo1.png',
+    image: './src/assets/plan.png',
     resizeMode: 'contain',
     backgroundColor: '#ffffff',
   },
@@ -43,7 +43,7 @@ const config: ExpoConfig = {
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './src/assets/images/logo1.png',
+      foregroundImage: './src/assets/plan.png',
       backgroundColor: '#ffffff',
     },
     package: 'com.planamwell.bundle',
@@ -62,7 +62,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
   },
   web: {
-    favicon: './assets/favicon.png',
+    favicon: './src/assets/plan.png',
   },
   extra: {
     eas: {

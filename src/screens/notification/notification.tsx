@@ -1,4 +1,4 @@
-// Enhanced NotificationsScreen.tsx - FULLY TYPED & FIXED DATES
+// Enhanced NotificationsScreen.tsx - FULLY FIXED
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -28,6 +28,20 @@ import {
 import { IAppointment, INotification } from '../../types/backendType';
 import BottomBar from '../../components/common/BottomBar';
 
+// Extended status type including computed statuses
+type ExtendedStatus = 
+  | "pending" 
+  | "confirmed" 
+  | "in-progress" 
+  | "completed" 
+  | "cancelled" 
+  | "rejected" 
+  | "rescheduled"
+  | "expired"
+  | "call-ended"
+  | "confirmed-upcoming"
+  | "about-to-start";
+
 const extractId = (field: any): string => {
   if (!field) return '';
   if (typeof field === 'string') return field;
@@ -39,7 +53,6 @@ const extractId = (field: any): string => {
 const parseDate = (dateField: any): Date | null => {
   if (!dateField) return null;
 
-  // MongoDB extended JSON { $date: { $numberLong: "..." } }
   if (typeof dateField === 'object') {
     if ('$date' in dateField) {
       if (typeof dateField.$date === 'object' && '$numberLong' in dateField.$date) {
@@ -49,9 +62,126 @@ const parseDate = (dateField: any): Date | null => {
     }
   }
 
-  // If string or number
   const d = new Date(dateField);
   return isNaN(d.getTime()) ? null : d;
+};
+
+// --- CHECK IF APPOINTMENT TIME HAS EXPIRED ---
+const hasAppointmentExpired = (scheduledAt: Date): boolean => {
+  const now = new Date();
+  const appointmentTime = new Date(scheduledAt);
+  const diffMinutes = (now.getTime() - appointmentTime.getTime()) / 60000;
+  
+  // Appointment expires 2 hours after scheduled time
+  return diffMinutes > 120;
+};
+
+// --- CHECK IF APPOINTMENT IS JOINABLE ---
+const isAppointmentJoinable = (appointment: IAppointment, currentRole: string): boolean => {
+  const now = new Date();
+  const scheduledAt = parseDate(appointment.scheduledAt);
+  
+  if (!scheduledAt) return false;
+  
+  const diffMinutes = (scheduledAt.getTime() - now.getTime()) / 60000;
+  
+  // Terminal states - never joinable
+  if (['cancelled', 'rejected', 'completed'].includes(appointment.status)) {
+    return false;
+  }
+  
+  // Call already ended
+  if (appointment.callStatus === 'ended') {
+    return false;
+  }
+  
+  // Check if expired (more than 2 hours past scheduled time)
+  if (hasAppointmentExpired(scheduledAt)) {
+    return false;
+  }
+  
+  // Only confirmed appointments can be joined
+  if (appointment.status !== 'confirmed') {
+    return false;
+  }
+  
+  // Doctor can join 15 minutes before
+  if (currentRole === 'doctor') {
+    return diffMinutes <= 15 && diffMinutes >= -120;
+  }
+  
+  // Patient can join when doctor has started or within the time window
+  return diffMinutes <= 15 && diffMinutes >= -120;
+};
+
+// --- GET APPOINTMENT STATUS MESSAGE ---
+const getAppointmentStatusMessage = (appointment: IAppointment): { canJoin: boolean; message: string; title: string } => {
+  const now = new Date();
+  const scheduledAt = parseDate(appointment.scheduledAt);
+  
+  if (!scheduledAt) {
+    return { canJoin: false, message: 'Invalid appointment time', title: 'Error' };
+  }
+  
+  const diffMinutes = (scheduledAt.getTime() - now.getTime()) / 60000;
+  
+  // Terminal states
+  if (appointment.status === 'cancelled') {
+    return { canJoin: false, message: 'This appointment was cancelled.', title: 'Appointment Cancelled' };
+  }
+  
+  if (appointment.status === 'rejected') {
+    return { canJoin: false, message: 'This appointment was rejected by the doctor.', title: 'Appointment Rejected' };
+  }
+  
+  if (appointment.status === 'completed') {
+    return { canJoin: false, message: 'This appointment has been completed.', title: 'Appointment Completed' };
+  }
+  
+  // Check if expired
+  if (hasAppointmentExpired(scheduledAt)) {
+    return { 
+      canJoin: false, 
+      message: 'This appointment has expired. The consultation window ended 2 hours after the scheduled time.\n\nWould you like to book a new appointment?', 
+      title: 'Appointment Expired' 
+    };
+  }
+  
+  // Call ended but within window
+  if (appointment.callStatus === 'ended') {
+    return { 
+      canJoin: false, 
+      message: 'This call has ended. Would you like to book another appointment?', 
+      title: 'Call Ended' 
+    };
+  }
+  
+  // Too early
+  if (diffMinutes > 15) {
+    const hoursUntil = Math.floor(diffMinutes / 60);
+    const minutesUntil = Math.ceil(diffMinutes % 60);
+    const timeString = hoursUntil > 0 
+      ? `${hoursUntil} hour${hoursUntil > 1 ? 's' : ''} ${minutesUntil} minute${minutesUntil > 1 ? 's' : ''}`
+      : `${minutesUntil} minute${minutesUntil > 1 ? 's' : ''}`;
+    
+    return { 
+      canJoin: false, 
+      message: `You can join 15 minutes before the scheduled time.\n\nTime remaining: ${timeString}`, 
+      title: 'Too Early' 
+    };
+  }
+  
+  // Pending appointment
+  if (appointment.status === 'pending') {
+    return { 
+      canJoin: false, 
+      message: 'This appointment is pending confirmation from the doctor.', 
+      title: 'Pending Confirmation' 
+    };
+  }
+  
+  // Can join
+  return { canJoin: true, message: '', title: '' };
 };
 
 export const NotificationsScreen = () => {
@@ -111,6 +241,14 @@ export const NotificationsScreen = () => {
                 const appointment = await getAppointmentById(appointmentId);
                 if (!appointment) throw new Error('Appointment not found');
 
+                // Check if appointment is still joinable
+                const statusCheck = getAppointmentStatusMessage(appointment);
+                if (!statusCheck.canJoin) {
+                  Alert.alert(statusCheck.title, statusCheck.message);
+                  removeActiveCallAlert(appointmentId);
+                  return;
+                }
+
                 navigation.navigate('VideoCallScreen', {
                   appointmentId: appointment._id,
                   name: nameToShow,
@@ -165,19 +303,6 @@ export const NotificationsScreen = () => {
       return [];
     } finally {
       setLoadingAppointments(false);
-    }
-  };
-
-  const testConnection = () => {
-    const info = socketService.getConnectionInfo();
-    if (info.connected) {
-      socketService.ping();
-      Alert.alert('✅ Socket Connected', `Transport: ${info.transport}\nSocket ID: ${info.socketId}`);
-    } else {
-      Alert.alert('❌ Socket Disconnected', 'Try reconnecting?', [
-        { text: 'Reconnect', onPress: () => socketService.reconnect() },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
     }
   };
 
@@ -249,18 +374,52 @@ export const NotificationsScreen = () => {
       if (!appointmentId) return Alert.alert('Error', 'Appointment ID missing');
 
       const appointment = await getAppointmentById(appointmentId);
-      if (!appointment) return Alert.alert('Appointment not found');
+      if (!appointment) return Alert.alert('Error', 'Appointment not found');
 
       appointment.scheduledAt = parseDate(appointment.scheduledAt) || new Date();
 
-      const now = new Date();
-      const diffMinutes = (appointment.scheduledAt.getTime() - now.getTime()) / 60000;
-      const callStatus = await getCallStatus(appointment._id!);
-      const canJoin =
-        (callStatus.success && callStatus.data?.isActive) ||
-        (currentRole === 'doctor' && diffMinutes <= 15 && appointment.status === 'confirmed');
+      // Check appointment status
+      const statusCheck = getAppointmentStatusMessage(appointment);
+      
+      if (!statusCheck.canJoin) {
+        // Show appropriate message based on status
+        if (hasAppointmentExpired(appointment.scheduledAt as Date) || 
+            appointment.callStatus === 'ended') {
+          Alert.alert(
+            statusCheck.title,
+            statusCheck.message,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Book New Appointment',
+                onPress: async () => {
+                  const doctorId =
+                    typeof appointment.doctorId === 'object'
+                      ? appointment.doctorId._id
+                      : appointment.doctorId;
 
-      if (canJoin) {
+                  navigation.navigate('BookAppointment', { doctorId });
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert(statusCheck.title, statusCheck.message);
+        }
+        
+        // Still show modal for doctors to manage appointments
+        if (currentRole === 'doctor') {
+          setSelectedAppointment(appointment);
+          setShowModal(true);
+        }
+        return;
+      }
+
+      // Check if call is active
+      try {
+        const callStatus = await getCallStatus(appointment._id!);
+        const isCallActive = callStatus.success && callStatus.data?.isActive;
+
         const nameToShow =
           currentRole === 'doctor'
             ? appointment.patientSnapshot?.name || 'Patient'
@@ -268,21 +427,45 @@ export const NotificationsScreen = () => {
             ? `${(appointment.doctorId as any).firstName} ${(appointment.doctorId as any).lastName || ''}`.trim()
             : 'Doctor';
 
-        navigation.navigate('VideoCallScreen', {
-          appointmentId: appointment._id,
-          name: nameToShow,
-          role: currentRole === 'doctor' ? 'Doctor' : 'User',
-          autoJoin: true,
-          fromNotification: true,
-        });
-        return;
-      }
-
-      if (currentRole === 'doctor') {
-        setSelectedAppointment(appointment);
-        setShowModal(true);
-      } else {
-        navigation.navigate('MyAppointments', { appointmentId });
+        if (isCallActive) {
+          // Call is active, join directly
+          navigation.navigate('VideoCallScreen', {
+            appointmentId: appointment._id,
+            name: nameToShow,
+            role: currentRole === 'doctor' ? 'Doctor' : 'User',
+            autoJoin: true,
+            fromNotification: true,
+          });
+        } else {
+          // Call not active yet
+          if (currentRole === 'doctor') {
+            // Doctors can start the call
+            setSelectedAppointment(appointment);
+            setShowModal(true);
+          } else {
+            // Patients see a prompt
+            Alert.alert(
+              'Call Not Started',
+              'The doctor has not started the call yet. You can wait or try again later.',
+              [
+                { text: 'OK', style: 'cancel' },
+                {
+                  text: 'View Appointment',
+                  onPress: () => navigation.navigate('MyAppointments', { appointmentId }),
+                },
+              ]
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Error checking call status:', error);
+        // On error, show appointment details
+        if (currentRole === 'doctor') {
+          setSelectedAppointment(appointment);
+          setShowModal(true);
+        } else {
+          navigation.navigate('MyAppointments', { appointmentId });
+        }
       }
     } catch (error: any) {
       console.error('Error handling notification:', error);
@@ -313,7 +496,6 @@ export const NotificationsScreen = () => {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <View style={styles.container}>
-
         <FlatList
           data={notifications}
           keyExtractor={(item) => item._id}
@@ -325,11 +507,6 @@ export const NotificationsScreen = () => {
               <Text style={styles.emptyText}>
                 {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
               </Text>
-              {/* {!isSocketConnected && (
-                <TouchableOpacity style={styles.reconnectButton} onPress={() => socketService.reconnect()}>
-                  <Text style={styles.reconnectButtonText}>🔄 Reconnect Socket</Text>
-                </TouchableOpacity>
-              )} */}
             </View>
           }
         />
@@ -370,27 +547,8 @@ export const NotificationsScreen = () => {
   );
 };
 
-// --- STYLES UNCHANGED ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  viewAllButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E3F2FD', justifyContent: 'center', alignItems: 'center' },
-  connectionIndicator: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  connected: { backgroundColor: '#e8f5e9' },
-  disconnected: { backgroundColor: '#ffebee' },
-  connectionText: { fontSize: 12, fontWeight: '600' },
-  filterContainer: { flexDirection: 'row', padding: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  filterTab: { flex: 1, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#f5f5f5', alignItems: 'center' },
-  activeFilter: { backgroundColor: '#2196F3' },
-  filterText: { fontSize: 14, fontWeight: '600', color: '#666' },
-  activeFilterText: { color: '#fff' },
-  quickActionBanner: { margin: 12, borderRadius: 12, backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BFDBFE' },
-  quickActionContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  quickActionText: { flex: 1 },
-  quickActionTitle: { fontSize: 16, fontWeight: '600', color: '#1E40AF', marginBottom: 2 },
-  quickActionSubtext: { fontSize: 13, color: '#64748B' },
   notificationItem: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   unreadNotification: { backgroundColor: '#f0f8ff' },
   notificationHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
@@ -400,8 +558,6 @@ const styles = StyleSheet.create({
   notificationTime: { color: '#999', fontSize: 12, marginTop: 8 },
   emptyContainer: { padding: 32, alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 16, marginTop: 16, marginBottom: 16 },
-  reconnectButton: { marginTop: 16, padding: 12, backgroundColor: '#2196F3', borderRadius: 8 },
-  reconnectButtonText: { color: '#fff', fontWeight: 'bold' },
   loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, color: '#fff', fontSize: 16, fontWeight: '600' },
 });

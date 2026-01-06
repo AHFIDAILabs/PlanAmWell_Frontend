@@ -253,13 +253,17 @@ export interface IAppointment {
   duration?: number;
 
   status:
-    | "pending"
-    | "confirmed"
-    | "cancelled"
-    | "completed"
-    | "rejected"
-    | "rescheduled"
-    | "in-progress";
+  | "pending" 
+  | "confirmed" 
+  | "in-progress" 
+  | "completed" 
+  | "cancelled" 
+  | "rejected" 
+  | "rescheduled"
+  | "expired"
+  | "call-ended"
+  | "confirmed-upcoming"
+  | "about-to-start";
 
   // ✅ FIXED: Added "ringing" and "idle" to callStatus
   callStatus?: "idle" | "ringing" | "in-progress" | "ended";
