@@ -28,6 +28,7 @@ import AppointmentModal from "../../components/appointment/AppointmentModal";
 import { useVideoCall } from "../../hooks/useVideoCall";
 import { useAppointmentCallStatus } from "../../hooks/useAppointmentCallStatus";
 import { notificationService } from "../../services/notification";
+import DoctorViewSwitcher from "../../components/doctor/DoctorViewSwitcher";
 
 const formatTime = (date: Date) =>
   date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -55,6 +56,8 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   const [checkingCallStatus, setCheckingCallStatus] = useState(false);
 
  const { getCallStatus } = useVideoCall();
+
+
   const {
     getEffectiveStatus,
     refreshCallStatus,
@@ -70,6 +73,14 @@ export default function DoctorDashboardScreen({ navigation }: any) {
     fetchAppointments();
     fetchAvailability();
   }, [authLoading, doctorUser]);
+
+  const handleViewSwitch = (view: 'dashboard' | 'home') => {
+  if (view === 'home') {
+    // Navigate to general HomeScreen
+    navigation.navigate('HomeScreen' as never);
+  }
+  // If view === 'dashboard', we're already here, so do nothing
+};
 
   const fetchAvailability = async () => {
     try {
@@ -132,6 +143,8 @@ export default function DoctorDashboardScreen({ navigation }: any) {
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
     return futureConfirmed[0] || null;
   };
+
+
 
   const handleAccept = async (appt: IAppointment) => {
     try {
@@ -490,6 +503,11 @@ export default function DoctorDashboardScreen({ navigation }: any) {
           </View>
         </LinearGradient>
 
+{/* View Switcher */}
+<DoctorViewSwitcher 
+  currentView="dashboard" 
+  onSwitchView={handleViewSwitch} 
+/>
 
         {/* Stats Row */}
         <View style={[styles.statsRow, { marginTop: 10 }]}>

@@ -19,6 +19,8 @@ import { AppStackParamList } from '../../types/App';
 import Toast from 'react-native-toast-message';
 import AdvocacyCarousel from '../../components/advocacy/AdvocacyCarousel';
 import SocialSticky  from '../../components/socials/socialMedia';
+import DoctorViewSwitcher from '../../components/doctor/DoctorViewSwitcher';
+import { IDoctor } from '../../types/backendType';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CAROUSEL_CARD_MARGIN = 10;
@@ -105,6 +107,7 @@ const DoctorSection = () => {
     const { doctors, loading, error } = useDoctors();
     const navigation = useNavigation<HomeScreenNavigation>();
     const { darkMode } = useTheme(); 
+    
 
     const handleSeeAll = () => {
         navigation.navigate('AllDoctorScreen' as any); 
@@ -168,6 +171,9 @@ export default function HomeScreen() {
     const navigation = useNavigation<HomeScreenNavigation>();
     const { darkMode } = useTheme();
 
+     // Check if user is a doctor
+    const isDoctor = user && 'status' in user && (user as IDoctor).status === 'approved';
+
     let greetingName = "Guest"; 
     if (user && 'name' in user && user.name) { 
         greetingName = user.name.split(' ')[0]; 
@@ -177,6 +183,13 @@ export default function HomeScreen() {
 
     const titleText = `Welcome, ${greetingName}!`;
     const BOTTOM_BAR_TOTAL_HEIGHT = 90; 
+
+
+    const handleViewSwitch = (view: 'dashboard' | 'home') => {
+        if (view === 'dashboard' && isDoctor) {
+            navigation.navigate('DoctorDashboardScreen' as never);
+        }
+    };
     
     return (
         <View style={[styles.fullContainer, darkMode && styles.fullContainerDark]}> 
@@ -194,6 +207,13 @@ export default function HomeScreen() {
                     subtitleColor={!isAnonymous ? '#D81E5B' : '#1A1A1A'}
                 />
 
+        {/* View Switcher - Only show for doctors */}
+                {isDoctor && (
+                    <DoctorViewSwitcher 
+                        currentView="home" 
+                        onSwitchView={handleViewSwitch} 
+                    />
+                )}
                 <AskAmWellCard />
 
                 <ProductSection navigation={navigation} /> 

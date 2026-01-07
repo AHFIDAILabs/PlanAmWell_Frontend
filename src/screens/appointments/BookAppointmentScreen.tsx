@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
+import { RFValue } from "react-native-responsive-fontsize";
 
 import { createAppointment } from "../../services/Appointment";
 import { AppStackParamList } from "../../types/App";
@@ -28,14 +29,12 @@ export const BookAppointmentScreen: React.FC = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
 
-  // Get doctor from route params; fallback to empty object
   const doctor = route.params?.doctor ?? { firstName: "", lastName: "", _id: "" };
 
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
-
   const [duration, setDuration] = useState(30);
   const [reason, setReason] = useState("");
   const [shareUserInfo, setShareUserInfo] = useState(true);
@@ -45,7 +44,6 @@ export const BookAppointmentScreen: React.FC = () => {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Autofill user info
   useEffect(() => {
     if (shareUserInfo && user) {
       setName(user.name || "");
@@ -58,7 +56,6 @@ export const BookAppointmentScreen: React.FC = () => {
     }
   }, [shareUserInfo, user]);
 
-  // Generate next 14 days
   const next14Days = useMemo(() => {
     const arr: { date: Date; day: string; dayNum: number }[] = [];
     for (let i = 0; i < 14; i++) {
@@ -190,6 +187,7 @@ export const BookAppointmentScreen: React.FC = () => {
         <TextInput
           style={styles.input}
           placeholder="Reason for appointment"
+          placeholderTextColor="#999"
           value={reason}
           onChangeText={setReason}
           multiline
@@ -197,6 +195,7 @@ export const BookAppointmentScreen: React.FC = () => {
         <TextInput
           style={styles.input}
           placeholder="Notes (optional)"
+          placeholderTextColor="#999"
           value={notes}
           onChangeText={setNotes}
           multiline
@@ -209,9 +208,9 @@ export const BookAppointmentScreen: React.FC = () => {
 
         {shareUserInfo && (
           <View style={styles.userInfo}>
-            <TextInput style={styles.input} placeholder="Full Name" value={name} onChangeText={setName} />
-            <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-            <TextInput style={styles.input} placeholder="Phone Number" value={phone} onChangeText={setPhone} />
+            <TextInput style={styles.input} placeholder="Full Name" placeholderTextColor="#999" value={name} onChangeText={setName} />
+            <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#999" value={email} onChangeText={setEmail} />
+            <TextInput style={styles.input} placeholder="Phone Number" placeholderTextColor="#999" value={phone} onChangeText={setPhone} />
           </View>
         )}
 
@@ -228,8 +227,8 @@ const styles = StyleSheet.create({
   headerBg: { position: "absolute", top: 0, width: "100%", height: 180 },
   container: { padding: 20, paddingTop: 50 },
 
-  title: { fontSize: 26, fontWeight: "800", marginBottom: 6, color: "#222" },
-  subtitle: { fontSize: 16, color: "#555", marginBottom: 20 },
+  title: { fontSize: RFValue(26), fontWeight: "800", marginBottom: 6, color: "#222" },
+  subtitle: { fontSize: RFValue(16), color: "#555", marginBottom: 20 },
 
   datePill: {
     width: 60,
@@ -244,11 +243,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  dateDay: { fontSize: 12, color: "#555" },
-  dateNum: { fontSize: 18, fontWeight: "600", color: "#222" },
+  dateDay: { fontSize: RFValue(12), color: "#555" },
+  dateNum: { fontSize: RFValue(18), fontWeight: "600", color: "#222" },
 
   inputButton: { borderWidth: 1, borderColor: "#ccc", padding: 14, borderRadius: 12, marginBottom: 16 },
-  inputButtonText: { fontSize: 16, color: "#333" },
+  inputButtonText: { fontSize: RFValue(16), color: "#333" },
 
   durationRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 16 },
   durationOption: {
@@ -259,7 +258,7 @@ const styles = StyleSheet.create({
     borderColor: "#D81E5B",
     backgroundColor: "#FFF0F6",
   },
-  durationText: { fontSize: 14, color: "#D81E5B" },
+  durationText: { fontSize: RFValue(14), color: "#D81E5B" },
 
   input: {
     borderWidth: 1,
@@ -267,15 +266,15 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     marginBottom: 16,
-    fontSize: 16,
+    fontSize: RFValue(16),
     color: "#333",
     backgroundColor: "#fff",
   },
 
   shareInfoRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  shareInfoText: { fontSize: 16, color: "#333", fontWeight: "500" },
+  shareInfoText: { fontSize: RFValue(16), color: "#333", fontWeight: "500" },
   userInfo: { marginBottom: 16 },
 
   button: { backgroundColor: "#D81E5B", paddingVertical: 16, borderRadius: 20, alignItems: "center", marginTop: 10 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: "#fff", fontSize: RFValue(16), fontWeight: "700" },
 });

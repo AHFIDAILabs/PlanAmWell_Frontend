@@ -9,6 +9,7 @@ import {
   Platform,
   PermissionsAndroid,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +57,10 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const [callDuration, setCallDuration] = useState(0);
   const [connectionQuality, setConnectionQuality] =
     useState<'excellent' | 'good' | 'poor'>('excellent');
+
+    const userImage = route.params?.userImage || 'https://placehold.co/200x200'; 
+const doctorImage = route.params?.doctorImage || 'https://placehold.co/200x200';
+
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -377,17 +382,24 @@ export default function VideoCallScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {isVideoOff && (
-          <View
-            style={[
-              styles.localVideoContainer,
-              styles.videoOffContainer,
-            ]}
-          >
-            <Ionicons name="videocam-off" size={32} color="#fff" />
-            <Text style={styles.videoOffText}>Camera Off</Text>
-          </View>
-        )}
+    {isVideoOff && (
+  <View
+    style={[
+      styles.localVideoContainer,
+      styles.videoOffContainer,
+    ]}
+  >
+    {/* Show profile image instead of camera-off icon */}
+    <Image
+      source={{ uri: role === 'Doctor' ? doctorImage : userImage }}
+      style={styles.localVideo}
+      resizeMode="cover"
+    />
+    <View style={styles.localLabel}>
+      <Text style={styles.localLabelText}>You</Text>
+    </View>
+  </View>
+)}
       </View>
 
       <View style={styles.controlsContainer}>
