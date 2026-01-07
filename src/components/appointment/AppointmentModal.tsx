@@ -245,49 +245,62 @@ export default function AppointmentModal({
             )}
           </ScrollView>
 
-          {/* ✅ ACTION BUTTONS */}
-          <View style={{ paddingVertical: 16 }}>
-            {/* Doctor: Pending appointments */}
-            {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
-              <View style={styles.actions}>
-                <TouchableOpacity style={[styles.button, styles.rejectButton]} onPress={() => onReject(appointment)}>
-                  <Text style={styles.buttonText}>Reject</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.button, styles.acceptButton]} onPress={() => onAccept(appointment)}>
-                  <Text style={styles.buttonText}>Accept</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+         {/* ACTION BUTTONS */}
+<View style={{ paddingVertical: 16 }}>
+  <ScrollView
+    horizontal={false}
+    contentContainerStyle={{ paddingBottom: 20 }}
+    showsVerticalScrollIndicator={false}
+  >
+    {/* Doctor: Pending appointments */}
+    {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.button, styles.rejectButton]}
+          onPress={() => onReject(appointment)}
+        >
+          <Text style={styles.buttonText}>Reject</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, styles.acceptButton]}
+          onPress={() => onAccept(appointment)}
+        >
+          <Text style={styles.buttonText}>Accept</Text>
+        </TouchableOpacity>
+      </View>
+    )}
 
-            {/* ✅ Doctor: Start/Rejoin call button (available within time window) */}
-            {showCallButton && (
-              <TouchableOpacity 
-                style={[styles.button, styles.callButton]} 
-                onPress={() => onJoinCall!(appointment)}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="videocam" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.buttonText}>{getCallButtonText()}</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+    {/* Doctor: Start/Rejoin call */}
+    {showCallButton && (
+      <TouchableOpacity 
+        style={[styles.button, styles.callButton, { marginTop: 12 }]} 
+        onPress={() => onJoinCall!(appointment)}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="videocam" size={20} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.buttonText}>{getCallButtonText()}</Text>
+        </View>
+      </TouchableOpacity>
+    )}
 
-            {/* User: Book again for completed appointments */}
-            {role === "user" && effectiveStatus === "call-ended" && onBookAgain && (
-              <TouchableOpacity style={[styles.button, styles.acceptButton]} onPress={onBookAgain}>
-                <Text style={styles.buttonText}>Book Again</Text>
-              </TouchableOpacity>
-            )}
+    {/* User: Book again */}
+    {role === "user" && effectiveStatus === "call-ended" && onBookAgain && (
+      <TouchableOpacity style={[styles.button, styles.acceptButton, { marginTop: 12 }]} onPress={onBookAgain}>
+        <Text style={styles.buttonText}>Book Again</Text>
+      </TouchableOpacity>
+    )}
 
-            {/* Default close button (show when no other action buttons are displayed) */}
-            {!((role === "doctor" && effectiveStatus === "pending") || 
-                (role === "user" && effectiveStatus === "call-ended") ||
-                showCallButton) && (
-              <TouchableOpacity style={[styles.button, styles.closeButton]} onPress={onClose}>
-                <Text style={styles.buttonText}>Close</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+    {/* Default close button */}
+    {!((role === "doctor" && effectiveStatus === "pending") || 
+        (role === "user" && effectiveStatus === "call-ended") ||
+        showCallButton) && (
+      <TouchableOpacity style={[styles.button, styles.closeButton, { marginTop: 12 }]} onPress={onClose}>
+        <Text style={styles.buttonText}>Close</Text>
+      </TouchableOpacity>
+    )}
+  </ScrollView>
+</View>
+
         </View>
       </View>
     </Modal>

@@ -1,4 +1,3 @@
-// Enhanced NotificationsScreen.tsx - FULLY FIXED
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -16,10 +15,8 @@ import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';
 
 import { useNotifications } from '../../context/notificatonContext';
-import socketService from '../../services/socketService';
 import AppointmentModal from '../../components/appointment/AppointmentModal';
 import { useAuth } from '../../hooks/useAuth';
-import { useVideoCall } from '../../hooks/useVideoCall';
 import {
   getDoctorAppointments,
   updateAppointment,
@@ -28,267 +25,66 @@ import {
 import { IAppointment, INotification } from '../../types/backendType';
 import BottomBar from '../../components/common/BottomBar';
 
-// Extended status type including computed statuses
-type ExtendedStatus = 
-  | "pending" 
-  | "confirmed" 
-  | "in-progress" 
-  | "completed" 
-  | "cancelled" 
-  | "rejected" 
-  | "rescheduled"
-  | "expired"
-  | "call-ended"
-  | "confirmed-upcoming"
-  | "about-to-start";
-
-const extractId = (field: any): string => {
-  if (!field) return '';
-  if (typeof field === 'string') return field;
-  if (typeof field === 'object' && field._id) return String(field._id);
-  return String(field);
-};
-
-// --- SAFE DATE PARSER ---
+// --- Helpers ---
 const parseDate = (dateField: any): Date | null => {
   if (!dateField) return null;
-
-  if (typeof dateField === 'object') {
-    if ('$date' in dateField) {
-      if (typeof dateField.$date === 'object' && '$numberLong' in dateField.$date) {
-        return new Date(Number(dateField.$date.$numberLong));
-      }
-      return new Date(dateField.$date);
-    }
-  }
-
   const d = new Date(dateField);
   return isNaN(d.getTime()) ? null : d;
 };
 
-// --- CHECK IF APPOINTMENT TIME HAS EXPIRED ---
-const hasAppointmentExpired = (scheduledAt: Date): boolean => {
+const hasAppointmentExpired = (scheduledAt: Date) => {
   const now = new Date();
-  const appointmentTime = new Date(scheduledAt);
-  const diffMinutes = (now.getTime() - appointmentTime.getTime()) / 60000;
-  
-  // Appointment expires 2 hours after scheduled time
-  return diffMinutes > 120;
+  return (now.getTime() - scheduledAt.getTime()) / 60000 > 120; // 2 hours
 };
 
-// --- CHECK IF APPOINTMENT IS JOINABLE ---
-const isAppointmentJoinable = (appointment: IAppointment, currentRole: string): boolean => {
-  const now = new Date();
-  const scheduledAt = parseDate(appointment.scheduledAt);
-  
-  if (!scheduledAt) return false;
-  
-  const diffMinutes = (scheduledAt.getTime() - now.getTime()) / 60000;
-  
-  // Terminal states - never joinable
-  if (['cancelled', 'rejected', 'completed'].includes(appointment.status)) {
-    return false;
-  }
-  
-  // Call already ended
-  if (appointment.callStatus === 'ended') {
-    return false;
-  }
-  
-  // Check if expired (more than 2 hours past scheduled time)
-  if (hasAppointmentExpired(scheduledAt)) {
-    return false;
-  }
-  
-  // Only confirmed appointments can be joined
-  if (appointment.status !== 'confirmed') {
-    return false;
-  }
-  
-  // Doctor can join 15 minutes before
-  if (currentRole === 'doctor') {
-    return diffMinutes <= 15 && diffMinutes >= -120;
-  }
-  
-  // Patient can join when doctor has started or within the time window
-  return diffMinutes <= 15 && diffMinutes >= -120;
-};
+const getAppointmentStatusMessage = (appt: IAppointment) => {
+  const scheduledAt = parseDate(appt.scheduledAt);
+  if (!scheduledAt) return { canJoin: false, message: 'Invalid appointment time', title: 'Error' };
 
-// --- GET APPOINTMENT STATUS MESSAGE ---
-const getAppointmentStatusMessage = (appointment: IAppointment): { canJoin: boolean; message: string; title: string } => {
-  const now = new Date();
-  const scheduledAt = parseDate(appointment.scheduledAt);
-  
-  if (!scheduledAt) {
-    return { canJoin: false, message: 'Invalid appointment time', title: 'Error' };
+  if (['cancelled', 'rejected', 'completed'].includes(appt.status)) {
+    return { canJoin: false, message: `Appointment ${appt.status}`, title: `Appointment ${appt.status}` };
   }
-  
-  const diffMinutes = (scheduledAt.getTime() - now.getTime()) / 60000;
-  
-  // Terminal states
-  if (appointment.status === 'cancelled') {
-    return { canJoin: false, message: 'This appointment was cancelled.', title: 'Appointment Cancelled' };
-  }
-  
-  if (appointment.status === 'rejected') {
-    return { canJoin: false, message: 'This appointment was rejected by the doctor.', title: 'Appointment Rejected' };
-  }
-  
-  if (appointment.status === 'completed') {
-    return { canJoin: false, message: 'This appointment has been completed.', title: 'Appointment Completed' };
-  }
-  
-  // Check if expired
-  if (hasAppointmentExpired(scheduledAt)) {
-    return { 
-      canJoin: false, 
-      message: 'This appointment has expired. The consultation window ended 2 hours after the scheduled time.\n\nWould you like to book a new appointment?', 
-      title: 'Appointment Expired' 
+
+  if (hasAppointmentExpired(scheduledAt) || appt.callStatus === 'ended') {
+    return {
+      canJoin: false,
+      message: 'This appointment has expired or the call has ended. Book a new appointment?',
+      title: 'Appointment Expired',
     };
   }
-  
-  // Call ended but within window
-  if (appointment.callStatus === 'ended') {
-    return { 
-      canJoin: false, 
-      message: 'This call has ended. Would you like to book another appointment?', 
-      title: 'Call Ended' 
-    };
+
+  if (appt.status === 'pending') {
+    return { canJoin: false, message: 'Pending doctor confirmation', title: 'Pending Confirmation' };
   }
-  
-  // Too early
-  if (diffMinutes > 15) {
-    const hoursUntil = Math.floor(diffMinutes / 60);
-    const minutesUntil = Math.ceil(diffMinutes % 60);
-    const timeString = hoursUntil > 0 
-      ? `${hoursUntil} hour${hoursUntil > 1 ? 's' : ''} ${minutesUntil} minute${minutesUntil > 1 ? 's' : ''}`
-      : `${minutesUntil} minute${minutesUntil > 1 ? 's' : ''}`;
-    
-    return { 
-      canJoin: false, 
-      message: `You can join 15 minutes before the scheduled time.\n\nTime remaining: ${timeString}`, 
-      title: 'Too Early' 
-    };
-  }
-  
-  // Pending appointment
-  if (appointment.status === 'pending') {
-    return { 
-      canJoin: false, 
-      message: 'This appointment is pending confirmation from the doctor.', 
-      title: 'Pending Confirmation' 
-    };
-  }
-  
-  // Can join
+
   return { canJoin: true, message: '', title: '' };
 };
 
+// --- Component ---
 export const NotificationsScreen = () => {
-  const {
-    notifications,
-    unreadCount,
-    loading,
-    isSocketConnected,
-    markAsRead,
-    refresh,
-    filter,
-    setFilter,
-  } = useNotifications();
-
+  const { notifications, loading, markAsRead, refresh, filter } = useNotifications();
   const navigation = useNavigation<any>();
   const { isDoctor } = useAuth();
-  const { getCallStatus } = useVideoCall();
 
   const [selectedAppointment, setSelectedAppointment] = useState<IAppointment | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [appointments, setAppointments] = useState<IAppointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
-  const [activeCallAlerts, setActiveCallAlerts] = useState<Set<string>>(new Set());
 
   const currentRole = isDoctor() ? 'doctor' : 'user';
 
-  const processAppointments = (data: any[]): IAppointment[] => {
-    if (!Array.isArray(data)) return [];
-    return data.map((appt) => ({
-      ...appt,
-      scheduledAt: parseDate(appt.scheduledAt) || new Date(),
-      patientName:
-        appt.patientSnapshot?.name ||
-        `${(appt.userId as any)?.firstName || ''} ${(appt.userId as any)?.lastName || ''}`.trim() ||
-        'Anonymous',
-    })) as IAppointment[];
-  };
-
-  useEffect(() => {
-    const handleRejoinCall = (data: any) => {
-      const { appointmentId, patientName, doctorName } = data;
-      if (activeCallAlerts.has(appointmentId)) return;
-
-      setActiveCallAlerts((prev) => new Set(prev).add(appointmentId));
-
-      const nameToShow = currentRole === 'doctor' ? patientName : doctorName || 'Doctor';
-
-      Alert.alert(
-        '📞 Ongoing Call',
-        `${nameToShow} is in the call and waiting for you.`,
-        [
-          { text: 'Ignore', style: 'cancel', onPress: () => removeActiveCallAlert(appointmentId) },
-          {
-            text: 'Join Now',
-            onPress: async () => {
-              try {
-                const appointment = await getAppointmentById(appointmentId);
-                if (!appointment) throw new Error('Appointment not found');
-
-                // Check if appointment is still joinable
-                const statusCheck = getAppointmentStatusMessage(appointment);
-                if (!statusCheck.canJoin) {
-                  Alert.alert(statusCheck.title, statusCheck.message);
-                  removeActiveCallAlert(appointmentId);
-                  return;
-                }
-
-                navigation.navigate('VideoCallScreen', {
-                  appointmentId: appointment._id,
-                  name: nameToShow,
-                  role: currentRole === 'doctor' ? 'Doctor' : 'User',
-                  autoJoin: true,
-                  fromNotification: true,
-                });
-              } catch (error: any) {
-                Toast.show({
-                  type: 'error',
-                  text1: 'Failed to join call',
-                  text2: error.message || 'Try again from appointments',
-                });
-              } finally {
-                removeActiveCallAlert(appointmentId);
-              }
-            },
-          },
-        ],
-        { cancelable: false }
-      );
-
-      setTimeout(() => removeActiveCallAlert(appointmentId), 30000);
-    };
-
-    socketService.onNotification('patient-rejoin-call', handleRejoinCall);
-    return () => socketService.offNotification('patient-rejoin-call', handleRejoinCall);
-  }, [currentRole, activeCallAlerts, navigation]);
-
-  const removeActiveCallAlert = (id: string) => {
-    setActiveCallAlerts((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(id);
-      return newSet;
-    });
-  };
-
-  useEffect(() => {
-    if (currentRole === 'doctor') fetchAppointments();
-  }, [currentRole]);
+  // --- Fetch doctor's appointments ---
+  const processAppointments = (data: any[]): IAppointment[] =>
+    Array.isArray(data)
+      ? data.map((appt) => ({
+          ...appt,
+          scheduledAt: parseDate(appt.scheduledAt) || new Date(),
+          patientName:
+            appt.patientSnapshot?.name ||
+            `${(appt.userId as any)?.firstName || ''} ${(appt.userId as any)?.lastName || ''}`.trim() ||
+            'Anonymous',
+        }))
+      : [];
 
   const fetchAppointments = async (): Promise<IAppointment[]> => {
     try {
@@ -297,8 +93,8 @@ export const NotificationsScreen = () => {
       const appointmentsWithDates = processAppointments(data);
       setAppointments(appointmentsWithDates);
       return appointmentsWithDates;
-    } catch (error) {
-      console.error('Failed to fetch appointments:', error);
+    } catch (err) {
+      console.error(err);
       setAppointments([]);
       return [];
     } finally {
@@ -306,28 +102,33 @@ export const NotificationsScreen = () => {
     }
   };
 
+  useEffect(() => {
+    if (currentRole === 'doctor') fetchAppointments();
+  }, [currentRole]);
+
+  // --- Appointment actions ---
   const updateAppointmentStatus = async (
     appt: IAppointment,
-    status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'rejected' | 'rescheduled',
+    status: 'confirmed' | 'rejected' | 'cancelled' | 'completed' | 'rescheduled',
     successMsg: string
   ) => {
     try {
-      const payload = { status, ...(appt.userId && { userId: extractId(appt.userId) }) };
-      await updateAppointment(appt._id!, payload);
+      await updateAppointment(appt._id!, { status });
       Toast.show({ type: 'success', text1: successMsg });
       setShowModal(false);
       setSelectedAppointment(null);
       await fetchAppointments();
       refresh();
-    } catch (error: any) {
-      console.error('Failed to update appointment:', error);
-      Toast.show({ type: 'error', text1: 'Failed to update appointment', text2: error.message });
+    } catch (err: any) {
+      console.error(err);
+      Toast.show({ type: 'error', text1: 'Failed to update appointment', text2: err.message });
     }
   };
 
   const handleAccept = (appt: IAppointment) => updateAppointmentStatus(appt, 'confirmed', 'Appointment confirmed');
   const handleReject = (appt: IAppointment) => updateAppointmentStatus(appt, 'rejected', 'Appointment rejected');
 
+  // --- Handle notification press ---
   const handleNotificationPress = async (notification: INotification) => {
     try {
       if (!notification.isRead) await markAsRead(notification._id);
@@ -336,35 +137,19 @@ export const NotificationsScreen = () => {
         const appointmentId = notification.metadata?.appointmentId;
         if (!appointmentId) return;
 
-        Alert.alert(
-          'Session Ended',
-          'Would you like to book another consultation?',
-          [
-            { text: 'Not Now', style: 'cancel' },
-            {
-              text: 'Book Again',
-              onPress: async () => {
-                try {
-                  const appointment = await getAppointmentById(appointmentId);
-                  if (!appointment) throw new Error('Appointment not found');
-
-                  const doctorId =
-                    typeof appointment.doctorId === 'object'
-                      ? appointment.doctorId._id
-                      : appointment.doctorId;
-
-                  navigation.navigate('BookAppointment', { doctorId });
-                } catch (error: any) {
-                  Toast.show({
-                    type: 'error',
-                    text1: 'Error',
-                    text2: error.message || 'Could not load appointment details',
-                  });
-                }
-              },
+        Alert.alert('Session Ended', 'Would you like to book another consultation?', [
+          { text: 'Not Now', style: 'cancel' },
+          {
+            text: 'Book Again',
+            onPress: async () => {
+              const appointment = await getAppointmentById(appointmentId);
+              if (!appointment) return;
+              const doctorId =
+                typeof appointment.doctorId === 'object' ? appointment.doctorId._id : appointment.doctorId;
+              navigation.navigate('BookAppointment', { doctorId });
             },
-          ]
-        );
+          },
+        ]);
         return;
       }
 
@@ -376,106 +161,32 @@ export const NotificationsScreen = () => {
       const appointment = await getAppointmentById(appointmentId);
       if (!appointment) return Alert.alert('Error', 'Appointment not found');
 
-      appointment.scheduledAt = parseDate(appointment.scheduledAt) || new Date();
-
-      // Check appointment status
       const statusCheck = getAppointmentStatusMessage(appointment);
-      
-      if (!statusCheck.canJoin) {
-        // Show appropriate message based on status
-        if (hasAppointmentExpired(appointment.scheduledAt as Date) || 
-            appointment.callStatus === 'ended') {
-          Alert.alert(
-            statusCheck.title,
-            statusCheck.message,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Book New Appointment',
-                onPress: async () => {
-                  const doctorId =
-                    typeof appointment.doctorId === 'object'
-                      ? appointment.doctorId._id
-                      : appointment.doctorId;
 
-                  navigation.navigate('BookAppointment', { doctorId });
-                },
-              },
-            ]
-          );
-        } else {
-          Alert.alert(statusCheck.title, statusCheck.message);
-        }
-        
-        // Still show modal for doctors to manage appointments
+      if (!statusCheck.canJoin) {
         if (currentRole === 'doctor') {
           setSelectedAppointment(appointment);
           setShowModal(true);
+        } else {
+          Alert.alert(statusCheck.title, statusCheck.message);
         }
         return;
       }
 
-      // Check if call is active
-      try {
-        const callStatus = await getCallStatus(appointment._id!);
-        const isCallActive = callStatus.success && callStatus.data?.isActive;
-
-        const nameToShow =
-          currentRole === 'doctor'
-            ? appointment.patientSnapshot?.name || 'Patient'
-            : typeof appointment.doctorId === 'object' && appointment.doctorId && 'firstName' in appointment.doctorId
-            ? `${(appointment.doctorId as any).firstName} ${(appointment.doctorId as any).lastName || ''}`.trim()
-            : 'Doctor';
-
-        if (isCallActive) {
-          // Call is active, join directly
-          navigation.navigate('VideoCallScreen', {
-            appointmentId: appointment._id,
-            name: nameToShow,
-            role: currentRole === 'doctor' ? 'Doctor' : 'User',
-            autoJoin: true,
-            fromNotification: true,
-          });
-        } else {
-          // Call not active yet
-          if (currentRole === 'doctor') {
-            // Doctors can start the call
-            setSelectedAppointment(appointment);
-            setShowModal(true);
-          } else {
-            // Patients see a prompt
-            Alert.alert(
-              'Call Not Started',
-              'The doctor has not started the call yet. You can wait or try again later.',
-              [
-                { text: 'OK', style: 'cancel' },
-                {
-                  text: 'View Appointment',
-                  onPress: () => navigation.navigate('MyAppointments', { appointmentId }),
-                },
-              ]
-            );
-          }
-        }
-      } catch (error) {
-        console.error('Error checking call status:', error);
-        // On error, show appointment details
-        if (currentRole === 'doctor') {
-          setSelectedAppointment(appointment);
-          setShowModal(true);
-        } else {
-          navigation.navigate('MyAppointments', { appointmentId });
-        }
+      // If joinable (patients just navigate to appointment)
+      if (currentRole === 'doctor') {
+        setSelectedAppointment(appointment);
+        setShowModal(true);
+      } else {
+        navigation.navigate('MyAppointments', { appointmentId });
       }
-    } catch (error: any) {
-      console.error('Error handling notification:', error);
-      Alert.alert('Error', error.message || 'Something went wrong');
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert('Error', err.message || 'Something went wrong');
     }
   };
 
-  const navigateToAppointments = () =>
-    navigation.navigate(currentRole === 'doctor' ? 'DoctorAppointment' : 'MyAppointments');
-
+  // --- Render notification ---
   const renderNotification = ({ item }: { item: INotification }) => (
     <TouchableOpacity
       style={[styles.notificationItem, !item.isRead && styles.unreadNotification]}
@@ -517,23 +228,12 @@ export const NotificationsScreen = () => {
           onClose={() => {
             setShowModal(false);
             setSelectedAppointment(null);
-          }}
+          } }
           onAccept={handleAccept}
           onReject={handleReject}
-          onBookAgain={() => {
-            if (!selectedAppointment) return;
-            navigation.navigate('BookAppointment', {
-              doctorId:
-                typeof selectedAppointment.doctorId === 'object'
-                  ? selectedAppointment.doctorId._id
-                  : selectedAppointment.doctorId,
-            });
-            setShowModal(false);
-            setSelectedAppointment(null);
-          }}
-          getEffectiveStatus={(appt) => (appt?.status ? String(appt.status).toLowerCase() : 'unknown')}
-          role={currentRole}
-        />
+          role={currentRole} getEffectiveStatus={function (appt: IAppointment): string {
+            throw new Error('Function not implemented.');
+          } }        />
 
         {loadingAppointments && (
           <View style={styles.loadingOverlay}>
@@ -547,6 +247,7 @@ export const NotificationsScreen = () => {
   );
 };
 
+// --- Styles ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   notificationItem: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
