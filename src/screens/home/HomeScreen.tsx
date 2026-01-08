@@ -187,7 +187,7 @@ export default function HomeScreen() {
 
     const handleViewSwitch = (view: 'dashboard' | 'home') => {
         if (view === 'dashboard' && isDoctor) {
-            navigation.navigate('DoctorDashboardScreen' as never);
+            navigation.navigate('DoctorDashScreen' as never);
         }
     };
     

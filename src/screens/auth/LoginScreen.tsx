@@ -135,7 +135,15 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
               {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Continue</Text>}
             </TouchableOpacity>
 
-            <Text style={styles.divider}>or continue with</Text>
+            <Text style={styles.divider}>Not yet registered?</Text>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#4CAF50', marginTop: RFValue(10) }]}
+              onPress={() => navigation.navigate('RegisterScreen')}
+              disabled={isLoading}
+            >
+              <Text style={styles.buttonText}>Create an Account</Text>
+            </TouchableOpacity>
+            
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -150,7 +158,7 @@ const styles = StyleSheet.create({
   scrollContainer: { flexGrow: 1, justifyContent: 'center', padding: RFValue(20) },
   container: { alignItems: 'center', width: '100%' },
   logoContainer: { marginBottom: RFValue(30), alignItems: 'center' },
-  logoText: { fontSize: RFValue(28), fontWeight: 'bold', color: '#2196F3', textAlign: 'center' },
+  logoText: { fontSize: RFValue(28), fontWeight: 'bold', color: '#D81E5B', textAlign: 'center' },
   welcomeText: { fontSize: RFValue(16), color: '#666', marginTop: RFValue(8), textAlign: 'center' },
   roleSwitchContainer: { flexDirection: 'row', marginBottom: RFValue(20) },
   roleSwitchButton: {
@@ -162,7 +170,7 @@ const styles = StyleSheet.create({
     borderRadius: RFValue(8),
     alignItems: 'center',
   },
-  roleSwitchActive: { backgroundColor: '#2196F3', borderColor: '#2196F3' },
+  roleSwitchActive: { backgroundColor: '#D81E5B', borderColor: '#2196F3' },
   roleSwitchText: { fontSize: RFValue(16), color: '#666', fontWeight: '500' },
   roleSwitchTextActive: { color: '#fff', fontWeight: '600' },
   inputContainer: {
@@ -189,7 +197,7 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: RFValue(14),
     borderRadius: RFValue(8),
-    backgroundColor: '#2196F3',
+    backgroundColor: '#D81E5B',
     alignItems: 'center',
     marginTop: RFValue(10),
   },

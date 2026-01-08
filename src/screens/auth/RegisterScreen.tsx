@@ -394,7 +394,7 @@ const localStyles = StyleSheet.create({
     borderRadius: RFValue(8),
     alignItems: 'center',
   },
-  roleSwitchActive: { backgroundColor: '#2196F3', borderColor: '#2196F3' },
+  roleSwitchActive: { backgroundColor: '#D81E5B', borderColor: '#2196F3' },
   roleSwitchText: { fontSize: RFValue(16), color: '#666', fontWeight: '500' },
   roleSwitchTextActive: { color: '#fff', fontWeight: '600' },
   inputContainer: {
@@ -421,7 +421,7 @@ const localStyles = StyleSheet.create({
     width: '100%',
     paddingVertical: RFValue(14),
     borderRadius: RFValue(8),
-    backgroundColor: '#2196F3',
+    backgroundColor: '#D81E5B',
     alignItems: 'center',
     marginTop: RFValue(10),
   },
