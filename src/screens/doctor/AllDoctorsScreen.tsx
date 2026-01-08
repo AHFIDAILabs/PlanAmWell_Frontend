@@ -77,7 +77,7 @@ export default function AllDoctorsScreen({ navigation }: any) {
       : { uri: "https://placehold.co/150x150?text=No+Image" };
 
     const handleBookPress = () => {
-      navigation.navigate("BookAppointmentScreen", { doctors: item });
+      navigation.navigate("BookAppointmentScreen", { doctor: item });
     };
 
     return (
