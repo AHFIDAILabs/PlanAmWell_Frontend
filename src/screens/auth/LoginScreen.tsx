@@ -138,7 +138,7 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.divider}>Not yet registered?</Text>
             <TouchableOpacity
               style={[styles.button, { backgroundColor: '#4CAF50', marginTop: RFValue(10) }]}
-              onPress={() => navigation.navigate('RegisterScreen')}
+              onPress={() => navigation.navigate('Register')}
               disabled={isLoading}
             >
               <Text style={styles.buttonText}>Create an Account</Text>
