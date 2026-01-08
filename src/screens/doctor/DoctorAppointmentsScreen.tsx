@@ -1,4 +1,4 @@
-// DoctorAppointmentsScreen.tsx - FULLY FIXED
+// DoctorAppointmentsScreen.tsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
@@ -12,7 +12,6 @@ import {
   ScrollView,
   Easing,
   Pressable,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
@@ -25,61 +24,27 @@ import { Ionicons } from "@expo/vector-icons";
 const { height } = Dimensions.get("window");
 
 /* ---------------- HELPERS ---------------- */
-
-// Extended status type including computed statuses
-type ExtendedStatus = 
-  | "pending" 
-  | "confirmed" 
-  | "in-progress" 
-  | "completed" 
-  | "cancelled" 
-  | "rejected" 
-  | "rescheduled"
-  | "expired"
-  | "call-ended"
-  | "confirmed-upcoming"
-  | "about-to-start";
-
-// Check if appointment has expired (more than 2 hours past scheduled time)
-const hasAppointmentExpired = (scheduledAt: Date): boolean => {
-  const now = Date.now();
-  const scheduled = new Date(scheduledAt).getTime();
-  const diffMinutes = (now - scheduled) / 60000;
-  return diffMinutes > 120; // Expired 2 hours after scheduled time
-};
-
-// Get effective status considering all factors
 const getEffectiveStatus = (
   appt: IAppointment,
   callStatusMap: Record<string, string>
-): ExtendedStatus => {
-  if (!appt?._id) return appt.status as ExtendedStatus;
+): string => {
+  if (!appt?._id) return appt.status;
 
   const now = Date.now();
   const scheduledAt = new Date(appt.scheduledAt).getTime();
   const diffMinutes = (scheduledAt - now) / 60000;
 
-  // Check if expired first
-  if (hasAppointmentExpired(appt.scheduledAt)) {
-    return "expired";
-  }
-
   // Terminal backend states
   if (["cancelled", "rejected", "completed"].includes(appt.status)) {
-    return appt.status as ExtendedStatus;
+    return appt.status;
   }
 
-  // Call status overrides
-  if (appt.callStatus === "ended") {
-    return "call-ended";
-  }
-
-  // Ended window (2 hours past)
+  // Ended window
   if (diffMinutes <= -120) return "call-ended";
 
   // Live call overrides
   const liveStatus = callStatusMap[appt._id];
-  if (liveStatus) return liveStatus as ExtendedStatus; // 'in-progress' or 'call-ended'
+  if (liveStatus) return liveStatus; // 'in-progress' or 'call-ended'
 
   // Confirmed but not started yet
   if (appt.status === "confirmed") {
@@ -87,7 +52,7 @@ const getEffectiveStatus = (
     if (diffMinutes <= 15 && diffMinutes >= 0) return "about-to-start"; // can show countdown
   }
 
-  return appt.status as ExtendedStatus; // fallback: pending, etc.
+  return appt.status; // fallback: pending, etc.
 };
 
 const getCountdownText = (appt: IAppointment | null | undefined) => {
@@ -103,31 +68,16 @@ const getCountdownText = (appt: IAppointment | null | undefined) => {
   return `Starts in ${mins}m ${secs}s`;
 };
 
-const canJoinConsultation = (
-  appt: (IAppointment & { effectiveStatus?: ExtendedStatus }) | null | undefined
-) => {
+const canJoinConsultation = (appt: (IAppointment & { status?: string }) | null | undefined) => {
   if (!appt) return false;
-  
-  // Check if expired
-  if (hasAppointmentExpired(appt.scheduledAt)) return false;
-  
-  // Check if call ended
-  if (appt.callStatus === "ended") return false;
-  
-  const status = appt.effectiveStatus || appt.status;
-  if (!status || !["confirmed", "about-to-start", "in-progress"].includes(status)) return false;
+  const status = typeof appt.status === "string" ? appt.status : undefined;
+  if (!status || !["confirmed", "about-to-start"].includes(status)) return false;
 
   const now = new Date();
   const scheduled = new Date(appt.scheduledAt);
   const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
 
-  // Too early (more than 15 minutes before)
-  if (diffMinutes > 15) return false;
-  
-  // Too late (more than 2 hours after)
-  if (diffMinutes < -120) return false;
-  
-  // In-person consultations can't be joined via video
+  if (diffMinutes > 15) return false; // too early
   if (appt.consultationType === "in-person") return false;
 
   return true;
@@ -137,22 +87,20 @@ const statusLabelMap: Record<string, string> = {
   pending: "Pending",
   confirmed: "Confirmed",
   "confirmed-upcoming": "Confirmed",
-  "about-to-start": "Ready to Start",
+  "about-to-start": "Confirmed",
   "call-ended": "Call Ended",
   completed: "Completed",
   cancelled: "Cancelled",
   rejected: "Rejected",
   "in-progress": "In Progress",
-  expired: "Expired",
 };
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case "confirmed":
     case "confirmed-upcoming":
-      return "#4CAF50";
     case "about-to-start":
-      return "#FF9800";
+      return "#4CAF50";
     case "pending":
       return "#FFA500";
     case "rescheduled":
@@ -163,7 +111,6 @@ const getStatusColor = (status: string) => {
     case "rejected":
       return "#F44336";
     case "call-ended":
-    case "expired":
       return "#6B7280";
     case "in-progress":
       return "#EF4444";
@@ -244,65 +191,6 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
   const handleJoinConsultation = () => {
     if (!selectedAppointment) return;
 
-    const effectiveStatus = getEffectiveStatus(selectedAppointment, callStatusMap);
-    
-    // Check if expired
-    if (hasAppointmentExpired(selectedAppointment.scheduledAt)) {
-      Alert.alert(
-        "Appointment Expired",
-        "This appointment has expired. The consultation window ended 2 hours after the scheduled time.\n\nPlease contact the patient to reschedule.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
-    // Check if call ended
-    if (selectedAppointment.callStatus === "ended" || effectiveStatus === "call-ended") {
-      Alert.alert(
-        "Call Ended",
-        "This call has already ended. You cannot rejoin.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
-    // Check if can join
-    if (!canJoinConsultation({ 
-      ...selectedAppointment, 
-      effectiveStatus 
-    })) {
-      const now = new Date();
-      const scheduled = new Date(selectedAppointment.scheduledAt);
-      const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
-      
-      if (diffMinutes > 15) {
-        const hoursUntil = Math.floor(diffMinutes / 60);
-        const minutesUntil = Math.ceil(diffMinutes % 60);
-        const timeString = hoursUntil > 0 
-          ? `${hoursUntil} hour${hoursUntil > 1 ? 's' : ''} ${minutesUntil} minute${minutesUntil > 1 ? 's' : ''}`
-          : `${minutesUntil} minute${minutesUntil > 1 ? 's' : ''}`;
-        
-        Alert.alert(
-          "Too Early",
-          `You can join 15 minutes before the scheduled time.\n\nTime remaining: ${timeString}`,
-          [{ text: "OK" }]
-        );
-      } else if (diffMinutes < -120) {
-        Alert.alert(
-          "Too Late",
-          "The consultation window has closed. It ended 2 hours after the scheduled time.",
-          [{ text: "OK" }]
-        );
-      } else {
-        Alert.alert(
-          "Cannot Join",
-          "This consultation is not available for joining at this time.",
-          [{ text: "OK" }]
-        );
-      }
-      return;
-    }
-
     closeModal();
 
     navigation.navigate("VideoCallScreen", {
@@ -318,8 +206,6 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
 
   const renderAppointment = ({ item }: { item: IAppointment }) => {
     const effectiveStatus = getEffectiveStatus(item, callStatusMap);
-    const isExpired = hasAppointmentExpired(item.scheduledAt);
-    
     return (
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.row}>
@@ -333,13 +219,6 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
         <Text style={[styles.detail, { color: colors.textMuted }]}>
           {new Date(item.scheduledAt).toLocaleString()}
         </Text>
-        
-        {isExpired && (
-          <Text style={styles.expiredWarning}>
-            ⚠️ This appointment has expired
-          </Text>
-        )}
-        
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.primary }]}
           onPress={() => openModal(item)}
@@ -412,29 +291,15 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
                 Reason: <Text style={styles.modalValue}>{selectedAppointment.reason || "N/A"}</Text>
               </Text>
 
-              {/* Expired Warning */}
-              {hasAppointmentExpired(selectedAppointment.scheduledAt) && (
-                <View style={styles.expiredBanner}>
-                  <Ionicons name="warning" size={20} color="#F44336" />
-                  <Text style={styles.expiredBannerText}>
-                    This appointment has expired. The consultation window ended 2 hours after the scheduled time.
-                  </Text>
-                </View>
-              )}
-
               {/* Countdown */}
-              {["confirmed", "about-to-start"].includes(getEffectiveStatus(selectedAppointment, callStatusMap)) && 
-               !hasAppointmentExpired(selectedAppointment.scheduledAt) && (
+              {["confirmed", "about-to-start"].includes(getEffectiveStatus(selectedAppointment, callStatusMap)) && (
                 <Text style={[styles.countdown, { color: colors.textMuted }]}>
                   {getCountdownText(selectedAppointment)}
                 </Text>
               )}
 
               {/* Join Button */}
-              {canJoinConsultation({ 
-                ...(selectedAppointment as any), 
-                effectiveStatus: getEffectiveStatus(selectedAppointment, callStatusMap) 
-              }) && !hasAppointmentExpired(selectedAppointment.scheduledAt) && (
+              {canJoinConsultation({ ...(selectedAppointment as any), status: getEffectiveStatus(selectedAppointment, callStatusMap) }) && (
                 <TouchableOpacity
                   style={[styles.joinButton, { backgroundColor: colors.primary }]}
                   onPress={handleJoinConsultation}
@@ -463,7 +328,6 @@ const styles = StyleSheet.create({
   patientName: { fontWeight: "600" },
   status: { fontWeight: "700" },
   detail: { fontSize: 13, marginTop: 4 },
-  expiredWarning: { color: "#F44336", fontSize: 12, marginTop: 6, fontWeight: "600" },
 
   button: { marginTop: 10, borderRadius: 10, paddingVertical: 8, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "700" },
@@ -476,22 +340,6 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: "700" },
   modalLabel: { marginTop: 10, fontWeight: "600" },
   modalValue: { fontWeight: "400" },
-
-  expiredBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#FFEBEE",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  expiredBannerText: {
-    flex: 1,
-    color: "#F44336",
-    fontSize: 13,
-    fontWeight: "600",
-  },
 
   countdown: { marginTop: 12, textAlign: "center" },
 
