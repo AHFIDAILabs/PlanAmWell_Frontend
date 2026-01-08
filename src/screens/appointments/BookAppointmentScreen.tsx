@@ -19,6 +19,7 @@ import { RFValue } from "react-native-responsive-fontsize";
 import { createAppointment } from "../../services/Appointment";
 import { AppStackParamList } from "../../types/App";
 import { useAuth } from "../../hooks/useAuth";
+import { IDoctor } from "../../types/backendType";
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "BookAppointmentScreen">;
 
@@ -29,7 +30,7 @@ export const BookAppointmentScreen: React.FC = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
 
-  const doctor = route.params?.doctor ?? { firstName: "", lastName: "", _id: "" };
+  const doctor = route.params?.doctor as IDoctor;
 
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);

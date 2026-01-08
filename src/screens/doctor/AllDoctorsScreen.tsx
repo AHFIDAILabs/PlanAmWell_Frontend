@@ -76,9 +76,17 @@ export default function AllDoctorsScreen({ navigation }: any) {
       ? { uri: imageUri }
       : { uri: "https://placehold.co/150x150?text=No+Image" };
 
-    const handleBookPress = () => {
-      navigation.navigate("BookAppointmentScreen", { doctor: item });
-    };
+   const handleBookPress = () => {
+  // Add a console.log here to see what 'item' actually contains
+  console.log("Navigating with Doctor:", item);
+
+  navigation.navigate("BookAppointmentScreen", { 
+    doctor: {
+      ...item,
+      _id: item._id || item.id // Ensure we catch both naming conventions
+    } 
+  });
+};
 
     return (
       <TouchableOpacity
