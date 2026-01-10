@@ -82,65 +82,73 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
         </View>
     );
 
-    const renderMessage = ({ item, index }: { item: Message; index: number }) => {
-        // Check if we need to show a date separator
-        const showDateSeparator = index === 0 || 
-            new Date(messages[index - 1].timestamp).toDateString() !== new Date(item.timestamp).toDateString();
+ const renderMessage = ({ item, index }: { item: Message; index: number }) => {
+    // 🔍 DEBUG: Log timestamp info
+    console.log('📝 Message:', item.text.substring(0, 30));
+    console.log('⏰ Timestamp:', item.timestamp);
+    console.log('📅 Type:', typeof item.timestamp);
+    console.log('✅ Valid Date?', item.timestamp instanceof Date);
+    console.log('🕐 Formatted:', formatMessageTime(item.timestamp));
+    console.log('---');
 
-        return (
-            <>
-                {showDateSeparator && renderDateSeparator(item.timestamp)}
-                
-                <TouchableOpacity
-                    activeOpacity={1}
-                    onLongPress={() => {
-                        Alert.alert(
-                            'Message Time',
-                            formatFullDateTime(item.timestamp),
-                            [{ text: 'OK' }]
-                        );
-                    }}
-                    style={[
-                        styles.messageContainer,
-                        item.sender === 'user' ? styles.messageContainerUser : styles.messageContainerBot
-                    ]}
-                >
-                    <View style={[
-                        styles.messageBubble, 
-                        item.sender === 'user' ? styles.userBubble : styles.botBubble
-                    ]}>
-                        <Text style={item.sender === 'user' ? styles.userText : styles.botText}>
-                            {item.text}
-                        </Text>
+    // Check if we need to show a date separator
+    const showDateSeparator = index === 0 || 
+        new Date(messages[index - 1].timestamp).toDateString() !== new Date(item.timestamp).toDateString();
 
-                        {item.audioUrl && (
-                            <TouchableOpacity 
-                                style={styles.audioButton} 
-                                onPress={() => {/* Implement expo-av playback here */}}
-                            >
-                                <Feather name="play" size={20} color="#D81E5B" />
-                                <Text style={styles.audioText}>{"Play audio"}</Text>
-                            </TouchableOpacity>
-                        )}
-
-                        {item.products && item.products.length > 0 && (
-                            <View style={styles.productsContainer}>
-                                {item.products.map(renderProductCard)}
-                            </View>
-                        )}
-                    </View>
-                    
-                    {/* Timestamp */}
-                    <Text style={[
-                        styles.timestamp,
-                        item.sender === 'user' ? styles.timestampRight : styles.timestampLeft
-                    ]}>
-                        {formatMessageTime(item.timestamp)}
+    return (
+        <>
+            {showDateSeparator && renderDateSeparator(item.timestamp)}
+            
+            <TouchableOpacity
+                activeOpacity={1}
+                onLongPress={() => {
+                    Alert.alert(
+                        'Message Time',
+                        formatFullDateTime(item.timestamp),
+                        [{ text: 'OK' }]
+                    );
+                }}
+                style={[
+                    styles.messageContainer,
+                    item.sender === 'user' ? styles.messageContainerUser : styles.messageContainerBot
+                ]}
+            >
+                <View style={[
+                    styles.messageBubble, 
+                    item.sender === 'user' ? styles.userBubble : styles.botBubble
+                ]}>
+                    <Text style={item.sender === 'user' ? styles.userText : styles.botText}>
+                        {item.text}
                     </Text>
-                </TouchableOpacity>
-            </>
-        );
-    };
+
+                    {item.audioUrl && (
+                        <TouchableOpacity 
+                            style={styles.audioButton} 
+                            onPress={() => {/* Implement expo-av playback here */}}
+                        >
+                            <Feather name="play" size={20} color="#D81E5B" />
+                            <Text style={styles.audioText}>{"Play audio"}</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    {item.products && item.products.length > 0 && (
+                        <View style={styles.productsContainer}>
+                            {item.products.map(renderProductCard)}
+                        </View>
+                    )}
+                </View>
+                
+                {/* Timestamp - Enhanced with debug */}
+                <Text style={[
+                    styles.timestamp,
+                    item.sender === 'user' ? styles.timestampRight : styles.timestampLeft
+                ]}>
+                    {item.timestamp ? formatMessageTime(item.timestamp) : '⚠️ No timestamp'}
+                </Text>
+            </TouchableOpacity>
+        </>
+    );
+};
 
     return (
         <SafeAreaView style={styles.fullScreen} edges={['top', 'left', 'right']}>
