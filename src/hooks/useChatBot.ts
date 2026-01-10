@@ -59,25 +59,27 @@ export const useChatBot = (userId?: string, authSessionId?: string | null) => {
 
                 if (sessionToUse !== chatSessionId) setChatSessionId(sessionToUse);
 
-                if (sessionToUse && !hasLoadedHistory.current) {
-                    const history = await chatbotService.getConversationHistory(sessionToUse);
-                    if (history.success && history.conversation?.messages?.length) {
-                       // Inside the initSession / history mapping:
-const loaded: Message[] = history.conversation.messages.map((msg, idx) => ({
-    id: `${idx}_${Date.now()}`,
-    text: msg.text,
-    sender: msg.sender,
-    products: msg.products,
-    intent: msg.intent as any,
-    // Fix: Match the backend audio object structure
-    audioUrl: msg.audioUrl, 
-    timestamp: new Date(msg.timestamp),
-}));
-                        setMessages(loaded);
-                        hasLoadedHistory.current = true;
-                    }
-                }
-
+              if (sessionToUse && !hasLoadedHistory.current) {
+    // Pass userId when fetching history for registered users
+    const history = await chatbotService.getConversationHistory(
+        sessionToUse,
+        userId // Pass userId here
+    );
+    
+    if (history.success && history.conversation?.messages?.length) {
+        const loaded: Message[] = history.conversation.messages.map((msg, idx) => ({
+            id: `${idx}_${Date.now()}`,
+            text: msg.text,
+            sender: msg.sender,
+            products: msg.products,
+            intent: msg.intent as any,
+            audioUrl: msg.audioUrl,
+            timestamp: new Date(msg.timestamp),
+        }));
+        setMessages(loaded);
+        hasLoadedHistory.current = true;
+    }
+}
             } catch (err) {
                 console.error('❌ Error initializing session:', err);
             } finally {

@@ -70,15 +70,19 @@ export const chatbotService = {
     },
 
     // Get conversation history
-    getConversationHistory: async (sessionId: string): Promise<ConversationHistory> => {
-        try {
-            const response = await axios.get(`${API_URL}/api/v1/chatbot/conversation/${sessionId}`);
-            return response.data;
-        } catch (error: any) {
-            console.error('Error fetching conversation history:', error.response?.data || error.message);
-            throw error;
-        }
-    },
+ // In chatbot service
+getConversationHistory: async (sessionId: string, userId?: string): Promise<ConversationHistory> => {
+    try {
+        const params = userId ? `?userId=${userId}` : '';
+        const response = await axios.get(
+            `${API_URL}/api/v1/chatbot/conversation/${sessionId}${params}`
+        );
+        return response.data;
+    } catch (error: any) {
+        console.error('Error fetching conversation history:', error.response?.data || error.message);
+        throw error;
+    }
+},
 
     // Clear conversation
     clearConversation: async (sessionId: string): Promise<{ success: boolean; message: string }> => {
