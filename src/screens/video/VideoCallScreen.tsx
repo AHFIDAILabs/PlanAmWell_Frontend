@@ -29,6 +29,8 @@ interface RouteParams {
   role: 'Doctor' | 'User';
   autoJoin?: boolean;
   fromAppointmentList?: boolean;
+  userImage?: string;
+  doctorImage?: string;
 }
 
 export default function VideoCallScreen({ route, navigation }: any) {

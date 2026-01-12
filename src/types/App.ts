@@ -43,4 +43,11 @@ VideoCallScreen: {
 
 };
 AllActivePartnerScreen: undefined;
+ IncomingCall: {
+    appointmentId: string;
+    callerName: string;
+    callerImage?: string; // Made optional
+    callerType: 'Doctor' | 'Patient';
+    channelName: string;
+  };
 }

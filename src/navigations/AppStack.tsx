@@ -11,6 +11,7 @@ import CheckoutScreen from '../screens/cart/CheckoutScreen';
 import PaymentMethodScreen from '../screens/payment/PaymentMethodScreen';
 import Productlist from '../screens/product/ProductList';
 import WebViewScreen from '../screens/payment/WebViewScreen';
+import IncomingCallScreen from '../screens/video/IncomingCallScreen';
 
 import { AppStackParamList } from '../types/App'; 
 
@@ -40,6 +41,14 @@ export default function AppNavigator () {
                     <RootStack.Screen name="HomeScreen" component={HomeScreen} />
                     <RootStack.Screen name='ProfileScreen' component={ProfileScreen} />
                     <RootStack.Screen name="WebViewScreen" component={WebViewScreen} />
+                    <RootStack.Screen 
+  name="IncomingCall" 
+  component={IncomingCallScreen}
+  options={{
+    presentation: 'modal',
+    gestureEnabled: false,
+  }}
+/>
 
                     </>
             ) : (
@@ -50,6 +59,7 @@ export default function AppNavigator () {
             <RootStack.Screen name="CheckoutScreen" component={CheckoutScreen} /> 
             <RootStack.Screen name="PaymentMethodScreen" component={PaymentMethodScreen} />
             <RootStack.Screen name="ProductList" component={Productlist} /> 
+
 
             
             <RootStack.Screen 
