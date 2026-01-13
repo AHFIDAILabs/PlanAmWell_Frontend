@@ -292,3 +292,42 @@ export interface IAppointment {
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+
+export type NotificationData =
+  | {
+      type: 'incoming_call';
+      appointmentId: string;
+      callerName: string;
+      callerImage?: string;
+      callerType: string;
+      channelName: string;
+    }
+  | {
+      type: 'appointment';
+      appointmentId: string;
+    }
+  | {
+      type: 'order';
+      orderId: string;
+      amount: number;
+    }
+  | {
+      type: 'doctor';
+      doctorId: string;
+    }
+  | {
+      type: 'article';
+      slug: string;
+    }
+  | {
+      type: 'video';
+      appointmentId: string;
+      name: string;
+      patientId: string;
+      role: string;
+    }
+  | {
+      type?: string;
+      [key: string]: any;
+    };

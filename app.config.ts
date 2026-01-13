@@ -1,21 +1,14 @@
-// app.config.ts
 import { ExpoConfig } from '@expo/config-types';
-import path from 'path';
 
 const config: ExpoConfig = {
   name: 'PlanAmWell',
   slug: 'PlanAmWell',
   version: '1.0.0',
   orientation: 'portrait',
-    updates: {
-    url: `https://u.expo.dev/b17d8d1f-7620-4a54-9baa-9166dc7a27ea`,
-  },
-  runtimeVersion: {
-    policy: 'appVersion',
-  },
+  scheme: 'planamwell',
+  runtimeVersion: { policy: 'appVersion' },
   icon: './src/assets/plan.png',
   userInterfaceStyle: 'light',
-  newArchEnabled: true,
   plugins: [
     'expo-asset',
     [
@@ -25,8 +18,7 @@ const config: ExpoConfig = {
         color: '#D81E5B',
       },
     ],
-    // 🔹 Use absolute path
-'./src/plugins/withAgora', 
+    './src/plugins/withAgora',
   ],
   splash: {
     image: './src/assets/plan.png',
@@ -34,18 +26,23 @@ const config: ExpoConfig = {
     backgroundColor: '#ffffff',
   },
   ios: {
-    supportsTablet: true,
     bundleIdentifier: 'com.planamwell.bundle',
+    supportsTablet: true,
     infoPlist: {
-      NSCameraUsageDescription: 'This app needs access to your camera for video calls.',
-      NSMicrophoneUsageDescription: 'This app needs access to your microphone for video calls.',
+      NSCameraUsageDescription: 'Access camera for video calls',
+      NSMicrophoneUsageDescription: 'Access microphone for video calls',
+      // ✅ Required for universal links
+      CFBundleURLTypes: [
+        {
+          CFBundleURLSchemes: ['planamwell'],
+        },
+      ],
+      AssociatedDomains: [
+        'applinks:planamwell.com', // ✅ iOS Universal Links
+      ],
     },
   },
   android: {
-    adaptiveIcon: {
-      foregroundImage: './src/assets/plan.png',
-      backgroundColor: '#ffffff',
-    },
     package: 'com.planamwell.bundle',
     googleServicesFile: './google-services.json',
     permissions: [
@@ -59,15 +56,27 @@ const config: ExpoConfig = {
       'BLUETOOTH',
       'ACCESS_WIFI_STATE',
     ],
-    edgeToEdgeEnabled: true,
-  },
-  web: {
-    favicon: './src/assets/plan.png',
-  },
-  extra: {
-    eas: {
-      projectId: 'b17d8d1f-7620-4a54-9baa-9166dc7a27ea',
+    adaptiveIcon: {
+      foregroundImage: './src/assets/plan.png',
+      backgroundColor: '#ffffff',
     },
+    intentFilters: [
+      {
+        action: 'VIEW',
+        data: [
+          {
+            scheme: 'https',
+            host: 'planamwell.com',
+            pathPrefix: '/',
+          },
+        ],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
+  },
+  web: { favicon: './src/assets/plan.png' },
+  extra: {
+    eas: { projectId: 'b17d8d1f-7620-4a54-9baa-9166dc7a27ea' },
     serverUrl: process.env.EXPO_PUBLIC_SERVER_URL,
     googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     iosClientId: process.env.EXPO_PUBLIC_IOS_CLIENT_ID,
