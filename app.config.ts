@@ -9,6 +9,9 @@ const config: ExpoConfig = {
   runtimeVersion: { policy: 'appVersion' },
   icon: './src/assets/plan.png',
   userInterfaceStyle: 'light',
+   updates: {
+    url: `https://u.expo.dev/b17d8d1f-7620-4a54-9baa-9166dc7a27ea`,
+  },
   plugins: [
     'expo-asset',
     [
