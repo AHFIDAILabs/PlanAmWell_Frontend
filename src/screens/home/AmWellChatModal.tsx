@@ -1,8 +1,8 @@
-import React, { useContext, useRef, useEffect } from "react";
+import React, { useContext, useRef, useEffect, useState } from "react";
 import { 
     View, Text, StyleSheet, FlatList, KeyboardAvoidingView, 
     Platform, TouchableOpacity, ActivityIndicator, Image,
-    Alert
+    Alert, Linking, Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -15,6 +15,10 @@ import { CartContext } from "../../context/CartContext";
 import BottomBar from "../../components/common/BottomBar";
 import { formatMessageTime, formatFullDateTime } from "../../utils/timeFormat";
 
+// WhatsApp Business Number - Update this with your actual number
+const WHATSAPP_BUSINESS_NUMBER = '+2348012345678'; // Format: country code + number (no spaces/dashes)
+const WHATSAPP_GREETING = 'Hello, I need help with my health needs';
+
 export default function AmWellChatModal({ navigation }: { navigation: any }) {
     const { user, isAnonymous, sessionId: authSessionId } = useAuth();
     const userId = !isAnonymous && user?._id ? user._id : undefined;
@@ -26,8 +30,8 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
 
     const { addProduct } = useContext(CartContext);
     const flatListRef = useRef<FlatList>(null);
+    const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
-    // Auto-scroll logic: triggers when new messages arrive or bot starts "thinking"
     useEffect(() => {
         if (messages.length > 0) {
             setTimeout(() => {
@@ -43,6 +47,65 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
         } catch (err: any) {
             Toast.show({ type: 'error', text1: 'Failed to add to cart', text2: err.message });
         }
+    };
+
+    // Open WhatsApp with pre-filled message
+    const openWhatsApp = async () => {
+        try {
+            const message = encodeURIComponent(WHATSAPP_GREETING);
+            const whatsappURL = `whatsapp://send?phone=${WHATSAPP_BUSINESS_NUMBER}&text=${message}`;
+            
+            // Check if WhatsApp is installed
+            const canOpen = await Linking.canOpenURL(whatsappURL);
+            
+            if (canOpen) {
+                await Linking.openURL(whatsappURL);
+                setShowWhatsAppModal(false);
+                
+                Toast.show({
+                    type: 'success',
+                    text1: 'Opening WhatsApp',
+                    text2: 'Chat with our AI assistant on WhatsApp!',
+                });
+            } else {
+                // WhatsApp not installed, show options
+                Alert.alert(
+                    'WhatsApp Not Found',
+                    'WhatsApp is not installed on your device. Would you like to:',
+                    [
+                        {
+                            text: 'Install WhatsApp',
+                            onPress: () => {
+                                const storeURL = Platform.OS === 'ios' 
+                                    ? 'https://apps.apple.com/app/whatsapp-messenger/id310633997'
+                                    : 'https://play.google.com/store/apps/details?id=com.whatsapp';
+                                Linking.openURL(storeURL);
+                            }
+                        },
+                        {
+                            text: 'Use Web WhatsApp',
+                            onPress: () => {
+                                const webURL = `https://wa.me/${WHATSAPP_BUSINESS_NUMBER}?text=${message}`;
+                                Linking.openURL(webURL);
+                            }
+                        },
+                        { text: 'Cancel', style: 'cancel' }
+                    ]
+                );
+            }
+        } catch (error) {
+            console.error('Error opening WhatsApp:', error);
+            Alert.alert(
+                'Error',
+                'Could not open WhatsApp. Please try again or call our support line.',
+                [{ text: 'OK' }]
+            );
+        }
+    };
+
+    // Show WhatsApp option modal
+    const showWhatsAppOptions = () => {
+        setShowWhatsAppModal(true);
     };
 
     const renderDateSeparator = (date: Date) => {
@@ -82,77 +145,67 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
         </View>
     );
 
- const renderMessage = ({ item, index }: { item: Message; index: number }) => {
-    // 🔍 DEBUG: Log timestamp info
-    console.log('📝 Message:', item.text.substring(0, 30));
-    console.log('⏰ Timestamp:', item.timestamp);
-    console.log('📅 Type:', typeof item.timestamp);
-    console.log('✅ Valid Date?', item.timestamp instanceof Date);
-    console.log('🕐 Formatted:', formatMessageTime(item.timestamp));
-    console.log('---');
+    const renderMessage = ({ item, index }: { item: Message; index: number }) => {
+        const showDateSeparator = index === 0 || 
+            new Date(messages[index - 1].timestamp).toDateString() !== new Date(item.timestamp).toDateString();
 
-    // Check if we need to show a date separator
-    const showDateSeparator = index === 0 || 
-        new Date(messages[index - 1].timestamp).toDateString() !== new Date(item.timestamp).toDateString();
-
-    return (
-        <>
-            {showDateSeparator && renderDateSeparator(item.timestamp)}
-            
-            <TouchableOpacity
-                activeOpacity={1}
-                onLongPress={() => {
-                    Alert.alert(
-                        'Message Time',
-                        formatFullDateTime(item.timestamp),
-                        [{ text: 'OK' }]
-                    );
-                }}
-                style={[
-                    styles.messageContainer,
-                    item.sender === 'user' ? styles.messageContainerUser : styles.messageContainerBot
-                ]}
-            >
-                <View style={[
-                    styles.messageBubble, 
-                    item.sender === 'user' ? styles.userBubble : styles.botBubble
-                ]}>
-                    <Text style={item.sender === 'user' ? styles.userText : styles.botText}>
-                        {item.text}
-                    </Text>
-
-                    {item.audioUrl && (
-                        <TouchableOpacity 
-                            style={styles.audioButton} 
-                            onPress={() => {/* Implement expo-av playback here */}}
-                        >
-                            <Feather name="play" size={20} color="#D81E5B" />
-                            <Text style={styles.audioText}>{"Play audio"}</Text>
-                        </TouchableOpacity>
-                    )}
-
-                    {item.products && item.products.length > 0 && (
-                        <View style={styles.productsContainer}>
-                            {item.products.map(renderProductCard)}
-                        </View>
-                    )}
-                </View>
+        return (
+            <>
+                {showDateSeparator && renderDateSeparator(item.timestamp)}
                 
-                {/* Timestamp - Enhanced with debug */}
-                <Text style={[
-                    styles.timestamp,
-                    item.sender === 'user' ? styles.timestampRight : styles.timestampLeft
-                ]}>
-                    {item.timestamp ? formatMessageTime(item.timestamp) : '⚠️ No timestamp'}
-                </Text>
-            </TouchableOpacity>
-        </>
-    );
-};
+                <TouchableOpacity
+                    activeOpacity={1}
+                    onLongPress={() => {
+                        Alert.alert(
+                            'Message Time',
+                            formatFullDateTime(item.timestamp),
+                            [{ text: 'OK' }]
+                        );
+                    }}
+                    style={[
+                        styles.messageContainer,
+                        item.sender === 'user' ? styles.messageContainerUser : styles.messageContainerBot
+                    ]}
+                >
+                    <View style={[
+                        styles.messageBubble, 
+                        item.sender === 'user' ? styles.userBubble : styles.botBubble
+                    ]}>
+                        <Text style={item.sender === 'user' ? styles.userText : styles.botText}>
+                            {item.text}
+                        </Text>
+
+                        {item.audioUrl && (
+                            <TouchableOpacity 
+                                style={styles.audioButton} 
+                                onPress={() => {/* Implement expo-av playback here */}}
+                            >
+                                <Feather name="play" size={20} color="#D81E5B" />
+                                <Text style={styles.audioText}>{"Play audio"}</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        {item.products && item.products.length > 0 && (
+                            <View style={styles.productsContainer}>
+                                {item.products.map(renderProductCard)}
+                            </View>
+                        )}
+                    </View>
+                    
+                    <Text style={[
+                        styles.timestamp,
+                        item.sender === 'user' ? styles.timestampRight : styles.timestampLeft
+                    ]}>
+                        {item.timestamp ? formatMessageTime(item.timestamp) : '⚠️ No timestamp'}
+                    </Text>
+                </TouchableOpacity>
+            </>
+        );
+    };
 
     return (
         <SafeAreaView style={styles.fullScreen} edges={['top', 'left', 'right']}>
-            {/* 1. Static Header */}
+            {/* Header with WhatsApp Button */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <Text style={styles.headerTitle}>{"Ask AmWell Bot"}</Text>
@@ -161,6 +214,18 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                     </Text>
                 </View>
                 <View style={styles.headerRight}>
+                    {/* WhatsApp Button */}
+                    <TouchableOpacity 
+                        onPress={showWhatsAppOptions} 
+                        style={styles.whatsappButton}
+                    >
+                        <Image 
+                            source={require('../../assets/whatsapp-icon.png')} // Add this icon to your assets
+                            style={styles.whatsappIcon}
+                            resizeMode="contain"
+                        />
+                    </TouchableOpacity>
+                    
                     <TouchableOpacity onPress={clearChat} style={styles.headerButton}>
                         <Feather name="trash-2" size={20} color="#666" />
                     </TouchableOpacity>
@@ -170,7 +235,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                 </View>
             </View>
 
-            {/* 2. Main Chat Area */}
+            {/* Main Chat Area */}
             <KeyboardAvoidingView 
                 style={{ flex: 1 }}
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -193,7 +258,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                     </View>
                 )}
 
-                {/* 3. Input Area */}
+                {/* Input Area */}
                 <View style={styles.inputWrapper}>
                     {isRecording && (
                         <View style={styles.recordingIndicator}>
@@ -219,6 +284,86 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
             {input.length === 0 && !isRecording && (
                 <BottomBar activeRoute="Chat" cartItemCount={0}/>
             )}
+
+            {/* WhatsApp Options Modal */}
+            <Modal
+                visible={showWhatsAppModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowWhatsAppModal(false)}
+            >
+                <TouchableOpacity 
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setShowWhatsAppModal(false)}
+                >
+                    <View style={styles.modalContent}>
+                        <TouchableOpacity 
+                            activeOpacity={1}
+                            onPress={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <View style={styles.modalHeader}>
+                                <Image 
+                                    source={require('../../assets/whatsapp-icon.png')}
+                                    style={styles.modalWhatsappIcon}
+                                    resizeMode="contain"
+                                />
+                                <Text style={styles.modalTitle}>Chat on WhatsApp</Text>
+                                <Text style={styles.modalSubtitle}>
+                                    Get instant responses on WhatsApp! Our AI assistant is available 24/7.
+                                </Text>
+                            </View>
+
+                            {/* Benefits */}
+                            <View style={styles.benefitsContainer}>
+                                <View style={styles.benefitItem}>
+                                    <Feather name="check-circle" size={20} color="#25D366" />
+                                    <Text style={styles.benefitText}>24/7 instant responses</Text>
+                                </View>
+                                <View style={styles.benefitItem}>
+                                    <Feather name="check-circle" size={20} color="#25D366" />
+                                    <Text style={styles.benefitText}>Search & order products</Text>
+                                </View>
+                                <View style={styles.benefitItem}>
+                                    <Feather name="check-circle" size={20} color="#25D366" />
+                                    <Text style={styles.benefitText}>Get health information</Text>
+                                </View>
+                                <View style={styles.benefitItem}>
+                                    <Feather name="check-circle" size={20} color="#25D366" />
+                                    <Text style={styles.benefitText}>Book appointments</Text>
+                                </View>
+                            </View>
+
+                            {/* Action Buttons */}
+                            <TouchableOpacity 
+                                style={styles.openWhatsappButton}
+                                onPress={openWhatsApp}
+                            >
+                                <Image 
+                                    source={require('../../assets/whatsapp-icon.png')}
+                                    style={styles.buttonWhatsappIcon}
+                                    resizeMode="contain"
+                                />
+                                <Text style={styles.openWhatsappButtonText}>Open WhatsApp</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                                style={styles.continueAppButton}
+                                onPress={() => setShowWhatsAppModal(false)}
+                            >
+                                <Text style={styles.continueAppButtonText}>Continue in App</Text>
+                            </TouchableOpacity>
+
+                            {/* Phone Number Display */}
+                            <View style={styles.phoneContainer}>
+                                <Text style={styles.phoneLabel}>Or message us directly at:</Text>
+                                <Text style={styles.phoneNumber}>{WHATSAPP_BUSINESS_NUMBER}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -239,10 +384,30 @@ const styles = StyleSheet.create({
     headerSubtitle: { fontSize: 12, color: '#666', marginTop: 2 },
     headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     headerButton: { padding: 5 },
+    
+    // WhatsApp Button in Header
+    whatsappButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#25D366',
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+    },
+    whatsappIcon: {
+        width: 22,
+        height: 22,
+        tintColor: '#FFF',
+    },
+    
     chatList: { flex: 1, paddingHorizontal: 10 },
     chatListContent: { paddingBottom: 20, paddingTop: 10 },
     
-    // Date Separator Styles
     dateSeparator: {
         alignItems: 'center',
         marginVertical: 15,
@@ -257,7 +422,6 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     
-    // Message Container Styles
     messageContainer: {
         marginVertical: 4,
         maxWidth: '80%',
@@ -269,7 +433,6 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-start',
     },
     
-    // Message Bubble Styles
     messageBubble: { 
         padding: 12, 
         borderRadius: 15,
@@ -285,7 +448,6 @@ const styles = StyleSheet.create({
     userText: { color: '#FFF', fontSize: 15, lineHeight: 20 },
     botText: { color: '#1A1A1A', fontSize: 15, lineHeight: 20 },
     
-    // Timestamp Styles
     timestamp: {
         fontSize: 11,
         color: '#999',
@@ -299,7 +461,6 @@ const styles = StyleSheet.create({
         textAlign: 'left',
     },
     
-    // Recording Indicator
     recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D81E5B', marginRight: 8 },
     recordingText: { color: '#D81E5B', fontWeight: '600', fontSize: 14 },
     recordingIndicator: { 
@@ -311,7 +472,6 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     
-    // Thinking Indicator
     thinkingIndicator: { 
         flexDirection: "row", 
         alignItems: "center", 
@@ -321,7 +481,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#F5F5F5'
     },
     
-    // Product Card Styles
     productsContainer: { marginTop: 12, gap: 10 },
     productCard: { 
         backgroundColor: '#FFF', 
@@ -345,14 +504,122 @@ const styles = StyleSheet.create({
     productButton: { backgroundColor: '#D81E5B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, alignItems: 'center' },
     productButtonText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
     
-    // Audio Button
     audioButton: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 },
     audioText: { color: '#D81E5B', fontWeight: '500' },
     
-    // Input Wrapper
     inputWrapper: {
         backgroundColor: '#FFF',
         borderTopWidth: 1,
         borderTopColor: '#EEE',
+    },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#FFF',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingTop: 24,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        elevation: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+    },
+    modalHeader: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    modalWhatsappIcon: {
+        width: 60,
+        height: 60,
+        marginBottom: 16,
+    },
+    modalTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#1A1A1A',
+        marginBottom: 8,
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        lineHeight: 20,
+        paddingHorizontal: 20,
+    },
+    benefitsContainer: {
+        marginBottom: 24,
+    },
+    benefitItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        paddingLeft: 10,
+    },
+    benefitText: {
+        fontSize: 15,
+        color: '#1A1A1A',
+        marginLeft: 12,
+        fontWeight: '500',
+    },
+    openWhatsappButton: {
+        backgroundColor: '#25D366',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        elevation: 2,
+        shadowColor: '#25D366',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+    },
+    buttonWhatsappIcon: {
+        width: 24,
+        height: 24,
+        tintColor: '#FFF',
+        marginRight: 8,
+    },
+    openWhatsappButtonText: {
+        color: '#FFF',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    continueAppButton: {
+        backgroundColor: '#F5F5F5',
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    continueAppButtonText: {
+        color: '#1A1A1A',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    phoneContainer: {
+        alignItems: 'center',
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
+    },
+    phoneLabel: {
+        fontSize: 13,
+        color: '#666',
+        marginBottom: 4,
+    },
+    phoneNumber: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#25D366',
     },
 });
