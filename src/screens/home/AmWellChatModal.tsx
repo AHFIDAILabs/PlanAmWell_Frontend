@@ -6,6 +6,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { MessageCircle } from "lucide-react-native"; // WhatsApp-style icon
 import ChatInput from "../../components/chatBot/ChatInput"; 
 import { useChatBot, Message } from "../../hooks/useChatBot"; 
 import { useAuth } from "../../hooks/useAuth"; 
@@ -219,10 +220,11 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                         onPress={showWhatsAppOptions} 
                         style={styles.whatsappButton}
                     >
-                        <Image 
-                            source={require('../../assets/whatsapp-icon.png')} // Add this icon to your assets
-                            style={styles.whatsappIcon}
-                            resizeMode="contain"
+                        <MessageCircle 
+                            size={20} 
+                            color="#FFF" 
+                            strokeWidth={2.5}
+                            fill="#FFF"
                         />
                     </TouchableOpacity>
                     
@@ -304,11 +306,13 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                         >
                             {/* Modal Header */}
                             <View style={styles.modalHeader}>
-                                <Image 
-                                    source={require('../../assets/whatsapp-icon.png')}
-                                    style={styles.modalWhatsappIcon}
-                                    resizeMode="contain"
-                                />
+                                <View style={styles.modalWhatsappIconContainer}>
+                                    <MessageCircle 
+                                        size={50} 
+                                        color="#25D366" 
+                                        strokeWidth={2}
+                                    />
+                                </View>
                                 <Text style={styles.modalTitle}>Chat on WhatsApp</Text>
                                 <Text style={styles.modalSubtitle}>
                                     Get instant responses on WhatsApp! Our AI assistant is available 24/7.
@@ -340,10 +344,12 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                                 style={styles.openWhatsappButton}
                                 onPress={openWhatsApp}
                             >
-                                <Image 
-                                    source={require('../../assets/whatsapp-icon.png')}
-                                    style={styles.buttonWhatsappIcon}
-                                    resizeMode="contain"
+                                <MessageCircle 
+                                    size={22} 
+                                    color="#FFF" 
+                                    strokeWidth={2.5}
+                                    fill="#FFF"
+                                    style={{ marginRight: 8 }}
                                 />
                                 <Text style={styles.openWhatsappButtonText}>Open WhatsApp</Text>
                             </TouchableOpacity>
@@ -398,11 +404,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 3,
-    },
-    whatsappIcon: {
-        width: 22,
-        height: 22,
-        tintColor: '#FFF',
     },
     
     chatList: { flex: 1, paddingHorizontal: 10 },
@@ -536,9 +537,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 24,
     },
-    modalWhatsappIcon: {
-        width: 60,
-        height: 60,
+    modalWhatsappIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: '#E8F8F0',
+        justifyContent: 'center',
+        alignItems: 'center',
         marginBottom: 16,
     },
     modalTitle: {
@@ -582,12 +587,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.3,
         shadowRadius: 4,
-    },
-    buttonWhatsappIcon: {
-        width: 24,
-        height: 24,
-        tintColor: '#FFF',
-        marginRight: 8,
     },
     openWhatsappButtonText: {
         color: '#FFF',
