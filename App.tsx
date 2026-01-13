@@ -1,3 +1,4 @@
+// App.tsx - FIXED with pushNotificationService integration
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -10,19 +11,38 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { useAuth } from './src/hooks/useAuth';
 import socketService from './src/services/socketService';
-import { registerForPushNotificationsAsync } from './src/utils/notifications';
+import pushNotificationService from './src/services/pushNotificationService'; // ✅ ADDED
 import * as SecureStore from 'expo-secure-store';
 import { TOKEN_KEY } from './src/services/Auth';
+import axios from 'axios';
 
-// ✅ Configure how notifications are handled
+const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
+
+// ✅ CRITICAL: Configure notification handler to NOT show banner for incoming calls
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data;
+
+    // ✅ For incoming calls, don't show in-app banner (show full screen instead)
+    if (data.type === 'incoming_call') {
+      return {
+        shouldShowAlert: false,   // ✅ Don't show banner
+        shouldPlaySound: true,    // ✅ Let system play ringtone
+        shouldSetBadge: true,
+        shouldShowBanner: false,  // ✅ Don't show banner
+        shouldShowList: false,    // ✅ Don't add to notification center yet
+      };
+    }
+
+    // For other notifications, show normal banner
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 function AppContent() {
@@ -53,7 +73,6 @@ function AppContent() {
 
     initializeSocket();
 
-    // ✅ Cleanup on unmount or logout
     return () => {
       if (!isAuthenticated) {
         socketService.disconnect();
@@ -63,39 +82,94 @@ function AppContent() {
   }, [isAuthenticated]);
 
   /**
-   * 📲 Register for push notifications when authenticated
+   * 📲 Initialize push notifications - UPDATED
    */
   useEffect(() => {
-    const setupPushNotifications = async () => {
-      if (isAuthenticated) {
-        try {
-          const pushToken = await registerForPushNotificationsAsync();
-          if (pushToken) {
-            console.log('✅ Push notification token registered:', pushToken);
-            // TODO: Send pushToken to your backend to save it
-            // await sendPushTokenToBackend(pushToken);
-          }
-        } catch (error) {
-          console.error('❌ Push notification registration failed:', error);
+    const initializePushNotifications = async () => {
+      if (!isAuthenticated) return;
+
+      try {
+        console.log('🔔 Initializing push notifications...');
+
+        // 1. Configure push notification service
+        pushNotificationService.configure();
+
+        // 2. Set navigation reference for deep linking
+        if (navigationRef.current) {
+          pushNotificationService.setNavigationRef(navigationRef.current);
+          console.log('✅ Navigation ref set for push notifications');
         }
+
+        // 3. Register for push notifications
+        const pushToken = await pushNotificationService.registerForPushNotifications();
+        
+        if (pushToken) {
+          console.log('✅ Push token registered:', pushToken.substring(0, 30) + '...');
+          
+          // 4. Send token to backend
+          await sendPushTokenToBackend(pushToken);
+        } else {
+          console.warn('⚠️ Push token not obtained');
+        }
+
+        // 5. Check if app was opened via notification
+        await pushNotificationService.getInitialNotification();
+
+        console.log('✅ Push notifications initialized');
+      } catch (error) {
+        console.error('❌ Push notification initialization failed:', error);
       }
     };
 
-    setupPushNotifications();
+    initializePushNotifications();
   }, [isAuthenticated]);
 
   /**
-   * 🔔 Listen for notifications
+   * 📤 Send push token to backend
+   */
+  const sendPushTokenToBackend = async (pushToken: string) => {
+    try {
+      const authToken = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (!authToken) {
+        console.warn('⚠️ No auth token, cannot save push token');
+        return;
+      }
+
+      await axios.post(
+        `${SERVER_URL}/api/v1/users/push-token`,
+        { pushToken },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('✅ Push token saved to backend');
+    } catch (error: any) {
+      console.error('❌ Failed to save push token to backend:', error.message);
+    }
+  };
+
+  /**
+   * 🔔 Listen for notifications - UPDATED
    */
   useEffect(() => {
-    // ✅ Listen for notifications received while app is open (foreground)
-    notificationListener.current = Notifications.addNotificationReceivedListener(
+    // ✅ Handle notifications received in foreground
+    notificationListener.current = pushNotificationService.handleNotificationReceived(
       (notification) => {
-        console.log('📩 Notification received (foreground):', notification);
-        
         const { title, body, data } = notification.request.content;
 
-        // ✅ Show custom toast for foreground notifications
+        console.log('📬 Foreground notification:', data);
+
+        // ✅ For incoming calls, navigation is handled by pushNotificationService
+        if (data.type === 'incoming_call') {
+          console.log('📞 Incoming call notification - navigating to IncomingCall screen');
+          return; // Don't show toast for incoming calls
+        }
+
+        // Show toast for other notifications
         Toast.show({
           type: 'info',
           text1: title || 'New Notification',
@@ -103,25 +177,30 @@ function AppContent() {
           position: 'top',
           visibilityTime: 4000,
           onPress: () => {
-            // Handle toast tap - navigate based on data
             handleNotificationNavigation(data);
           },
         });
       }
     );
 
-    // ✅ Listen for user tapping on notifications (background/killed state)
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(
+    // ✅ Handle notification tapped (background/killed state)
+    responseListener.current = pushNotificationService.handleNotificationResponse(
       (response) => {
-        console.log('👆 Notification tapped:', response);
         const data = response.notification.request.content.data;
         
-        // Navigate based on notification type
+        console.log('👆 Notification tapped:', data);
+
+        // ✅ For incoming calls, navigation is handled by pushNotificationService
+        if (data.type === 'incoming_call') {
+          console.log('📞 Incoming call tapped - navigating to IncomingCall screen');
+          return;
+        }
+
+        // Navigate for other notification types
         handleNotificationNavigation(data);
       }
     );
 
-    // ✅ Cleanup listeners
     return () => {
       if (notificationListener.current) {
         notificationListener.current.remove();
@@ -139,7 +218,6 @@ function AppContent() {
     if (!navigationRef.current || !data) return;
 
     try {
-      // ✅ Navigate based on notification type
       if (data.type === 'appointment' && data.appointmentId) {
         navigationRef.current?.navigate('ConsultationHistory', {
           appointmentId: data.appointmentId,
@@ -158,8 +236,7 @@ function AppContent() {
           productId: data.productId 
         });
       } else {
-        // Default: go to notifications screen
-        navigationRef.current?.navigate('Notifications');
+        navigationRef.current?.navigate('NotificationsScreen');
       }
 
       console.log('✅ Navigated based on notification type:', data.type);
