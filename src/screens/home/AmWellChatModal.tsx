@@ -225,9 +225,6 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                             color="#FFF"
                            
                         />
-
-                        <FontAwesome name="github" size={40} brand />
-
                     </TouchableOpacity>
                     
                     <TouchableOpacity onPress={clearChat} style={styles.headerButton}>
@@ -313,7 +310,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                                         name="whatsapp" 
                                         size={50} 
                                         color="#25D366"
-                                        brand
+                                        
                                     />
                                 </View>
                                 <Text style={styles.modalTitle}>Chat on WhatsApp</Text>
@@ -352,7 +349,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                                     size={22} 
                                     color="#FFF"
                                     style={{ marginRight: 8 }}
-                                    brand
+                                    
                                 />
                                 <Text style={styles.openWhatsappButtonText}>WhatsApp</Text>
                             </TouchableOpacity>
