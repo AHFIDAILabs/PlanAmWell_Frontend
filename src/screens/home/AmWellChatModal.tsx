@@ -5,7 +5,7 @@ import {
     Alert, Linking, Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Feather, FontAwesome } from "@expo/vector-icons";
+import { Feather, FontAwesome5 } from "@expo/vector-icons";
 import ChatInput from "../../components/chatBot/ChatInput"; 
 import { useChatBot, Message } from "../../hooks/useChatBot"; 
 import { useAuth } from "../../hooks/useAuth"; 
@@ -219,7 +219,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                         onPress={showWhatsAppOptions} 
                         style={styles.whatsappButton}
                     >
-                        <FontAwesome 
+                        <FontAwesome5 
                             name="whatsapp" 
                             size={20} 
                             color="#FFF"
@@ -305,7 +305,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                             {/* Modal Header */}
                             <View style={styles.modalHeader}>
                                 <View style={styles.modalWhatsappIconContainer}>
-                                    <FontAwesome 
+                                    <FontAwesome5 
                                         name="whatsapp" 
                                         size={50} 
                                         color="#25D366"
@@ -342,13 +342,13 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                                 style={styles.openWhatsappButton}
                                 onPress={openWhatsApp}
                             >
-                                <FontAwesome 
+                                <FontAwesome5 
                                     name="whatsapp" 
                                     size={22} 
                                     color="#FFF"
                                     style={{ marginRight: 8 }}
                                 />
-                                <Text style={styles.openWhatsappButtonText}>Open WhatsApp</Text>
+                                <Text style={styles.openWhatsappButtonText}>WhatsApp</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity 
