@@ -5,8 +5,7 @@ import {
     Alert, Linking, Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
-import { MessageCircle } from "lucide-react-native"; // WhatsApp-style icon
+import { Feather, FontAwesome } from "@expo/vector-icons";
 import ChatInput from "../../components/chatBot/ChatInput"; 
 import { useChatBot, Message } from "../../hooks/useChatBot"; 
 import { useAuth } from "../../hooks/useAuth"; 
@@ -220,11 +219,10 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                         onPress={showWhatsAppOptions} 
                         style={styles.whatsappButton}
                     >
-                        <MessageCircle 
+                        <FontAwesome 
+                            name="whatsapp" 
                             size={20} 
-                            color="#FFF" 
-                            strokeWidth={2.5}
-                            fill="#FFF"
+                            color="#FFF"
                         />
                     </TouchableOpacity>
                     
@@ -307,10 +305,10 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                             {/* Modal Header */}
                             <View style={styles.modalHeader}>
                                 <View style={styles.modalWhatsappIconContainer}>
-                                    <MessageCircle 
+                                    <FontAwesome 
+                                        name="whatsapp" 
                                         size={50} 
-                                        color="#25D366" 
-                                        strokeWidth={2}
+                                        color="#25D366"
                                     />
                                 </View>
                                 <Text style={styles.modalTitle}>Chat on WhatsApp</Text>
@@ -344,11 +342,10 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                                 style={styles.openWhatsappButton}
                                 onPress={openWhatsApp}
                             >
-                                <MessageCircle 
+                                <FontAwesome 
+                                    name="whatsapp" 
                                     size={22} 
-                                    color="#FFF" 
-                                    strokeWidth={2.5}
-                                    fill="#FFF"
+                                    color="#FFF"
                                     style={{ marginRight: 8 }}
                                 />
                                 <Text style={styles.openWhatsappButtonText}>Open WhatsApp</Text>
