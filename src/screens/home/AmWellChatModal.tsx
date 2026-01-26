@@ -5,7 +5,7 @@ import {
     Alert, Linking, Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Feather, FontAwesome } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons"; // Change FontAwesome to Ionicons
 import ChatInput from "../../components/chatBot/ChatInput"; 
 import { useChatBot, Message } from "../../hooks/useChatBot"; 
 import { useAuth } from "../../hooks/useAuth"; 
@@ -215,17 +215,17 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                 </View>
                 <View style={styles.headerRight}>
                     {/* WhatsApp Button */}
-                    <TouchableOpacity 
-                        onPress={showWhatsAppOptions} 
-                        style={styles.whatsappButton}
-                    >
-                        <FontAwesome 
-                            name="whatsapp" 
-                            size={20} 
-                            color="#FFF"
-                           
-                        />
-                    </TouchableOpacity>
+                   // In header
+<TouchableOpacity 
+    onPress={showWhatsAppOptions} 
+    style={styles.whatsappButton}
+>
+    <Ionicons 
+        name="logo-whatsapp" 
+        size={22} 
+        color="#FFF"
+    />
+</TouchableOpacity>
                     
                     <TouchableOpacity onPress={clearChat} style={styles.headerButton}>
                         <Feather name="trash-2" size={20} color="#666" />
@@ -306,12 +306,12 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                             {/* Modal Header */}
                             <View style={styles.modalHeader}>
                                 <View style={styles.modalWhatsappIconContainer}>
-                                    <FontAwesome 
-                                        name="whatsapp" 
-                                        size={50} 
-                                        color="#25D366"
-                                        
-                                    />
+                                   <Ionicons 
+    name="logo-whatsapp" 
+    size={50} 
+    color="#25D366"
+/>
+
                                 </View>
                                 <Text style={styles.modalTitle}>Chat on WhatsApp</Text>
                                 <Text style={styles.modalSubtitle}>
@@ -344,13 +344,12 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                                 style={styles.openWhatsappButton}
                                 onPress={openWhatsApp}
                             >
-                                <FontAwesome 
-                                    name="whatsapp" 
-                                    size={22} 
-                                    color="#FFF"
-                                    style={{ marginRight: 8 }}
-                                    
-                                />
+                               <Ionicons 
+    name="logo-whatsapp" 
+    size={22} 
+    color="#FFF"
+    style={{ marginRight: 8 }}
+/>
                                 <Text style={styles.openWhatsappButtonText}>WhatsApp</Text>
                             </TouchableOpacity>
 

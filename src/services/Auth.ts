@@ -1,4 +1,4 @@
-// services/Auth.ts - COMPLETE VERSION WITH TOKEN REFRESH
+// services/Auth.ts - FIXED VERSION WITH PROPER EXPIRY HANDLING
 import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode } from 'jwt-decode';
@@ -73,7 +73,40 @@ const isTokenExpired = (token: string): boolean => {
 };
 
 /**
- * Refresh the access token using refresh token
+ * ✅ CRITICAL FIX: Check if refresh token itself is expired
+ */
+const isRefreshTokenExpired = (refreshToken: string): boolean => {
+  try {
+    const decoded = jwtDecode<DecodedToken>(refreshToken);
+    const currentTime = Date.now() / 1000;
+    
+    const isExpired = decoded.exp < currentTime;
+    
+    if (isExpired) {
+      console.log('[Auth] ⚠️ Refresh token is expired');
+      console.log('[Auth] Expired at:', new Date(decoded.exp * 1000).toISOString());
+    }
+    
+    return isExpired;
+  } catch (error) {
+    console.error('[Auth] Error decoding refresh token:', error);
+    return true;
+  }
+};
+
+/**
+ * ✅ FIXED: Clear all auth data and force re-login
+ */
+const clearAuthData = async () => {
+  console.log('[Auth] 🧹 Clearing all authentication data');
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+  await SecureStore.deleteItemAsync(SESSION_ID_KEY);
+  await SecureStore.deleteItemAsync(IS_ANONYMOUS_KEY);
+};
+
+/**
+ * ✅ FIXED: Refresh the access token using refresh token with proper error handling
  */
 const refreshAccessToken = async (): Promise<string | null> => {
   try {
@@ -81,6 +114,13 @@ const refreshAccessToken = async (): Promise<string | null> => {
     
     if (!refreshToken) {
       console.log('[Auth] ⚠️ No refresh token available');
+      return null;
+    }
+
+    // ✅ CRITICAL: Check if refresh token itself is expired
+    if (isRefreshTokenExpired(refreshToken)) {
+      console.log('[Auth] ❌ Refresh token is expired - clearing auth data');
+      await clearAuthData();
       return null;
     }
 
@@ -94,20 +134,27 @@ const refreshAccessToken = async (): Promise<string | null> => {
       const newToken = response.data.token;
       await SecureStore.setItemAsync(TOKEN_KEY, newToken);
       
-      console.log('[Auth] ✅ Access token refreshed successfully');
+      // ✅ Store new refresh token if provided (token rotation)
+      if (response.data.refreshToken) {
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.data.refreshToken);
+        console.log('[Auth] ✅ Access token AND refresh token updated');
+      } else {
+        console.log('[Auth] ✅ Access token refreshed successfully');
+      }
+      
       return newToken;
     }
 
     console.log('[Auth] ❌ Token refresh failed - no token in response');
+    await clearAuthData();
     return null;
   } catch (error: any) {
     console.error('[Auth] ❌ Failed to refresh token:', error.response?.data || error.message);
     
-    // If refresh token is invalid/expired, clear everything
+    // ✅ CRITICAL: If refresh token is invalid/expired, clear everything
     if (error.response?.status === 401) {
-      console.log('[Auth] Refresh token invalid, clearing all tokens');
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+      console.log('[Auth] ❌ Refresh token invalid/expired - clearing auth data');
+      await clearAuthData();
     }
     
     return null;
@@ -168,7 +215,7 @@ const processQueue = (error: any, token: string | null = null) => {
 };
 
 /**
- * Setup axios interceptors for automatic token refresh
+ * ✅ FIXED: Setup axios interceptors with proper error handling
  */
 export const setupAxiosInterceptors = () => {
   if (isInterceptorSetup) {
@@ -203,14 +250,29 @@ export const setupAxiosInterceptors = () => {
     }
   );
 
-  // Response interceptor - handle 401 errors
+  // ✅ FIXED: Response interceptor with better error handling
   axios.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
       const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+      // ✅ Don't retry if request is to refresh endpoint
+      if (originalRequest.url?.includes('/auth/refreshToken')) {
+        console.log('[Auth] ❌ Refresh endpoint failed - clearing auth data');
+        await clearAuthData();
+        return Promise.reject(error);
+      }
+
       // If error is not 401 or already retried, reject
       if (error.response?.status !== 401 || originalRequest._retry) {
+        return Promise.reject(error);
+      }
+
+      // ✅ CRITICAL: Check if we should even attempt refresh
+      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      if (!refreshToken || isRefreshTokenExpired(refreshToken)) {
+        console.log('[Auth] ❌ Refresh token missing or expired - clearing auth data');
+        await clearAuthData();
         return Promise.reject(error);
       }
 
@@ -246,18 +308,15 @@ export const setupAxiosInterceptors = () => {
           
           return axios(originalRequest);
         } else {
-          console.log('[Auth] Token refresh failed, user must re-login');
+          console.log('[Auth] Token refresh failed, clearing auth data');
           processQueue(new Error('Token refresh failed'), null);
-          
-          // Clear tokens
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
-          await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-          
+          await clearAuthData();
           return Promise.reject(error);
         }
       } catch (refreshError) {
         console.error('[Auth] Error during token refresh:', refreshError);
         processQueue(refreshError, null);
+        await clearAuthData();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -435,9 +494,6 @@ export async function removePushToken(token: string, authToken: string): Promise
  * Clears all authentication tokens upon logout.
  */
 export async function logout() {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
-  await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-  await SecureStore.deleteItemAsync(SESSION_ID_KEY);
-  await SecureStore.deleteItemAsync(IS_ANONYMOUS_KEY);
+  await clearAuthData();
   console.log('[Auth] Logged out, all tokens cleared.');
 }

@@ -17,10 +17,10 @@ interface Props {
   appointment: IAppointment | null;
   visible: boolean;
   onClose: () => void;
-  onAccept?: (appt: IAppointment) => void;     // only for doctors
-  onReject?: (appt: IAppointment) => void;     // only for doctors
-  onBookAgain?: () => void;                    // only for users
-  onJoinCall?: (appt: IAppointment) => void;   // for starting/rejoining calls
+  onAccept?: (appt: IAppointment) => void;
+  onReject?: (appt: IAppointment) => void;
+  onBookAgain?: () => void;
+  onJoinCall?: (appt: IAppointment) => void;
   getEffectiveStatus: (appt: IAppointment) => string;
   role: "user" | "doctor";
 }
@@ -67,16 +67,55 @@ export default function AppointmentModal({
     }
   };
 
-  // ✅ IMPROVED: Check if doctor can start/rejoin call
-  const canStartOrRejoinCall = () => {
-    if (!appointment.scheduledAt) return false;
+  // ✅ Check if scheduled time has been exhausted
+  const isScheduledTimeExhausted = () => {
+    if (!appointment.scheduledAt) return true;
     
     const appointmentTime = new Date(appointment.scheduledAt);
     const duration = appointment.duration || 30; // Default 30 minutes
     const appointmentEndTime = new Date(appointmentTime.getTime() + duration * 60 * 1000);
     const now = new Date();
     
-    // Allow 15 minutes before and 15 minutes after the appointment window
+    // Add 15 minute grace period after scheduled end time
+    const graceMinutesAfter = 15;
+    const endWindow = new Date(appointmentEndTime.getTime() + graceMinutesAfter * 60 * 1000);
+    
+    return now > endWindow;
+  };
+
+  // ✅ Check if user can call back (call ended but time not exhausted)
+  const canCallBack = () => {
+    if (role !== "user") return false;
+    
+    const isCallEnded = effectiveStatus === "call-ended" || appointment.callStatus === "ended";
+    const timeNotExhausted = !isScheduledTimeExhausted();
+    const isNotCancelled = effectiveStatus !== "cancelled" && effectiveStatus !== "rejected";
+    
+    return isCallEnded && timeNotExhausted && isNotCancelled;
+  };
+
+  // ✅ Check if user should see "Book Again" (time exhausted)
+  const shouldShowBookAgain = () => {
+    if (role !== "user") return false;
+    
+    const isCallEnded = effectiveStatus === "call-ended" || 
+                        effectiveStatus === "completed" || 
+                        appointment.callStatus === "ended";
+    const timeExhausted = isScheduledTimeExhausted();
+    
+    return isCallEnded && timeExhausted;
+  };
+
+  // ✅ Check if doctor can start/rejoin call
+  const canStartOrRejoinCall = () => {
+    if (role !== "doctor") return false;
+    if (!appointment.scheduledAt) return false;
+    
+    const appointmentTime = new Date(appointment.scheduledAt);
+    const duration = appointment.duration || 30;
+    const appointmentEndTime = new Date(appointmentTime.getTime() + duration * 60 * 1000);
+    const now = new Date();
+    
     const graceMinutesBefore = 15;
     const graceMinutesAfter = 15;
     
@@ -85,10 +124,6 @@ export default function AppointmentModal({
     
     const isWithinWindow = now >= startWindow && now <= endWindow;
     
-    // Doctor can start/rejoin if:
-    // 1. Appointment is confirmed (not pending, rejected, or cancelled)
-    // 2. Current time is within the appointment window (15 min before to 15 min after)
-    // 3. Appointment status is NOT completed (completed means consultation is fully done)
     const isConfirmed = effectiveStatus === "confirmed" || 
                         effectiveStatus === "in-progress" || 
                         effectiveStatus === "call-ended";
@@ -100,11 +135,26 @@ export default function AppointmentModal({
     return isWithinWindow && isConfirmed && isNotCompleted;
   };
 
+  // ✅ Get remaining time in minutes
+  const getRemainingMinutes = () => {
+    if (!appointment.scheduledAt) return 0;
+    
+    const appointmentTime = new Date(appointment.scheduledAt);
+    const duration = appointment.duration || 30;
+    const appointmentEndTime = new Date(appointmentTime.getTime() + duration * 60 * 1000);
+    const now = new Date();
+    
+    const remainingMs = appointmentEndTime.getTime() - now.getTime();
+    const remainingMinutes = Math.ceil(remainingMs / 60000);
+    
+    return remainingMinutes > 0 ? remainingMinutes : 0;
+  };
+
   const getCallButtonText = () => {
     if (appointment.callStatus === "in-progress") {
       return "Rejoin Call";
     } else if (appointment.callStatus === "ended" || effectiveStatus === "call-ended") {
-      return "Start New Call";
+      return role === "doctor" ? "Start New Call" : "Call Back";
     } else if (effectiveStatus === "confirmed") {
       return "Start Call";
     } else {
@@ -112,13 +162,18 @@ export default function AppointmentModal({
     }
   };
 
-  const showCallButton = role === "doctor" && canStartOrRejoinCall() && onJoinCall;
+  const showCallButton = (role === "doctor" && canStartOrRejoinCall()) || 
+                         (role === "user" && canCallBack());
 
   console.log("Modal Debug:", {
     role,
     effectiveStatus,
     callStatus: appointment.callStatus,
     canStartOrRejoin: canStartOrRejoinCall(),
+    canCallBack: canCallBack(),
+    shouldShowBookAgain: shouldShowBookAgain(),
+    isTimeExhausted: isScheduledTimeExhausted(),
+    remainingMinutes: getRemainingMinutes(),
     scheduledAt: appointment.scheduledAt,
     now: new Date().toISOString(),
   });
@@ -204,7 +259,7 @@ export default function AppointmentModal({
             )}
 
             {/* Show call duration if call has ended */}
-            {appointment.callDuration && effectiveStatus === "call-ended" && (
+            {appointment.callDuration && (effectiveStatus === "call-ended" || effectiveStatus === "completed") && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Ionicons name="timer" size={20} color="#666" />
@@ -212,6 +267,19 @@ export default function AppointmentModal({
                 </View>
                 <Text style={styles.sectionValue}>
                   {Math.floor(appointment.callDuration / 60)} min {appointment.callDuration % 60} sec
+                </Text>
+              </View>
+            )}
+
+            {/* ✅ Show remaining time if call ended but time not exhausted */}
+            {canCallBack() && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="time" size={20} color="#10B981" />
+                  <Text style={[styles.sectionLabel, { color: "#10B981" }]}>Time Remaining</Text>
+                </View>
+                <Text style={[styles.sectionValue, { color: "#10B981", fontWeight: "700" }]}>
+                  {getRemainingMinutes()} minute{getRemainingMinutes() !== 1 ? 's' : ''} left - You can call back!
                 </Text>
               </View>
             )}
@@ -231,9 +299,9 @@ export default function AppointmentModal({
                     const diffMins = Math.floor(diffMs / 60000);
                     
                     if (diffMins < -15) {
-                      return "Appointment time has passed";
-                    } else if (diffMins < 0) {
                       return "Appointment in progress";
+                    } else if (diffMins < 0) {
+                      return "Appointment starting now";
                     } else if (diffMins < 15) {
                       return `Starting in ${diffMins} minute${diffMins !== 1 ? 's' : ''}`;
                     } else {
@@ -245,62 +313,70 @@ export default function AppointmentModal({
             )}
           </ScrollView>
 
-         {/* ACTION BUTTONS */}
-<View style={{ paddingVertical: 16 }}>
-  <ScrollView
-    horizontal={false}
-    contentContainerStyle={{ paddingBottom: 20 }}
-    showsVerticalScrollIndicator={false}
-  >
-    {/* Doctor: Pending appointments */}
-    {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.button, styles.rejectButton]}
-          onPress={() => onReject(appointment)}
-        >
-          <Text style={styles.buttonText}>Reject</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, styles.acceptButton]}
-          onPress={() => onAccept(appointment)}
-        >
-          <Text style={styles.buttonText}>Accept</Text>
-        </TouchableOpacity>
-      </View>
-    )}
+          {/* ACTION BUTTONS */}
+          <View style={{ paddingVertical: 16 }}>
+            <ScrollView
+              horizontal={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Doctor: Pending appointments */}
+              {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
+                <View style={styles.actions}>
+                  <TouchableOpacity
+                    style={[styles.button, styles.rejectButton]}
+                    onPress={() => onReject(appointment)}
+                  >
+                    <Text style={styles.buttonText}>Reject</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, styles.acceptButton]}
+                    onPress={() => onAccept(appointment)}
+                  >
+                    <Text style={styles.buttonText}>Accept</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-    {/* Doctor: Start/Rejoin call */}
-    {showCallButton && (
-      <TouchableOpacity 
-        style={[styles.button, styles.callButton, { marginTop: 12 }]} 
-        onPress={() => onJoinCall!(appointment)}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="videocam" size={20} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.buttonText}>{getCallButtonText()}</Text>
-        </View>
-      </TouchableOpacity>
-    )}
+              {/* ✅ Doctor: Start/Rejoin call OR User: Call Back */}
+              {showCallButton && onJoinCall && (
+                <TouchableOpacity 
+                  style={[styles.button, styles.callButton, { marginTop: 12 }]} 
+                  onPress={() => onJoinCall(appointment)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="videocam" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.buttonText}>{getCallButtonText()}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
-    {/* User: Book again */}
-    {role === "user" && effectiveStatus === "call-ended" && onBookAgain && (
-      <TouchableOpacity style={[styles.button, styles.acceptButton, { marginTop: 12 }]} onPress={onBookAgain}>
-        <Text style={styles.buttonText}>Book Again</Text>
-      </TouchableOpacity>
-    )}
+              {/* ✅ User: Book Again (only when time is exhausted) */}
+              {role === "user" && shouldShowBookAgain() && onBookAgain && (
+                <TouchableOpacity 
+                  style={[styles.button, styles.bookAgainButton, { marginTop: 12 }]} 
+                  onPress={onBookAgain}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="calendar" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.buttonText}>Book Again</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
-    {/* Default close button */}
-    {!((role === "doctor" && effectiveStatus === "pending") || 
-        (role === "user" && effectiveStatus === "call-ended") ||
-        showCallButton) && (
-      <TouchableOpacity style={[styles.button, styles.closeButton, { marginTop: 12 }]} onPress={onClose}>
-        <Text style={styles.buttonText}>Close</Text>
-      </TouchableOpacity>
-    )}
-  </ScrollView>
-</View>
-
+              {/* Default close button */}
+              {!((role === "doctor" && effectiveStatus === "pending") || 
+                  showCallButton ||
+                  (role === "user" && shouldShowBookAgain())) && (
+                <TouchableOpacity 
+                  style={[styles.button, styles.closeButton, { marginTop: 12 }]} 
+                  onPress={onClose}
+                >
+                  <Text style={styles.buttonText}>Close</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
         </View>
       </View>
     </Modal>
@@ -395,7 +471,8 @@ const styles = StyleSheet.create({
   acceptButton: { backgroundColor: "#4CAF50" },
   rejectButton: { backgroundColor: "#F44336" },
   closeButton: { backgroundColor: "#2196F3" },
-  callButton: { backgroundColor: "#10B981" }, // Green call button
+  callButton: { backgroundColor: "#10B981" },
+  bookAgainButton: { backgroundColor: "#D81E5B" },
   buttonText: { 
     fontSize: 16, 
     fontWeight: "700", 

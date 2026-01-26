@@ -1,4 +1,4 @@
-// hooks/useAuth.ts - Add interceptor initialization
+// hooks/useAuth.ts - FIXED VERSION
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import {
@@ -11,7 +11,7 @@ import {
   IS_ANONYMOUS_KEY,
   registerUser,
   loginUser,
-  setupAxiosInterceptors, // ← Import this
+  setupAxiosInterceptors,
 } from '../services/Auth';
 import { registerDoctor } from '../services/Doctor';
 import {
@@ -50,7 +50,34 @@ export function useAuth() {
   useEffect(() => {
     console.log('[useAuth] Initializing axios interceptors...');
     setupAxiosInterceptors();
-  }, []); // Run only once
+  }, []);
+
+  // ============================================================
+  // ✅ NEW: Reset auth state (used when tokens are invalid)
+  // ============================================================
+  const resetAuthState = useCallback(async () => {
+    console.log('[useAuth] 🔄 Resetting auth state to guest mode');
+    
+    setUser(null);
+    setUserToken(null);
+    setSessionId(null);
+    setIsAnonymous(true);
+    setIsAuthenticated(false);
+    userLoadedRef.current = false;
+    
+    // Create new guest session
+    try {
+      const guest = await createGuestSession();
+      if (guest) {
+        console.log('[useAuth] ✅ New guest session created');
+        setUserToken(guest.token);
+        setSessionId(guest.sessionId);
+        setUser({ id: 'guest', role: 'Guest' } as any);
+      }
+    } catch (error) {
+      console.error('[useAuth] ❌ Failed to create guest session:', error);
+    }
+  }, []);
 
   // ============================================================
   // REFRESH USER
@@ -74,11 +101,18 @@ export function useAuth() {
       
       console.warn('[useAuth] ⚠️ Refresh response invalid');
       return null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[useAuth] ❌ refreshUser error:', error);
+      
+      // ✅ If 401, reset auth state
+      if (error.response?.status === 401) {
+        console.log('[useAuth] 401 during refresh - resetting auth state');
+        await resetAuthState();
+      }
+      
       return null;
     }
-  }, [userToken]);
+  }, [userToken, resetAuthState]);
 
   // ============================================================
   // LOGOUT
@@ -89,13 +123,8 @@ export function useAuth() {
     }
 
     await logout();
-    setUser(null);
-    setUserToken(null);
-    setSessionId(null);
-    setIsAnonymous(true);
-    setIsAuthenticated(false);
-    userLoadedRef.current = false;
-  }, [userToken]);
+    await resetAuthState();
+  }, [userToken, resetAuthState]);
 
   // ============================================================
   // LOAD USER PROFILE
@@ -123,15 +152,15 @@ export function useAuth() {
         const error = err as AxiosError;
         
         if (error.response?.status === 401) {
-          console.warn('[useAuth] Token expired or invalid, logging out...');
-          await handleLogout();
+          console.warn('[useAuth] Token expired or invalid during profile load');
+          await resetAuthState();
         } else {
           console.error('[useAuth] Failed to fetch user profile:', err);
         }
       }
       return null;
     },
-    [handleLogout, user]
+    [user, resetAuthState]
   );
 
   // ============================================================
@@ -163,18 +192,15 @@ export function useAuth() {
   const enableGuestMode = useCallback(async () => {
     try {
       console.log('[useAuth] Enabling guest mode...');
-      setIsAnonymous(true);
-      setIsAuthenticated(false); 
-      setUser({ id: 'guest', role: 'Guest' } as any);
-      await SecureStore.setItemAsync(IS_ANONYMOUS_KEY, 'true');
+      await resetAuthState();
       console.log('[useAuth] Guest mode enabled');
     } catch (error) {
       console.error('[useAuth] Failed to enable guest mode:', error);
     }
-  }, []);
+  }, [resetAuthState]);
 
   // ============================================================
-  // INITIAL AUTH LOAD
+  // ✅ FIXED: INITIAL AUTH LOAD with better error handling
   // ============================================================
   useEffect(() => {
     if (didLoadRef.current) return;
@@ -203,44 +229,46 @@ export function useAuth() {
           hasSeenOnboarding: seenOnboarding === 'true',
         });
 
-        if (token) {
+        // ✅ If we have tokens, verify they're valid
+        if (token && !isAnon) {
           setUserToken(token);
-          setIsAnonymous(isAnon);
-          setIsAuthenticated(!isAnon);
-
+          setIsAnonymous(false);
+          
           if (storedSessionId) setSessionId(storedSessionId);
 
-          if (!isAnon && !userLoadedRef.current) {
-            console.log('[useAuth] Loading profile for real user...');
-            await loadUserProfile(token);
-          } else if (isAnon) {
-            console.log('[useAuth] Setting up guest user...');
-            setUser({ id: 'guest', role: 'Guest' } as any);
-            setIsAuthenticated(false);
-          }
-        } else {
-          console.log('[useAuth] No token found, creating guest session...');
-          const guest = await createGuestSession();
+          console.log('[useAuth] Loading profile for real user...');
+          const profile = await loadUserProfile(token);
           
-          if (guest) {
-            console.log('[useAuth] Guest session created');
-            setUserToken(guest.token);
-            setSessionId(guest.sessionId);
-            setIsAnonymous(true);
-            setIsAuthenticated(false);
-            setUser({ id: 'guest', role: 'Guest' } as any);
+          if (!profile) {
+            console.log('[useAuth] ⚠️ Failed to load profile, resetting to guest');
+            await resetAuthState();
           } else {
-            console.error('[useAuth] Failed to create guest session');
+            setIsAuthenticated(true);
           }
+        } 
+        // ✅ Guest session
+        else if (token && isAnon && storedSessionId) {
+          console.log('[useAuth] Restoring guest session...');
+          setUserToken(token);
+          setSessionId(storedSessionId);
+          setIsAnonymous(true);
+          setIsAuthenticated(false);
+          setUser({ id: 'guest', role: 'Guest' } as any);
+        } 
+        // ✅ No tokens - create new guest session
+        else {
+          console.log('[useAuth] No valid tokens, creating guest session...');
+          await resetAuthState();
         }
       } catch (e) {
         console.error('[useAuth] Error restoring session:', e);
+        await resetAuthState();
       } finally {
         console.log('[useAuth] Initial auth load complete');
         setLoading(false);
       }
     })();
-  }, [loadUserProfile]);
+  }, [loadUserProfile, resetAuthState]);
 
   // ============================================================
   // REGISTER
@@ -431,6 +459,6 @@ export function useAuth() {
     getUserRole,
     getInitialScreen,
     refreshUser,
-    setToken, 
+    setToken,
   };
 }
