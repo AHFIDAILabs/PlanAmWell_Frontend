@@ -12,6 +12,7 @@ import {
   registerUser,
   loginUser,
   setupAxiosInterceptors,
+  refreshAccessToken,
 } from '../services/Auth';
 import { registerDoctor } from '../services/Doctor';
 import {
@@ -23,6 +24,7 @@ import { IUser, AuthEntity } from '../types/backendType';
 import { registerPushToken, removePushToken } from '../services/Auth';
 import { AxiosError } from 'axios';
 import { getExpoPushToken } from './usePushToken';
+import { jwtDecode } from 'jwt-decode';
 
 const HAS_SEEN_ONBOARDING = 'HAS_SEEN_ONBOARDING';
 
@@ -30,6 +32,16 @@ interface ConversionResult {
   success: boolean;
   token?: string;
   user?: IUser;
+}
+
+interface DecodedToken {
+  id: string;
+  role: string;
+  name?: string;
+  exp: number;
+  iat: number;
+  sessionId?: string;
+  isAnonymous?: boolean;
 }
 
 export function useAuth() {
@@ -51,6 +63,39 @@ export function useAuth() {
     console.log('[useAuth] Initializing axios interceptors...');
     setupAxiosInterceptors();
   }, []);
+
+
+  // ✅ NEW: Proactive token refresh
+useEffect(() => {
+  if (!userToken || isAnonymous) return;
+
+  const checkAndRefresh = async () => {
+    try {
+      const decoded = jwtDecode<DecodedToken>(userToken);
+      const currentTime = Date.now() / 1000;
+      const timeUntilExpiry = decoded.exp - currentTime;
+      
+      // ✅ If less than 15 minutes until expiry, refresh now
+      if (timeUntilExpiry < 15 * 60) {
+        console.log('[useAuth] 🔄 Proactively refreshing token...');
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          setUserToken(newToken);
+        }
+      }
+    } catch (error) {
+      console.error('[useAuth] Error checking token expiry:', error);
+    }
+  };
+
+  // Check every 5 minutes
+  const interval = setInterval(checkAndRefresh, 5 * 60 * 1000);
+  
+  // Check immediately on mount
+  checkAndRefresh();
+
+  return () => clearInterval(interval);
+}, [userToken, isAnonymous]);
 
   // ============================================================
   // ✅ NEW: Reset auth state (used when tokens are invalid)

@@ -55,7 +55,7 @@ const isTokenExpired = (token: string): boolean => {
   try {
     const decoded = jwtDecode<DecodedToken>(token);
     const currentTime = Date.now() / 1000;
-    const bufferTime = 5 * 60; // 5 minutes buffer
+    const bufferTime = 10 * 60; // ✅ INCREASED: 10 minutes buffer (was 5)
     
     const willExpire = decoded.exp < (currentTime + bufferTime);
     
@@ -84,6 +84,7 @@ const isRefreshTokenExpired = (refreshToken: string): boolean => {
     
     if (isExpired) {
       console.log('[Auth] ⚠️ Refresh token is expired');
+      clearAuthData();
       console.log('[Auth] Expired at:', new Date(decoded.exp * 1000).toISOString());
     }
     
@@ -108,7 +109,7 @@ const clearAuthData = async () => {
 /**
  * ✅ FIXED: Refresh the access token using refresh token with proper error handling
  */
-const refreshAccessToken = async (): Promise<string | null> => {
+export const refreshAccessToken = async (): Promise<string | null> => {
   try {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
     
@@ -117,7 +118,7 @@ const refreshAccessToken = async (): Promise<string | null> => {
       return null;
     }
 
-    // ✅ CRITICAL: Check if refresh token itself is expired
+    // ✅ Check if refresh token itself is expired
     if (isRefreshTokenExpired(refreshToken)) {
       console.log('[Auth] ❌ Refresh token is expired - clearing auth data');
       await clearAuthData();
@@ -128,13 +129,15 @@ const refreshAccessToken = async (): Promise<string | null> => {
     
     const response = await axios.post(`${BASE_URL}/refreshToken`, {
       refreshToken,
+    }, {
+      timeout: 10000 // ✅ 10 second timeout
     });
 
     if (response.data.success && response.data.token) {
       const newToken = response.data.token;
       await SecureStore.setItemAsync(TOKEN_KEY, newToken);
       
-      // ✅ Store new refresh token if provided (token rotation)
+      // ✅ CRITICAL: Store new refresh token (token rotation)
       if (response.data.refreshToken) {
         await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, response.data.refreshToken);
         console.log('[Auth] ✅ Access token AND refresh token updated');
@@ -151,8 +154,8 @@ const refreshAccessToken = async (): Promise<string | null> => {
   } catch (error: any) {
     console.error('[Auth] ❌ Failed to refresh token:', error.response?.data || error.message);
     
-    // ✅ CRITICAL: If refresh token is invalid/expired, clear everything
-    if (error.response?.status === 401) {
+    // ✅ If refresh token is invalid/expired, clear everything
+    if (error.response?.status === 401 || error.response?.status === 403) {
       console.log('[Auth] ❌ Refresh token invalid/expired - clearing auth data');
       await clearAuthData();
     }
