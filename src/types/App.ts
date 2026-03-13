@@ -57,4 +57,11 @@ export type AppStackParamList = {
     callerType: 'Doctor' | 'Patient';
     channelName: string;
   };
+
+  ChatRoomScreen: {
+    appointmentId: string;
+    conversationId?: string;
+  };
+  
+  ConversationsListScreen: undefined;
 };

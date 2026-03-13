@@ -602,6 +602,31 @@ export default function DoctorDashboardScreen({ navigation }: any) {
           )}
         </View>
 
+        {/* Quick Access to Messages */}
+<View style={styles.section}>
+  <View style={styles.sectionHeader}>
+    <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Access</Text>
+  </View>
+  
+  <TouchableOpacity
+    style={[styles.quickAccessCard, { backgroundColor: colors.card }]}
+    onPress={() => navigation.navigate("ConversationsListScreen")}
+  >
+    <View style={styles.quickAccessIcon}>
+      <Ionicons name="chatbubbles" size={28} color="#D81E5B" />
+    </View>
+    <View style={styles.quickAccessContent}>
+      <Text style={[styles.quickAccessTitle, { color: colors.text }]}>
+        Patient Messages
+      </Text>
+      <Text style={[styles.quickAccessSubtitle, { color: colors.textMuted }]}>
+        Chat with your patients
+      </Text>
+    </View>
+    <Ionicons name="chevron-forward" size={24} color={colors.textMuted} />
+  </TouchableOpacity>
+</View>
+
         {/* Weekly Availability */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -1289,5 +1314,36 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 15,
+  },
+  quickAccessCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    gap: 12,
+  },
+  quickAccessIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FFF0F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quickAccessContent: {
+    flex: 1,
+  },
+  quickAccessTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  quickAccessSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
   },
 });

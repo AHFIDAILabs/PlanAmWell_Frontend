@@ -25,6 +25,7 @@ const DoctorBottomBar = ({ activeRoute, messagesCount = 0 }: DoctorBottomBarProp
     { name: "Appointments", icon: "calendar-outline", route: "DoctorAppointment" },
     { name: "Profile", icon: "person-outline", route: "DoctorProfileScreen" },
     { name: "Notifications", icon: "notifications-outline", route: "NotificationsScreen" },
+     { name: "ConversationsListScreen", icon: "chatbubbles", label: "Messages" },
   ];
 
   const handleNavigate = (tab: typeof tabs[0]) => {

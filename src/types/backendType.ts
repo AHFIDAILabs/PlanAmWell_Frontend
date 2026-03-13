@@ -246,6 +246,7 @@ export interface IAppointment {
   userId: string;
   doctorId: string | IDoctor;
   consultationType?: "video" | "in-person" | "chat" | "audio";
+  conversationId?: string;
 
   scheduledAt: Date;
   proposedAt?: Date;
@@ -331,3 +332,61 @@ export type NotificationData =
       type?: string;
       [key: string]: any;
     };
+
+
+
+    // types/backendType.ts - ADD THESE TYPES
+
+export type MessageType = "text" | "image" | "video" | "audio" | "system";
+export type MessageStatus = "sent" | "delivered" | "read";
+
+export interface IMessage {
+  _id: string;
+  senderId: string;
+  senderType: "User" | "Doctor";
+  messageType: MessageType;
+  content: string;
+  mediaUrl?: string;
+  status: MessageStatus;
+  createdAt: string;
+  readAt?: string;
+}
+
+export interface IVideoCallRequest {
+  _id: string;
+  requestedBy: string;
+  requestedByType: "User" | "Doctor";
+  status: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+  requestedAt: string;
+  respondedAt?: string;
+  expiresAt: string;
+}
+
+export interface IConversation {
+  _id: string;
+  appointmentId: string | IAppointment;
+  participants: {
+    userId: IUser;
+    doctorId: IDoctor;
+  };
+  messages: IMessage[];
+  lastMessage?: IMessage;
+  unreadCount: {
+    user: number;
+    doctor: number;
+  };
+  activeVideoRequest?: IVideoCallRequest;
+  videoCallHistory: IVideoCallRequest[];
+  isActive: boolean;
+  isPinned: {
+    user: boolean;
+    doctor: boolean;
+  };
+  isMuted: {
+    user: boolean;
+    doctor: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+  lastActivityAt: string;
+}

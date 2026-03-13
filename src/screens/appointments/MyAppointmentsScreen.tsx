@@ -11,9 +11,12 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  ViewStyle,
+  TextStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { getMyAppointments, formatAppointmentTime } from "../../services/Appointment";
 import { getDoctorImageUri } from "../../services/Doctor";
@@ -290,57 +293,87 @@ export const MyAppointmentsScreen: React.FC = () => {
     navigation.navigate("BookAppointmentScreen", { doctor });
   };
 
-  const renderItem = ({ item }: { item: IAppointment }) => {
-    const doctor = typeof item.doctorId === "object" ? (item.doctorId as IDoctor) : null;
-    const effectiveStatus = getEffectiveStatus(item);
-    const now = new Date();
-    const diffMinutes = (item.scheduledAt.getTime() - now.getTime()) / 60000;
-    const canJoin =
-      item.status === "confirmed" && diffMinutes <= 15 && diffMinutes > -120 && item._id && item.callStatus !== "ended" && effectiveStatus !== "call-ended";
-    const isJoining = joiningCall === item._id;
+const renderItem = ({ item }: { item: IAppointment }) => {
+  const doctor = typeof item.doctorId === "object" ? (item.doctorId as IDoctor) : null;
+  const effectiveStatus = getEffectiveStatus(item);
+  const now = new Date();
+  const diffMinutes = (item.scheduledAt.getTime() - now.getTime()) / 60000;
+  const canJoin =
+    item.status === "confirmed" && 
+    diffMinutes <= 15 && 
+    diffMinutes > -120 && 
+    item._id && 
+    item.callStatus !== "ended" && 
+    effectiveStatus !== "call-ended";
+  const isJoining = joiningCall === item._id;
+  const showChat = canOpenChat(item); // ✅ NEW
 
-    return (
-      <TouchableOpacity style={[styles.card, isJoining && styles.cardDisabled]} onPress={() => handleAppointmentPress(item)} disabled={isJoining}>
-        {doctor && (
-          <View style={styles.doctorRow}>
-            <Image source={{ uri: getDoctorImageUri(doctor) }} style={styles.avatar} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name}>
-                Dr. {doctor.firstName} {doctor.lastName}
-              </Text>
-              <Text style={styles.spec}>{doctor.specialization}</Text>
-            </View>
+  return (
+    <TouchableOpacity 
+      style={[styles.card, isJoining && styles.cardDisabled]} 
+      onPress={() => handleAppointmentPress(item)} 
+      disabled={isJoining}
+    >
+      {doctor && (
+        <View style={styles.doctorRow}>
+          <Image source={{ uri: getDoctorImageUri(doctor) }} style={styles.avatar} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.name}>
+              Dr. {doctor.firstName} {doctor.lastName}
+            </Text>
+            <Text style={styles.spec}>{doctor.specialization}</Text>
           </View>
-        )}
-
-        <View style={styles.divider} />
-        <Text style={styles.time}>🕒 {formatAppointmentTime(item.scheduledAt)}</Text>
-
-        {diffMinutes > 0 && diffMinutes <= 60 && (
-          <Text style={styles.countdown}>⏰ Starts in {Math.ceil(diffMinutes)} minutes</Text>
-        )}
-
-        <View style={styles.statusRow}>
-          <View style={[styles.statusPill, { backgroundColor: getStatusColor(effectiveStatus) }]}>
-            <Text style={styles.statusText}>{effectiveStatus === "in-progress" ? "🔴 LIVE" : effectiveStatus.toUpperCase()}</Text>
-          </View>
-
-          {canJoin && !isJoining && (
-            <TouchableOpacity style={styles.joinButton} onPress={() => handleAppointmentPress(item)}>
-              <Text style={styles.joinButtonText}>{effectiveStatus === "in-progress" ? "JOIN NOW" : "JOIN CALL"}</Text>
-            </TouchableOpacity>
-          )}
-
-          {isJoining && (
-            <View style={styles.joiningIndicator}>
-              <ActivityIndicator size="small" color="#10B981" />
-              <Text style={styles.joiningText}>Checking...</Text>
-            </View>
-          )}
         </View>
-      </TouchableOpacity>
-    );
-  };
+      )}
+
+      <View style={styles.divider} />
+      <Text style={styles.time}>🕒 {formatAppointmentTime(item.scheduledAt)}</Text>
+
+      {diffMinutes > 0 && diffMinutes <= 60 && (
+        <Text style={styles.countdown}>⏰ Starts in {Math.ceil(diffMinutes)} minutes</Text>
+      )}
+
+      <View style={styles.statusRow}>
+        <View style={[styles.statusPill, { backgroundColor: getStatusColor(effectiveStatus) }]}>
+          <Text style={styles.statusText}>
+            {effectiveStatus === "in-progress" ? "🔴 LIVE" : effectiveStatus.toUpperCase()}
+          </Text>
+        </View>
+
+        {canJoin && !isJoining && (
+          <TouchableOpacity style={styles.joinButton} onPress={() => handleAppointmentPress(item)}>
+            <Text style={styles.joinButtonText}>
+              {effectiveStatus === "in-progress" ? "JOIN NOW" : "JOIN CALL"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {isJoining && (
+          <View style={styles.joiningIndicator}>
+            <ActivityIndicator size="small" color="#10B981" />
+            <Text style={styles.joiningText}>Checking...</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ✅ NEW: Chat Button */}
+      {showChat && (
+        <TouchableOpacity
+          style={styles.chatButton}
+          onPress={() =>
+            navigation.navigate("ChatRoomScreen", {
+              appointmentId: item._id!,
+              conversationId: item.conversationId,
+            })
+          }
+        >
+          <Ionicons name="chatbubble-outline" size={18} color="#D81E5B" />
+          <Text style={styles.chatButtonText}>Chat with Doctor</Text>
+        </TouchableOpacity>
+      )}
+    </TouchableOpacity>
+  );
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -400,6 +433,11 @@ export const getStatusColor = (status: string) => {
   }
 };
 
+
+const canOpenChat = (appt: IAppointment): boolean => {
+  return appt.status === "confirmed" && !!appt.conversationId;
+};
+
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#F9FAFB" },
   title: { fontSize: 24, fontWeight: "700", marginBottom: 16, color: "#111" },
@@ -421,4 +459,6 @@ const styles = StyleSheet.create({
   joiningText: { color: "#10B981", fontSize: 14, fontWeight: "600" },
   emptyContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
   emptyText: { fontSize: 16, color: "#9CA3AF", textAlign: "center" },
+  chatButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12, paddingVertical: 10, borderWidth: 1, borderColor: "#D81E5B", borderRadius: 12, backgroundColor: "#FFF0F6" },
+  chatButtonText: { color: "#D81E5B", fontSize: 14, fontWeight: "600" },
 });
