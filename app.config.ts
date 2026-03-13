@@ -15,17 +15,25 @@ const config: ExpoConfig = {
   checkAutomatically: 'ON_LOAD', // default is ON_LOAD
 },
 
-  plugins: [
-    'expo-asset',
-    [
-      'expo-notifications',
-      {
-        icon: './src/assets/plan.png',
-        color: '#D81E5B',
-      },
-    ],
-    './src/plugins/withAgora',
+plugins: [
+  'expo-asset',
+  [
+    'expo-notifications',
+    {
+      icon: './src/assets/plan.png',
+      color: '#D81E5B',
+    },
   ],
+  './src/plugins/withAgora',
+  [
+    'expo-build-properties',
+    {
+      android: {
+        enableProguardInReleaseBuilds: true,
+      },
+    },
+  ],
+],
   splash: {
     image: './src/assets/plan.png',
     resizeMode: 'contain',
@@ -62,6 +70,7 @@ const config: ExpoConfig = {
       'BLUETOOTH',
       'ACCESS_WIFI_STATE',
     ],
+    jsEngine: 'hermes',
     adaptiveIcon: {
       foregroundImage: './src/assets/plan.png',
       backgroundColor: '#ffffff',

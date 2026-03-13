@@ -34,8 +34,7 @@
       "channel": "production",  
       "android": {
         "buildType": "apk",
-        "distribution": "internal",
-        "abi": ["arm64-v8a"]
+        "distribution": "internal"
       },
       "env": {
         "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL",
