@@ -29,8 +29,8 @@ const BottomBar = ({ activeRoute }: BottomBarProps) => {
     { name: "Profile", icon: "user", route: "ProfileScreen" },
     { name: "Partners", icon: "users", route: "AllActivePartnerScreen" },
     { name: "Notifications", icon: "bell", route: "NotificationsScreen" },
-    { name: "ConversationsListScreen", icon: "chatbubbles", label: "Messages" },
-    { name: "MyAppointmentsScreen", icon: "calendar", label: "Appointments" },
+    { name: "Message", icon: "chatbubble-outline", label: "Messages" },
+    { name: "Appointments", icon: "calendar", label: "Appointments" },
   ];
 
   // Dynamically choose which tabs to display

@@ -29,6 +29,10 @@ import AllActivePartnerScreen from "../screens/partner/AllActivePartnerScreen";
 import ArticleDetailScreen from "../screens/advocacy/articleDetailScreen";
 import AllArticlesScreen from "../screens/advocacy/AllContentScreen";
 import { NotificationsScreen } from "../screens/notification/notification";
+// Add these imports at the top
+import { ChatRoomScreen } from "../screens/ChatRoomScreen";
+import { ConversationsListScreen } from "../screens/ConversationsListScreen";
+import IncomingCallScreen from "../screens/video/IncomingCallScreen";
 
 import { AppStackParamList } from "../types/App";
 import { IDoctor } from "../types/backendType";
@@ -105,6 +109,13 @@ export default function AppNavigator() {
       <RootStack.Screen name="DoctorAppointment" component={DoctorAppointmentsScreen} />
       <RootStack.Screen name="DoctorProfileScreen" component={DoctorProfileScreen} />
       <RootStack.Screen name="DoctorAvailability" component={DoctorAvailabilityScreen} />
+
+      {/* Chat */}
+<RootStack.Screen name="ChatRoomScreen" component={ChatRoomScreen} />
+<RootStack.Screen name="ConversationsListScreen" component={ConversationsListScreen} />
+
+{/* Calls */}
+<RootStack.Screen name="IncomingCall" component={IncomingCallScreen} />
 
       {/* Appointments */}
       <RootStack.Screen name="BookAppointmentScreen" component={BookAppointmentScreen} />

@@ -63,6 +63,9 @@ export const ChatRoomScreen: React.FC = () => {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentUserId = user?._id;
+  if (!conversation?.participants?.doctorId || 
+    typeof conversation.participants.doctorId === "string") return;
+    
   const otherParticipant = userRole === "Doctor" 
     ? conversation?.participants.userId 
     : conversation?.participants.doctorId;
@@ -77,7 +80,9 @@ export const ChatRoomScreen: React.FC = () => {
       
       if (conv) {
         setConversation(conv);
-        setMessages(conv.messages.reverse()); // Newest first in display
+        // setMessages(conv.messages.reverse());
+        setMessages([...conv.messages].reverse());
+
         
         // Mark as read
         await markMessagesAsRead(conv._id);
@@ -603,7 +608,7 @@ export const ChatRoomScreen: React.FC = () => {
         keyExtractor={(item) => item._id}
         renderItem={renderMessage}
         contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        // onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />

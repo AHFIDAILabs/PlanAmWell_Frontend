@@ -72,12 +72,12 @@ const openPhone = (phone?: string) => {
   </TouchableOpacity>
 )}
 
-{partner.phone && (
+{/* {partner.phone && (
   <TouchableOpacity style={styles.infoRow} onPress={() => openPhone(partner.phone)}>
     <Ionicons name="call-outline" size={20} color="#4CAF50" />
     <Text style={styles.infoText}>{partner.phone}</Text>
   </TouchableOpacity>
-)}
+)} */}
 
 {partner.website && (
   <TouchableOpacity style={styles.infoRow} onPress={() => openLink(partner.website)}>

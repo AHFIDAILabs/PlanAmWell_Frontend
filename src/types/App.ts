@@ -62,6 +62,10 @@ export type AppStackParamList = {
     appointmentId: string;
     conversationId?: string;
   };
+
+  OrdersScreen: {
+    
+  }
   
   ConversationsListScreen: undefined;
 };

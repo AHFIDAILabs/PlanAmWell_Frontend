@@ -4,9 +4,9 @@ import { AppStackParamList } from '../types/App';
 
 export const linking: LinkingOptions<AppStackParamList> = {
   prefixes: [
-    Linking.createURL('/'), // Expo dev
-    'planamwell://',        // Mobile custom scheme
-    'https://planamwell.com', // Universal links
+    Linking.createURL('/'),
+    'planamwell://',
+    'https://planamwell.com',
   ],
 
   config: {
@@ -20,19 +20,16 @@ export const linking: LinkingOptions<AppStackParamList> = {
       CheckoutScreen: 'checkout',
       PaymentMethodScreen: {
         path: 'payment/:orderId/:amount',
-        parse: {
-          amount: Number,
-        },
+        parse: { amount: Number },
       },
-      WebViewScreen: 'webview',
-
+      OrdersScreen: 'orders',       // ✅ Added
       SettingsScreen: 'settings',
       NotificationsScreen: 'notifications',
       HelpSupportScreen: 'help',
       PrivacySettingsScreen: 'privacy',
 
       AllDoctorScreen: 'doctors',
-      DoctorScreen: 'doctor/:doctorId', // Pass doctor object via params
+      DoctorScreen: 'doctor/:doctorId',
       DoctorProfileScreen: 'doctor-profile/:doctorId',
       DoctorDashScreen: 'doctor-dash',
       DoctorAvailability: 'doctor-availability',
@@ -42,23 +39,30 @@ export const linking: LinkingOptions<AppStackParamList> = {
       ArticleDetailScreen: 'article/:slug',
       AllArticleScreen: 'articles',
 
-      MyAppointments: 'appointments',
+      MyAppointments: 'appointments',   // ✅ Fixed key name
       ConsultationHistory: 'consultations',
+
+      // ✅ Added — patient/doctor chat room
+      ChatRoomScreen: {
+        path: 'chat-room',
+        parse: {
+          appointmentId: String,
+          conversationId: String,
+        },
+      },
+      ConversationsListScreen: 'messages',    // ✅ Added
+
+      AmWellChatModal: 'chat',                // ✅ Kept — AI chatbot
 
       VideoCallScreen: {
         path: 'video/:appointmentId',
-        parse: {},
       },
-
       IncomingCall: {
         path: 'call/:appointmentId',
       },
 
       AllActivePartnerScreen: 'partners',
 
-      AmWellChatModal: 'chat',
-
-      // 🔥 NESTED AUTH STACK
       AuthStack: {
         path: 'auth',
         screens: {

@@ -44,12 +44,12 @@ const getEffectiveStatus = (
 
   // Live call overrides
   const liveStatus = callStatusMap[appt._id];
-  if (liveStatus) return liveStatus; // 'in-progress' or 'call-ended'
+  if (liveStatus) return liveStatus; 
 
   // Confirmed but not started yet
   if (appt.status === "confirmed") {
-    if (diffMinutes > 15) return "confirmed-upcoming"; // upcoming, not joinable
-    if (diffMinutes <= 15 && diffMinutes >= 0) return "about-to-start"; // can show countdown
+    if (diffMinutes > 15) return "confirmed-upcoming"; 
+    if (diffMinutes <= 15 && diffMinutes >= 0) return "about-to-start"; 
   }
 
   return appt.status; // fallback: pending, etc.
