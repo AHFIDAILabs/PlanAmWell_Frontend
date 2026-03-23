@@ -14,7 +14,7 @@ import {
   Alert,
   Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
@@ -42,6 +42,7 @@ export const ChatRoomScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { user, getUserRole } = useAuth();
   const userRole = getUserRole();
+  const insets = useSafeAreaInsets();
 
   const { appointmentId, conversationId: initialConversationId } = route.params;
 
@@ -62,7 +63,6 @@ export const ChatRoomScreen: React.FC = () => {
 
   const currentUserId = user?._id;
 
-  // ✅ FIX 1: Derive otherParticipant safely with useMemo — no early return
   const otherParticipant = useMemo(() => {
     if (!conversation?.participants) return null;
     if (typeof conversation.participants.doctorId === "string") return null;
@@ -71,7 +71,6 @@ export const ChatRoomScreen: React.FC = () => {
       : conversation.participants.doctorId;
   }, [conversation, userRole]);
 
-  // ✅ Derive display values safely
   const otherParticipantName = useMemo(() => {
     if (!otherParticipant) return "...";
     return userRole === "Doctor"
@@ -119,12 +118,10 @@ export const ChatRoomScreen: React.FC = () => {
     loadConversation();
   }, [loadConversation]);
 
-  // ✅ FIX 2: Join the socket room so real-time events actually arrive
+  // Join socket room
   useEffect(() => {
     if (!conversation) return;
-
     socketService.joinAppointment(appointmentId);
-
     return () => {
       socketService.leaveAppointment(appointmentId);
     };
@@ -450,6 +447,7 @@ export const ChatRoomScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -486,28 +484,36 @@ export const ChatRoomScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item._id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.messagesList}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No messages yet</Text>
-            <Text style={styles.emptySubtext}>Start the conversation!</Text>
-          </View>
-        }
-      />
-
-      {/* Input */}
+      {/*
+        ✅ KEY FIX: KeyboardAvoidingView wraps BOTH the FlatList and the input bar together.
+        - flex: 1 so it fills all remaining space below the header/banner
+        - "padding" on iOS pushes the whole inner content up when keyboard appears
+        - "height" on Android shrinks the container so the input stays visible
+        - keyboardVerticalOffset accounts for the SafeAreaView top inset + header height
+      */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
       >
-        <View style={styles.inputContainer}>
+        {/* Messages List */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item._id}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.messagesList}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>No messages yet</Text>
+              <Text style={styles.emptySubtext}>Start the conversation!</Text>
+            </View>
+          }
+        />
+
+        {/* Input Bar — paddingBottom uses insets.bottom so it clears home indicators */}
+        <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 12 }]}>
           <TextInput
             style={styles.input}
             placeholder="Type a message..."
@@ -566,6 +572,7 @@ export const ChatRoomScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
     </SafeAreaView>
   );
 };
@@ -574,6 +581,10 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#F5F5F5",
+  },
+  // ✅ fills all space between header and bottom of screen
+  keyboardAvoidingView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -731,7 +742,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
+    // paddingBottom is set dynamically via insets.bottom + 12
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#E0E0E0",
