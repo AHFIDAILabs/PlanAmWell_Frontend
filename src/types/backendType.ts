@@ -183,13 +183,14 @@ export interface INotification {
   _id: string;
   userId: string;
   userType: NotificationOwnerType; // 👈 add this
-  type: "supplement" | "order" | "appointment" | "article" | "system" | "call_ended";
+  type: "supplement" | "order" | "appointment" | "article" | "system" | "call_ended" | "new_message" | "chat";
   title: string;
   message: string;
   isRead: boolean;
   metadata?: {
     orderId?: string;
     appointmentId?: string;
+    conversationId?: string;
     articleId?: string;
     status?: string;
     doctorName?: string;

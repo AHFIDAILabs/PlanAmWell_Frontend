@@ -207,6 +207,27 @@ export const NotificationsScreen = () => {
     try {
       if (!notification.isRead) await markAsRead(notification._id);
 
+       // ── Chat message notification ──────────────────────────
+   if (notification.type === 'new_message' || notification.type === 'chat') {
+      const conversationId = notification.metadata?.conversationId;
+      const appointmentId = notification.metadata?.appointmentId;
+
+      if (!conversationId && !appointmentId) {
+        Toast.show({
+          type: 'error',
+          text1: 'Cannot open chat',
+          text2: 'Missing conversation details',
+        });
+        return;
+      }
+
+      navigation.navigate('ChatRoomScreen', {
+        conversationId,
+        appointmentId,
+      });
+      return;
+    }
+
       if (notification.type === 'call_ended') {
         const appointmentId = notification.metadata?.appointmentId;
         if (!appointmentId) return;

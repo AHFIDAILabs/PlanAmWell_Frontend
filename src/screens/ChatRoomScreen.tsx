@@ -1,5 +1,5 @@
 // screens/ChatRoomScreen.tsx
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -52,8 +52,6 @@ export const ChatRoomScreen: React.FC = () => {
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
-  
-  // Video call request state
   const [videoRequestModal, setVideoRequestModal] = useState(false);
   const [incomingVideoRequest, setIncomingVideoRequest] = useState<IVideoCallRequest | null>(null);
   const [outgoingVideoRequest, setOutgoingVideoRequest] = useState<IVideoCallRequest | null>(null);
@@ -63,12 +61,32 @@ export const ChatRoomScreen: React.FC = () => {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentUserId = user?._id;
-  if (!conversation?.participants?.doctorId || 
-    typeof conversation.participants.doctorId === "string") return;
-    
-  const otherParticipant = userRole === "Doctor" 
-    ? conversation?.participants.userId 
-    : conversation?.participants.doctorId;
+
+  // ✅ FIX 1: Derive otherParticipant safely with useMemo — no early return
+  const otherParticipant = useMemo(() => {
+    if (!conversation?.participants) return null;
+    if (typeof conversation.participants.doctorId === "string") return null;
+    return userRole === "Doctor"
+      ? conversation.participants.userId
+      : conversation.participants.doctorId;
+  }, [conversation, userRole]);
+
+  // ✅ Derive display values safely
+  const otherParticipantName = useMemo(() => {
+    if (!otherParticipant) return "...";
+    return userRole === "Doctor"
+      ? (otherParticipant as any)?.name || "Patient"
+      : `Dr. ${(otherParticipant as any)?.firstName || ""} ${(otherParticipant as any)?.lastName || ""}`.trim();
+  }, [otherParticipant, userRole]);
+
+  const otherParticipantImage = useMemo(() => {
+    if (!otherParticipant) return "";
+    return userRole === "Doctor"
+      ? (otherParticipant as any)?.userImage?.imageUrl ||
+        (otherParticipant as any)?.userImage?.secure_url ||
+        `https://ui-avatars.com/api/?name=${(otherParticipant as any)?.name || "User"}`
+      : getDoctorImageUri(otherParticipant as any);
+  }, [otherParticipant, userRole]);
 
   // ===========================
   // LOAD CONVERSATION
@@ -77,17 +95,11 @@ export const ChatRoomScreen: React.FC = () => {
     try {
       setLoading(true);
       const conv = await getOrCreateConversation(appointmentId);
-      
+
       if (conv) {
         setConversation(conv);
-        // setMessages(conv.messages.reverse());
         setMessages([...conv.messages].reverse());
-
-        
-        // Mark as read
         await markMessagesAsRead(conv._id);
-        
-        // Scroll to bottom
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -107,6 +119,17 @@ export const ChatRoomScreen: React.FC = () => {
     loadConversation();
   }, [loadConversation]);
 
+  // ✅ FIX 2: Join the socket room so real-time events actually arrive
+  useEffect(() => {
+    if (!conversation) return;
+
+    socketService.joinAppointment(appointmentId);
+
+    return () => {
+      socketService.leaveAppointment(appointmentId);
+    };
+  }, [conversation, appointmentId]);
+
   // ===========================
   // SOCKET LISTENERS
   // ===========================
@@ -116,25 +139,16 @@ export const ChatRoomScreen: React.FC = () => {
     const socket = socketService.getSocket();
     if (!socket) return;
 
-    // New message
-    const handleNewMessage = (data: {
-      conversationId: string;
-      message: IMessage;
-    }) => {
+    const handleNewMessage = (data: { conversationId: string; message: IMessage }) => {
       if (data.conversationId === conversation._id) {
         setMessages((prev) => [...prev, data.message]);
-        
-        // Auto-scroll to bottom
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
-        
-        // Mark as read
         markMessagesAsRead(conversation._id);
       }
     };
 
-    // Typing indicator
     const handleTyping = (data: {
       conversationId: string;
       isTyping: boolean;
@@ -145,7 +159,6 @@ export const ChatRoomScreen: React.FC = () => {
       }
     };
 
-    // Messages read
     const handleMessagesRead = (data: { conversationId: string }) => {
       if (data.conversationId === conversation._id) {
         setMessages((prev) =>
@@ -158,76 +171,46 @@ export const ChatRoomScreen: React.FC = () => {
       }
     };
 
-    // Video call request
     const handleVideoRequest = (data: {
       conversationId: string;
       requesterName: string;
       requestId: string;
     }) => {
       if (data.conversationId === conversation._id) {
-        console.log("📞 Incoming video call request:", data);
-        
-        // Load the full request from conversation
         loadConversation().then(() => {
           setVideoRequestModal(true);
         });
       }
     };
 
-    // Video call response
     const handleVideoResponse = (data: {
       conversationId: string;
       status: "accepted" | "declined" | "expired" | "cancelled";
       requestId: string;
     }) => {
       if (data.conversationId === conversation._id) {
-        console.log("📞 Video call response:", data.status);
-        
         if (data.status === "accepted") {
-          Toast.show({
-            type: "success",
-            text1: "Call Accepted",
-            text2: "Connecting to video call...",
-          });
-          
-          // Navigate to video call
+          Toast.show({ type: "success", text1: "Call Accepted", text2: "Connecting..." });
           setTimeout(() => {
             navigation.navigate("VideoCallScreen", {
               appointmentId,
-              name: userRole === "Doctor" 
-                ? otherParticipant?.name || "Patient"
-                : `Dr. ${(otherParticipant as any)?.firstName || "Doctor"}`,
+              name: otherParticipantName,
               patientId: conversation.participants.userId._id,
               role: userRole === "Doctor" ? "doctor" : "user",
               autoJoin: true,
             });
           }, 500);
         } else if (data.status === "declined") {
-          Toast.show({
-            type: "error",
-            text1: "Call Declined",
-            text2: "The other party declined the call",
-          });
+          Toast.show({ type: "error", text1: "Call Declined", text2: "The other party declined" });
         } else if (data.status === "expired") {
-          Toast.show({
-            type: "info",
-            text1: "Request Expired",
-            text2: "The video call request timed out",
-          });
+          Toast.show({ type: "info", text1: "Request Expired", text2: "The video call request timed out" });
         } else if (data.status === "cancelled") {
-          Toast.show({
-            type: "info",
-            text1: "Request Cancelled",
-            text2: "The request was cancelled",
-          });
+          Toast.show({ type: "info", text1: "Request Cancelled" });
         }
-        
-        // Clear request
+
         setOutgoingVideoRequest(null);
         setIncomingVideoRequest(null);
         setVideoRequestModal(false);
-        
-        // Reload conversation
         loadConversation();
       }
     };
@@ -245,7 +228,8 @@ export const ChatRoomScreen: React.FC = () => {
       socket.off("video-call-request", handleVideoRequest);
       socket.off("video-call-response", handleVideoResponse);
     };
-  }, [conversation, currentUserId, userRole, appointmentId, navigation, loadConversation]);
+  }, [conversation, currentUserId, userRole, appointmentId, navigation,
+      loadConversation, otherParticipantName]);
 
   // ===========================
   // REQUEST COUNTDOWN
@@ -255,13 +239,12 @@ export const ChatRoomScreen: React.FC = () => {
 
     const request = conversation.activeVideoRequest;
     const expiresAt = new Date(request.expiresAt).getTime();
-    
+
     const interval = setInterval(() => {
       const now = Date.now();
       const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
-      
       setRequestCountdown(remaining);
-      
+
       if (remaining === 0) {
         clearInterval(interval);
         setVideoRequestModal(false);
@@ -273,18 +256,15 @@ export const ChatRoomScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [conversation?.activeVideoRequest]);
 
-  // Check for active video request on load
+  // Check active video request on load
   useEffect(() => {
     if (!conversation?.activeVideoRequest) return;
 
     const request = conversation.activeVideoRequest;
-    
     if (request.status === "pending") {
       if (request.requestedBy === currentUserId) {
-        // Outgoing request
         setOutgoingVideoRequest(request);
       } else {
-        // Incoming request
         setIncomingVideoRequest(request);
         setVideoRequestModal(true);
       }
@@ -299,8 +279,7 @@ export const ChatRoomScreen: React.FC = () => {
 
     const messageText = inputText.trim();
     setInputText("");
-    
-    // Stop typing indicator
+
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
@@ -311,22 +290,15 @@ export const ChatRoomScreen: React.FC = () => {
     try {
       setSending(true);
       const newMessage = await sendMessage(conversation._id, messageText);
-      
+
       if (newMessage) {
         setMessages((prev) => [...prev, newMessage]);
-        
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Failed to send message",
-        text2: error.message,
-      });
-      
-      // Restore text
+      Toast.show({ type: "error", text1: "Failed to send message", text2: error.message });
       setInputText(messageText);
     } finally {
       setSending(false);
@@ -338,7 +310,6 @@ export const ChatRoomScreen: React.FC = () => {
   // ===========================
   const handleTextChange = (text: string) => {
     setInputText(text);
-
     if (!conversation) return;
 
     if (text.length > 0 && !isTyping) {
@@ -346,10 +317,7 @@ export const ChatRoomScreen: React.FC = () => {
       updateTypingIndicator(conversation._id, true);
     }
 
-    // Reset timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
@@ -358,43 +326,27 @@ export const ChatRoomScreen: React.FC = () => {
   };
 
   // ===========================
-  // VIDEO CALL REQUEST
+  // VIDEO CALL HANDLERS
   // ===========================
   const handleRequestVideoCall = async () => {
     if (!conversation) return;
 
     if (conversation.activeVideoRequest?.status === "pending") {
-      Toast.show({
-        type: "info",
-        text1: "Request Pending",
-        text2: "A video call request is already active",
-      });
+      Toast.show({ type: "info", text1: "Request Pending", text2: "A video call request is already active" });
       return;
     }
 
     try {
       const request = await requestVideoCall(conversation._id);
-      
       if (request) {
         setOutgoingVideoRequest(request);
-        Toast.show({
-          type: "success",
-          text1: "Request Sent",
-          text2: "Waiting for response...",
-        });
+        Toast.show({ type: "success", text1: "Request Sent", text2: "Waiting for response..." });
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Request Failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Request Failed", text2: error.message });
     }
   };
 
-  // ===========================
-  // RESPOND TO VIDEO REQUEST
-  // ===========================
   const handleRespondToVideoRequest = async (accept: boolean) => {
     if (!conversation || !incomingVideoRequest) return;
 
@@ -404,62 +356,38 @@ export const ChatRoomScreen: React.FC = () => {
         incomingVideoRequest._id!,
         accept
       );
-      
+
       if (response && accept) {
-        Toast.show({
-          type: "success",
-          text1: "Joining Call",
-          text2: "Connecting...",
-        });
-        
-        // Navigate to video call
+        Toast.show({ type: "success", text1: "Joining Call", text2: "Connecting..." });
         setTimeout(() => {
           navigation.navigate("VideoCallScreen", {
             appointmentId: response.appointmentId,
-            name: userRole === "Doctor" 
-              ? otherParticipant?.name || "Patient"
-              : `Dr. ${(otherParticipant as any)?.firstName || "Doctor"}`,
+            name: otherParticipantName,
             patientId: conversation.participants.userId._id,
             role: userRole === "Doctor" ? "doctor" : "user",
             autoJoin: true,
           });
         }, 500);
       }
-      
+
       setVideoRequestModal(false);
       setIncomingVideoRequest(null);
       loadConversation();
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Response Failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Response Failed", text2: error.message });
     }
   };
 
-  // ===========================
-  // CANCEL VIDEO REQUEST
-  // ===========================
   const handleCancelVideoRequest = async () => {
     if (!conversation || !outgoingVideoRequest) return;
 
     try {
       await cancelVideoCallRequest(conversation._id, outgoingVideoRequest._id!);
-      
       setOutgoingVideoRequest(null);
-      Toast.show({
-        type: "info",
-        text1: "Request Cancelled",
-      });
-      
+      Toast.show({ type: "info", text1: "Request Cancelled" });
       loadConversation();
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Cancel Failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Cancel Failed", text2: error.message });
     }
   };
 
@@ -479,46 +407,21 @@ export const ChatRoomScreen: React.FC = () => {
     }
 
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isOwnMessage ? styles.ownMessage : styles.otherMessage,
-        ]}
-      >
-        <View
-          style={[
-            styles.messageBubble,
-            isOwnMessage ? styles.ownBubble : styles.otherBubble,
-          ]}
-        >
-          <Text
-            style={[
-              styles.messageText,
-              isOwnMessage ? styles.ownMessageText : styles.otherMessageText,
-            ]}
-          >
+      <View style={[styles.messageContainer, isOwnMessage ? styles.ownMessage : styles.otherMessage]}>
+        <View style={[styles.messageBubble, isOwnMessage ? styles.ownBubble : styles.otherBubble]}>
+          <Text style={[styles.messageText, isOwnMessage ? styles.ownMessageText : styles.otherMessageText]}>
             {item.content}
           </Text>
           <View style={styles.messageFooter}>
-            <Text
-              style={[
-                styles.messageTime,
-                isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime,
-              ]}
-            >
-              {new Date(item.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+            <Text style={[styles.messageTime, isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime]}>
+              {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </Text>
             {isOwnMessage && (
               <Ionicons
                 name={
-                  item.status === "read"
-                    ? "checkmark-done"
-                    : item.status === "delivered"
-                    ? "checkmark-done-outline"
-                    : "checkmark"
+                  item.status === "read" ? "checkmark-done"
+                  : item.status === "delivered" ? "checkmark-done-outline"
+                  : "checkmark"
                 }
                 size={14}
                 color={item.status === "read" ? "#4FC3F7" : "#B0BEC5"}
@@ -545,16 +448,6 @@ export const ChatRoomScreen: React.FC = () => {
     );
   }
 
-  const otherParticipantName = userRole === "Doctor"
-    ? otherParticipant?.name || "Patient"
-    : `Dr. ${(otherParticipant as any)?.firstName || ""} ${(otherParticipant as any)?.lastName || ""}`;
-
-  const otherParticipantImage = userRole === "Doctor"
-    ? (otherParticipant as any)?.userImage?.imageUrl || 
-      (otherParticipant as any)?.userImage?.secure_url ||
-      `https://ui-avatars.com/api/?name=${otherParticipant?.name || "User"}`
-    : getDoctorImageUri(otherParticipant as any);
-
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       {/* Header */}
@@ -567,9 +460,7 @@ export const ChatRoomScreen: React.FC = () => {
           <Image source={{ uri: otherParticipantImage }} style={styles.avatar} />
           <View>
             <Text style={styles.headerName}>{otherParticipantName}</Text>
-            {otherUserTyping && (
-              <Text style={styles.typingIndicator}>typing...</Text>
-            )}
+            {otherUserTyping && <Text style={styles.typingIndicator}>typing...</Text>}
           </View>
         </TouchableOpacity>
 
@@ -578,11 +469,7 @@ export const ChatRoomScreen: React.FC = () => {
           onPress={handleRequestVideoCall}
           disabled={!!outgoingVideoRequest}
         >
-          <Ionicons 
-            name="videocam" 
-            size={24} 
-            color={outgoingVideoRequest ? "#999" : "#D81E5B"} 
-          />
+          <Ionicons name="videocam" size={24} color={outgoingVideoRequest ? "#999" : "#D81E5B"} />
         </TouchableOpacity>
       </View>
 
@@ -591,9 +478,7 @@ export const ChatRoomScreen: React.FC = () => {
         <View style={styles.requestBanner}>
           <View style={styles.requestBannerContent}>
             <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.requestBannerText}>
-              Waiting for response... ({requestCountdown}s)
-            </Text>
+            <Text style={styles.requestBannerText}>Waiting for response... ({requestCountdown}s)</Text>
           </View>
           <TouchableOpacity onPress={handleCancelVideoRequest}>
             <Text style={styles.requestBannerCancel}>Cancel</Text>
@@ -608,7 +493,6 @@ export const ChatRoomScreen: React.FC = () => {
         keyExtractor={(item) => item._id}
         renderItem={renderMessage}
         contentContainerStyle={styles.messagesList}
-        // onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
@@ -638,11 +522,10 @@ export const ChatRoomScreen: React.FC = () => {
             onPress={handleSendMessage}
             disabled={!inputText.trim() || sending}
           >
-            {sending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={20} color="#fff" />
-            )}
+            {sending
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Ionicons name="send" size={20} color="#fff" />
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -652,11 +535,7 @@ export const ChatRoomScreen: React.FC = () => {
         visible={videoRequestModal}
         animationType="slide"
         transparent
-        onRequestClose={() => {
-          if (!incomingVideoRequest) {
-            setVideoRequestModal(false);
-          }
-        }}
+        onRequestClose={() => { if (!incomingVideoRequest) setVideoRequestModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.videoRequestModal}>
@@ -666,11 +545,8 @@ export const ChatRoomScreen: React.FC = () => {
               <Text style={styles.videoRequestSubtitle}>
                 {otherParticipantName} wants to start a video call
               </Text>
-              <Text style={styles.videoRequestCountdown}>
-                Expires in {requestCountdown}s
-              </Text>
+              <Text style={styles.videoRequestCountdown}>Expires in {requestCountdown}s</Text>
             </View>
-
             <View style={styles.videoRequestActions}>
               <TouchableOpacity
                 style={[styles.videoRequestButton, styles.declineButton]}
@@ -679,7 +555,6 @@ export const ChatRoomScreen: React.FC = () => {
                 <Ionicons name="close-circle" size={24} color="#fff" />
                 <Text style={styles.videoRequestButtonText}>Decline</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.videoRequestButton, styles.acceptButton]}
                 onPress={() => handleRespondToVideoRequest(true)}
