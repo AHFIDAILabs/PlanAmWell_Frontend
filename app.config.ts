@@ -6,7 +6,7 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   scheme: 'planamwell',
-  runtimeVersion: { policy: 'appVersion' },
+  runtimeVersion: { policy: 'sdkVersion' },
   icon: './src/assets/plan.png',
   userInterfaceStyle: 'light',
   updates: {
@@ -53,7 +53,7 @@ plugins: [
         },
       ],
       AssociatedDomains: [
-        'applinks:planamwell.com', // ✅ iOS Universal Links
+        'applinks:planamwell.com', 
       ],
     },
   },
