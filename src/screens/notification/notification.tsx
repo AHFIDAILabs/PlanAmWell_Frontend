@@ -208,25 +208,26 @@ export const NotificationsScreen = () => {
       if (!notification.isRead) await markAsRead(notification._id);
 
        // ── Chat message notification ──────────────────────────
-   if (notification.type === 'new_message' || notification.type === 'chat') {
-      const conversationId = notification.metadata?.conversationId;
-      const appointmentId = notification.metadata?.appointmentId;
+  if (notification.type === 'new_message' || notification.type === 'chat') {
+  const conversationId = notification.metadata?.conversationId;
+  const appointmentId = notification.metadata?.appointmentId;
 
-      if (!conversationId && !appointmentId) {
-        Toast.show({
-          type: 'error',
-          text1: 'Cannot open chat',
-          text2: 'Missing conversation details',
-        });
-        return;
-      }
+  //FIX: appointmentId is required by ChatRoomScreen
+  if (!appointmentId) {
+    Toast.show({
+      type: 'error',
+      text1: 'Cannot open chat',
+      text2: 'Appointment details missing from this notification. Open the Messages tab instead.',
+    });
+    return;
+  }
 
-      navigation.navigate('ChatRoomScreen', {
-        conversationId,
-        appointmentId,
-      });
-      return;
-    }
+  navigation.navigate('ChatRoomScreen', {
+    appointmentId,      
+    conversationId,          
+  });
+  return;
+}
 
       if (notification.type === 'call_ended') {
         const appointmentId = notification.metadata?.appointmentId;

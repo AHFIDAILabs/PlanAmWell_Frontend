@@ -1,5 +1,5 @@
-// components/common/BottomBar.tsx - FIXED
-import React, { useContext, useState, useMemo } from "react";
+// components/common/BottomBar.tsx
+import React, { useContext, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,76 +9,73 @@ import CartModal from "../product/cartModal";
 
 interface BottomBarProps {
   activeRoute: string;
-  cartItemCount?: number;
 }
+
+const ALL_TABS = [
+  { name: "Home", icon: "home", route: "HomeScreen" },
+  { name: "Doctors", icon: "heart", route: "AllDoctorScreen" },
+  { name: "Cart", icon: "shopping-cart", route: null, isCart: true },
+  { name: "Shop", icon: "box", route: "ProductsScreen" },
+  { name: "Profile", icon: "user", route: "ProfileScreen" },
+  { name: "Partners", icon: "users", route: "AllActivePartnerScreen" },
+  { name: "Alerts", icon: "bell", route: "NotificationsScreen" },
+  { name: "Chat", icon: "message-circle", route: "ConversationsListScreen" },
+  { name: "Schedule", icon: "calendar", route: "MyAppointments" },
+  { name: "History", icon: "clock", route: "ConsultationHistory" },
+];
+
+// Tabs always shown regardless of active route
+const PINNED_ROUTES = ["HomeScreen", null];
 
 const BottomBar = ({ activeRoute }: BottomBarProps) => {
   const navigation = useNavigation();
   const { cart } = useContext(CartContext);
-
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const cartCount = cart?.items?.length || 0;
 
-  const openCart = () => setCartModalVisible(true);
-
-  const allTabs = [
-    { name: "Home", icon: "home", route: "HomeScreen" },
-    { name: "Doctors", icon: "heart", route: "AllDoctorScreen" },
-    { name: "Cart", icon: "shopping-cart", action: openCart },
-    { name: "Products", icon: "box", route: "ProductsScreen" },
-    { name: "Profile", icon: "user", route: "ProfileScreen" },
-    { name: "Partners", icon: "users", route: "AllActivePartnerScreen" },
-    { name: "Notifications", icon: "bell", route: "NotificationsScreen" },
-    { name: "Message", icon: "chatbubble-outline", label: "Messages" },
-    { name: "Appointments", icon: "calendar", label: "Appointments" },
-  ];
-
-  // Dynamically choose which tabs to display
-  const displayedTabs = useMemo(() => {
-    const homeTab = allTabs.find((tab) => tab.route === "HomeScreen")!;
-    const cartTab = allTabs.find((tab) => tab.name === "Cart")!;
-    const activeTab = allTabs.find(
-      (tab) =>
-        tab.route === activeRoute &&
-        ![homeTab.route, cartTab.name].includes(tab.route || tab.name)
-    );
-    const remainingTabs = allTabs.filter(
-      (tab) => tab !== homeTab && tab !== cartTab && tab !== activeTab
+  // No random shuffle — order is deterministic
+  const getDisplayedTabs = () => {
+    const homeTab = ALL_TABS.find((t) => t.route === "HomeScreen")!;
+    const cartTab = ALL_TABS.find((t) => t.isCart)!;
+    const activeTab = ALL_TABS.find(
+      (t) => t.route === activeRoute && t.route !== "HomeScreen" && !t.isCart,
     );
 
-    // Shuffle remaining tabs randomly
-    const shuffled = remainingTabs.sort(() => Math.random() - 0.5);
+    const pinned = [homeTab, cartTab];
+    const rest = ALL_TABS.filter(
+      (t) => t !== homeTab && !t.isCart && t !== activeTab,
+    );
 
-    const finalTabs = [homeTab, cartTab];
-    if (activeTab) finalTabs.push(activeTab);
+    const result = [...pinned];
+    if (activeTab) result.push(activeTab);
 
-    // Fill remaining slots (max 5)
-    for (let i = 0; finalTabs.length < 5 && i < shuffled.length; i++) {
-      finalTabs.push(shuffled[i]);
+    // Fill remaining slots up to 5 — stable order, no shuffle
+    for (const tab of rest) {
+      if (result.length >= 5) break;
+      result.push(tab);
     }
 
-    return finalTabs;
-  }, [activeRoute]);
+    return result;
+  };
 
-  const handleNavigate = (tab: typeof allTabs[0]) => {
-    if (tab.action) {
-      tab.action();
+  const displayedTabs = getDisplayedTabs();
+
+  const handleNavigate = (tab: (typeof ALL_TABS)[0]) => {
+    if (tab.isCart) {
+      setCartModalVisible(true);
       return;
     }
 
-    // ✅ Special handling for Home - use reset to ensure it's the root
     if (tab.route === "HomeScreen") {
       navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: "HomeScreen" }],
-        })
+        CommonActions.reset({ index: 0, routes: [{ name: "HomeScreen" }] }),
       );
       return;
     }
 
-    // ✅ Regular navigation for other tabs
-    navigation.navigate(tab.route as never);
+    if (tab.route) {
+      navigation.navigate(tab.route as never);
+    }
   };
 
   return (
@@ -94,21 +91,32 @@ const BottomBar = ({ activeRoute }: BottomBarProps) => {
                 key={tab.name}
                 style={styles.tabButton}
                 onPress={() => handleNavigate(tab)}
+                activeOpacity={0.7}
               >
-                {tab.name === "Cart" && cartCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
-                  </View>
-                )}
-                <Feather name={tab.icon as any} size={24} color={color} />
-                <Text style={[styles.tabText, { color }]}>{tab.name}</Text>
+                <View style={styles.iconWrapper}>
+                  <Feather name={tab.icon as any} size={22} color={color} />
+
+                  {tab.isCart && cartCount > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>
+                        {cartCount > 99 ? "99+" : cartCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.tabText, { color }]} numberOfLines={1}>
+                  {tab.name}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
       </SafeAreaView>
 
-      <CartModal visible={cartModalVisible} onClose={() => setCartModalVisible(false)} />
+      <CartModal
+        visible={cartModalVisible}
+        onClose={() => setCartModalVisible(false)}
+      />
     </>
   );
 };
@@ -121,20 +129,47 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.8,
     borderTopColor: "#EEE",
   },
-  container: { flexDirection: "row", justifyContent: "space-around", paddingVertical: 6 },
-  tabButton: { flex: 1, alignItems: "center", paddingTop: 8 },
-  tabText: { fontSize: 11, marginTop: 4, fontWeight: "600" },
+  container: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  iconWrapper: {
+    position: "relative",
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabText: {
+    fontSize: 10,
+    marginTop: 3,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
   badge: {
     position: "absolute",
-    top: -2,
-    right: 25,
+    top: -4,
+    right: -6,
     backgroundColor: "#D81E5B",
-    width: 20,
-    height: 20,
-    borderRadius: 20,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 20,
   },
-  badgeText: { color: "#FFF", fontSize: 10, fontWeight: "bold" },
+  badgeText: {
+    color: "#FFF",
+    fontSize: 9,
+    fontWeight: "bold",
+  },
 });

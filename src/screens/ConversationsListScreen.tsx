@@ -165,7 +165,7 @@ export const ConversationsListScreen: React.FC = () => {
             appointmentId:
               typeof item.appointmentId === "string"
                 ? item.appointmentId
-                : item.appointmentId._id,
+                :(item.appointmentId as any)._id,
             conversationId: item._id,
           })
         }

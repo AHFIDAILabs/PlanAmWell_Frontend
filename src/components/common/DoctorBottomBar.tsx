@@ -1,4 +1,4 @@
-// components/common/DoctorBottomBar.tsx - FIXED
+// components/common/DoctorBottomBar.tsx
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,7 +6,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
-import { IDoctor } from "../../types/backendType";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { AppStackParamList } from "../../types/App";
 
@@ -20,38 +19,32 @@ const DoctorBottomBar = ({ activeRoute, messagesCount = 0 }: DoctorBottomBarProp
   const { colors } = useTheme();
   const { user } = useAuth();
 
+  // ✅ All tabs have a valid route. Short labels prevent overflow.
   const tabs = [
-    { name: "Home", icon: "home-outline", route: "DoctorDashScreen" },
-    { name: "Appointments", icon: "calendar-outline", route: "DoctorAppointment" },
-    { name: "Profile", icon: "person-outline", route: "DoctorProfileScreen" },
-    { name: "Notifications", icon: "notifications-outline", route: "NotificationsScreen" },
-     { name: "Message", icon: "chatbubble-outline", label: "Messages" },
+    { name: "Home",     icon: "home-outline",          route: "DoctorDashScreen" },
+    { name: "Schedule", icon: "calendar-outline",       route: "DoctorAppointment" },
+    { name: "Chat",     icon: "chatbubble-outline",     route: "ConversationsListScreen" },
+    { name: "Alerts",   icon: "notifications-outline",  route: "NotificationsScreen" },
+    { name: "Profile",  icon: "person-outline",         route: "DoctorProfileScreen" },
   ];
 
   const handleNavigate = (tab: typeof tabs[0]) => {
-    // ✅ Special handling for Home - use reset to ensure it's the root
+    // Reset stack to Home
     if (tab.route === "DoctorDashScreen") {
       navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: "DoctorDashScreen" }],
-        })
+        CommonActions.reset({ index: 0, routes: [{ name: "DoctorDashScreen" }] })
       );
       return;
     }
 
-    // ✅ Special handling for Profile - pass doctor data
+    // Profile needs doctor data passed
     if (tab.route === "DoctorProfileScreen") {
       const doctor = (user as any)?.doctor || user;
-      if (!doctor) {
-        console.warn("❌ No doctor found in user object");
-        return;
-      }
-      navigation.navigate(tab.route, { doctor } as any);
+      if (!doctor) return;
+      navigation.navigate("DoctorProfileScreen", { doctor } as any);
       return;
     }
 
-    // ✅ Regular navigation for other tabs
     navigation.navigate(tab.route as any);
   };
 
@@ -60,27 +53,36 @@ const DoctorBottomBar = ({ activeRoute, messagesCount = 0 }: DoctorBottomBarProp
       <View style={styles.container}>
         {tabs.map((tab) => {
           const isActive = activeRoute === tab.route;
-          const color = isActive ? colors.primary : colors.text;
+          const color = isActive ? colors.primary : colors.textMuted ?? "#888";
 
           return (
             <TouchableOpacity
               key={tab.name}
               style={styles.tabButton}
               onPress={() => handleNavigate(tab)}
+              activeOpacity={0.7}
             >
-              <Ionicons name={tab.icon as any} size={24} color={color} />
-              <Text style={[styles.tabLabel, { color }]}>{tab.name}</Text>
+              <View style={styles.iconWrapper}>
+                <Ionicons name={tab.icon as any} size={22} color={color} />
+                {/* ✅ Badge sits inside the icon wrapper — reliable positioning */}
+                {tab.route === "ConversationsListScreen" && messagesCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {messagesCount > 99 ? "99+" : messagesCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text
+                style={[styles.tabLabel, { color }]}
+                numberOfLines={1}
+              >
+                {tab.name}
+              </Text>
             </TouchableOpacity>
           );
         })}
       </View>
-
-      {/* Messages Badge */}
-      {messagesCount > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{messagesCount > 99 ? "99+" : messagesCount}</Text>
-        </View>
-      )}
     </SafeAreaView>
   );
 };
@@ -90,38 +92,49 @@ export default DoctorBottomBar;
 const styles = StyleSheet.create({
   safeArea: {
     borderTopWidth: 0.5,
-    borderTopColor: "#EEE",
+    borderTopColor: "#E5E7EB",
   },
   container: {
     flexDirection: "row",
     justifyContent: "space-around",
-    paddingVertical: 5,
-    position: "relative",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   tabButton: {
     flex: 1,
     alignItems: "center",
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  iconWrapper: {
+    position: "relative",
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabLabel: {
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginTop: 3,
     fontWeight: "600",
+    letterSpacing: 0.2,
   },
   badge: {
     position: "absolute",
-    bottom: 52,
-    right: "38%",
+    top: -4,
+    right: -6,
     backgroundColor: "#D81E5B",
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 20,
   },
   badgeText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "bold",
   },
 });

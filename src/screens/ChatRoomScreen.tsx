@@ -45,6 +45,7 @@ export const ChatRoomScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   const { appointmentId, conversationId: initialConversationId } = route.params;
+  
 
   const [conversation, setConversation] = useState<IConversation | null>(null);
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -90,29 +91,43 @@ export const ChatRoomScreen: React.FC = () => {
   // ===========================
   // LOAD CONVERSATION
   // ===========================
-  const loadConversation = useCallback(async () => {
-    try {
-      setLoading(true);
-      const conv = await getOrCreateConversation(appointmentId);
+const loadConversation = useCallback(async () => {
+  try {
+    setLoading(true);
 
-      if (conv) {
-        setConversation(conv);
-        setMessages([...conv.messages].reverse());
-        await markMessagesAsRead(conv._id);
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }
-    } catch (error: any) {
+    let conv: IConversation | null = null;
+
+    if (appointmentId) {
+      conv = await getOrCreateConversation(appointmentId);
+    } else {
+      // Fallback: should rarely happen, but guard against undefined appointmentId
       Toast.show({
         type: "error",
-        text1: "Failed to load chat",
-        text2: error.message,
+        text1: "Cannot open chat",
+        text2: "Missing appointment information",
       });
-    } finally {
       setLoading(false);
+      return;
     }
-  }, [appointmentId]);
+
+    if (conv) {
+      setConversation(conv);
+      setMessages([...conv.messages].reverse());
+      await markMessagesAsRead(conv._id);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  } catch (error: any) {
+    Toast.show({
+      type: "error",
+      text1: "Failed to load chat",
+      text2: error.message,
+    });
+  } finally {
+    setLoading(false);
+  }
+}, [appointmentId]);
 
   useEffect(() => {
     loadConversation();
@@ -582,7 +597,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F5F5F5",
   },
-  // ✅ fills all space between header and bottom of screen
+  //  fills all space between header and bottom of screen
   keyboardAvoidingView: {
     flex: 1,
   },
