@@ -1,6 +1,6 @@
 // components/common/BottomBar.tsx
-import React, { useContext, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useContext, useState, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, CommonActions } from "@react-navigation/native";
@@ -12,67 +12,36 @@ interface BottomBarProps {
 }
 
 const ALL_TABS = [
-  { name: "Home", icon: "home", route: "HomeScreen" },
-  { name: "Doctors", icon: "heart", route: "AllDoctorScreen" },
-  { name: "Cart", icon: "shopping-cart", route: null, isCart: true },
-  { name: "Shop", icon: "box", route: "ProductsScreen" },
-  { name: "Profile", icon: "user", route: "ProfileScreen" },
-  { name: "Partners", icon: "users", route: "AllActivePartnerScreen" },
-  { name: "Alerts", icon: "bell", route: "NotificationsScreen" },
-  { name: "Chat", icon: "message-circle", route: "ConversationsListScreen" },
-  { name: "Schedule", icon: "calendar", route: "MyAppointments" },
-  { name: "History", icon: "clock", route: "ConsultationHistory" },
+  { name: "Home",      icon: "home",           route: "HomeScreen" },
+  { name: "Doctors",   icon: "heart",          route: "AllDoctorScreen" },
+  { name: "Cart",      icon: "shopping-cart",  route: null,                      isCart: true },
+  { name: "Shop",      icon: "box",            route: "ProductsScreen" },
+  { name: "Chat",      icon: "message-circle", route: "ConversationsListScreen" },
+  { name: "Schedule",  icon: "calendar",       route: "MyAppointments" },
+  { name: "Alerts",    icon: "bell",           route: "NotificationsScreen" },
+  { name: "Profile",   icon: "user",           route: "ProfileScreen" },
+  { name: "Partners",  icon: "users",          route: "AllActivePartnerScreen" },
+  { name: "History",   icon: "clock",          route: "ConsultationHistory" },
 ];
-
-// Tabs always shown regardless of active route
-const PINNED_ROUTES = ["HomeScreen", null];
 
 const BottomBar = ({ activeRoute }: BottomBarProps) => {
   const navigation = useNavigation();
   const { cart } = useContext(CartContext);
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const cartCount = cart?.items?.length || 0;
-
-  // No random shuffle — order is deterministic
-  const getDisplayedTabs = () => {
-    const homeTab = ALL_TABS.find((t) => t.route === "HomeScreen")!;
-    const cartTab = ALL_TABS.find((t) => t.isCart)!;
-    const activeTab = ALL_TABS.find(
-      (t) => t.route === activeRoute && t.route !== "HomeScreen" && !t.isCart,
-    );
-
-    const pinned = [homeTab, cartTab];
-    const rest = ALL_TABS.filter(
-      (t) => t !== homeTab && !t.isCart && t !== activeTab,
-    );
-
-    const result = [...pinned];
-    if (activeTab) result.push(activeTab);
-
-    // Fill remaining slots up to 5 — stable order, no shuffle
-    for (const tab of rest) {
-      if (result.length >= 5) break;
-      result.push(tab);
-    }
-
-    return result;
-  };
-
-  const displayedTabs = getDisplayedTabs();
+  const scrollRef = useRef<ScrollView>(null);
 
   const handleNavigate = (tab: (typeof ALL_TABS)[0]) => {
     if (tab.isCart) {
       setCartModalVisible(true);
       return;
     }
-
     if (tab.route === "HomeScreen") {
       navigation.dispatch(
-        CommonActions.reset({ index: 0, routes: [{ name: "HomeScreen" }] }),
+        CommonActions.reset({ index: 0, routes: [{ name: "HomeScreen" }] })
       );
       return;
     }
-
     if (tab.route) {
       navigation.navigate(tab.route as never);
     }
@@ -81,21 +50,29 @@ const BottomBar = ({ activeRoute }: BottomBarProps) => {
   return (
     <>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          {displayedTabs.map((tab) => {
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          decelerationRate="fast"
+          bounces={false}
+        >
+          {ALL_TABS.map((tab) => {
             const isActive = activeRoute === tab.route;
             const color = isActive ? "#D81E5B" : "#777";
 
             return (
               <TouchableOpacity
                 key={tab.name}
-                style={styles.tabButton}
+                style={[styles.tabButton, isActive && styles.tabButtonActive]}
                 onPress={() => handleNavigate(tab)}
                 activeOpacity={0.7}
               >
                 <View style={styles.iconWrapper}>
                   <Feather name={tab.icon as any} size={22} color={color} />
 
+                  {/* Cart badge */}
                   {tab.isCart && cartCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>
@@ -104,13 +81,17 @@ const BottomBar = ({ activeRoute }: BottomBarProps) => {
                     </View>
                   )}
                 </View>
+
                 <Text style={[styles.tabText, { color }]} numberOfLines={1}>
                   {tab.name}
                 </Text>
+
+                {/* Active indicator dot */}
+                {isActive && <View style={styles.activeDot} />}
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
       </SafeAreaView>
 
       <CartModal
@@ -129,17 +110,24 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.8,
     borderTopColor: "#EEE",
   },
-  container: {
+  scrollContent: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    alignItems: "center",
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    paddingHorizontal: 4,
   },
   tabButton: {
-    flex: 1,
     alignItems: "center",
-    paddingTop: 4,
-    paddingBottom: 2,
+    justifyContent: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 14,
+    marginHorizontal: 2,
+    borderRadius: 12,
+    minWidth: 60,
+    position: "relative",
+  },
+  tabButtonActive: {
+    backgroundColor: "#FFF0F6",
   },
   iconWrapper: {
     position: "relative",
@@ -153,6 +141,14 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontWeight: "600",
     letterSpacing: 0.2,
+  },
+  activeDot: {
+    position: "absolute",
+    bottom: -2,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D81E5B",
   },
   badge: {
     position: "absolute",

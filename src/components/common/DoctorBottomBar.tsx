@@ -1,6 +1,6 @@
 // components/common/DoctorBottomBar.tsx
-import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useRef } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, CommonActions } from "@react-navigation/native";
@@ -18,53 +18,58 @@ const DoctorBottomBar = ({ activeRoute, messagesCount = 0 }: DoctorBottomBarProp
   const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
   const { colors } = useTheme();
   const { user } = useAuth();
+  const scrollRef = useRef<ScrollView>(null);
 
-  // ✅ All tabs have a valid route. Short labels prevent overflow.
   const tabs = [
-    { name: "Home",     icon: "home-outline",          route: "DoctorDashScreen" },
-    { name: "Schedule", icon: "calendar-outline",       route: "DoctorAppointment" },
-    { name: "Chat",     icon: "chatbubble-outline",     route: "ConversationsListScreen" },
-    { name: "Alerts",   icon: "notifications-outline",  route: "NotificationsScreen" },
-    { name: "Profile",  icon: "person-outline",         route: "DoctorProfileScreen" },
+    { name: "Home",      icon: "home-outline",         route: "DoctorDashScreen" },
+    { name: "Schedule",  icon: "calendar-outline",      route: "DoctorAppointment" },
+    { name: "Chat",      icon: "chatbubble-outline",    route: "ConversationsListScreen" },
+    { name: "Alerts",    icon: "notifications-outline", route: "NotificationsScreen" },
+    { name: "Profile",   icon: "person-outline",        route: "DoctorProfileScreen" },
+    { name: "Dashboard", icon: "grid-outline",          route: "DoctorDashboardScreen" },
   ];
 
   const handleNavigate = (tab: typeof tabs[0]) => {
-    // Reset stack to Home
     if (tab.route === "DoctorDashScreen") {
       navigation.dispatch(
         CommonActions.reset({ index: 0, routes: [{ name: "DoctorDashScreen" }] })
       );
       return;
     }
-
-    // Profile needs doctor data passed
     if (tab.route === "DoctorProfileScreen") {
       const doctor = (user as any)?.doctor || user;
       if (!doctor) return;
       navigation.navigate("DoctorProfileScreen", { doctor } as any);
       return;
     }
-
     navigation.navigate(tab.route as any);
   };
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={styles.container}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        decelerationRate="fast"
+        bounces={false}
+      >
         {tabs.map((tab) => {
           const isActive = activeRoute === tab.route;
-          const color = isActive ? colors.primary : colors.textMuted ?? "#888";
+          const color = isActive ? colors.primary : (colors.textMuted ?? "#888");
 
           return (
             <TouchableOpacity
               key={tab.name}
-              style={styles.tabButton}
+              style={[styles.tabButton, isActive && styles.tabButtonActive]}
               onPress={() => handleNavigate(tab)}
               activeOpacity={0.7}
             >
               <View style={styles.iconWrapper}>
                 <Ionicons name={tab.icon as any} size={22} color={color} />
-                {/* ✅ Badge sits inside the icon wrapper — reliable positioning */}
+
+                {/* Chat badge */}
                 {tab.route === "ConversationsListScreen" && messagesCount > 0 && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>
@@ -73,16 +78,19 @@ const DoctorBottomBar = ({ activeRoute, messagesCount = 0 }: DoctorBottomBarProp
                   </View>
                 )}
               </View>
-              <Text
-                style={[styles.tabLabel, { color }]}
-                numberOfLines={1}
-              >
+
+              <Text style={[styles.tabLabel, { color }]} numberOfLines={1}>
                 {tab.name}
               </Text>
+
+              {/* Active indicator dot */}
+              {isActive && (
+                <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />
+              )}
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -94,17 +102,24 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: "#E5E7EB",
   },
-  container: {
+  scrollContent: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    alignItems: "center",
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    paddingHorizontal: 4,
   },
   tabButton: {
-    flex: 1,
     alignItems: "center",
-    paddingTop: 4,
-    paddingBottom: 2,
+    justifyContent: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 14,
+    marginHorizontal: 2,
+    borderRadius: 12,
+    minWidth: 60,
+    position: "relative",
+  },
+  tabButtonActive: {
+    backgroundColor: "#FFF0F6",
   },
   iconWrapper: {
     position: "relative",
@@ -118,6 +133,13 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontWeight: "600",
     letterSpacing: 0.2,
+  },
+  activeDot: {
+    position: "absolute",
+    bottom: -2,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
   badge: {
     position: "absolute",
