@@ -287,6 +287,44 @@ export const cancelAppointment = async (appointmentId: string, notes?: string): 
     });
 };
 
+
+/**
+ * 🏁 End appointment — Doctor only
+ * Calls PATCH /api/v1/appointments/:id/end
+ * Sets status → completed, locks the conversation, notifies both parties.
+ */
+export const endAppointment = async (appointmentId: string): Promise<IAppointment> => {
+  try {
+    console.log(`[AppointmentService] Ending appointment ${appointmentId}...`);
+ 
+    const token = await getAuthToken();
+ 
+    const response: AxiosResponse<ApiResponse<IAppointment>> = await axios.patch(
+      `${API_URL}/${appointmentId}/end`,
+      {},   // no body needed — the backend derives everything from the appointment
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+ 
+    if (response.data.success && response.data.data) {
+      console.log("[AppointmentService] ✅ Appointment ended successfully");
+      return response.data.data;
+    }
+ 
+    throw new Error(response.data.message || "Failed to end appointment");
+  } catch (error: any) {
+    console.error(
+      "[AppointmentService] ❌ End error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
 /**
  * ✅ Confirm appointment (Doctor - convenience method)
  */

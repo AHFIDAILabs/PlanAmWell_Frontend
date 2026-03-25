@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
+import * as Updates from "expo-updates";
 import { NavigationContainer } from "@react-navigation/native";
 import AppNavigator from "./src/navigations/AppNavigator";
 import { linking } from "./src/navigations/linking";
@@ -43,6 +44,24 @@ Notifications.setNotificationHandler({
   },
 });
 
+/* ================= OTA Update Check ================= */
+async function checkForOTAUpdate() {
+  // Never run in Expo Go / dev mode — Updates API is not available there
+  if (__DEV__) return;
+
+  try {
+    const update = await Updates.checkForUpdateAsync();
+    if (update.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      // Reloads the app immediately with the new bundle
+      await Updates.reloadAsync();
+    }
+  } catch (e) {
+    // Non-fatal — app continues with the cached bundle
+    console.warn("[OTA] Update check failed:", e);
+  }
+}
+
 /* ================= App Content ================= */
 function AppContent() {
   const { darkMode } = useTheme();
@@ -50,6 +69,11 @@ function AppContent() {
   const navigationRef = useRef<any>(null);
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
+
+  /* ============ OTA UPDATE — runs once on mount, before anything else ============ */
+  useEffect(() => {
+    checkForOTAUpdate();
+  }, []);
 
   /* ============ SOCKET INIT ============ */
   useEffect(() => {
@@ -209,7 +233,7 @@ function AppContent() {
           <CartProvider>
             <NavigationContainer
               ref={navigationRef}
-              linking={linking} // ✅ Deep linking enabled
+              linking={linking}
               fallback={null}
             >
               <AppNavigator />

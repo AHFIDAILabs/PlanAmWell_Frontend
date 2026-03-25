@@ -9,10 +9,10 @@ const config: ExpoConfig = {
   runtimeVersion: { policy: 'sdkVersion' },
   icon: './src/assets/plan.png',
   userInterfaceStyle: 'light',
-  updates: {
+updates: {
   url: "https://u.expo.dev/b17d8d1f-7620-4a54-9baa-9166dc7a27ea",
-  fallbackToCacheTimeout: 0, // 0 = always try to load cached version first, then fetch latest
-  checkAutomatically: 'ON_LOAD', // default is ON_LOAD
+  fallbackToCacheTimeout: 3000, // wait up to 3s for fresh update before falling back
+  checkAutomatically: 'ON_LOAD',
 },
 
 plugins: [
