@@ -1,29 +1,25 @@
 // src/components/appointment/AppointmentModal.tsx
 import React from "react";
 import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Image,
+  View, Text, Modal, TouchableOpacity,
+  StyleSheet, ScrollView, Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { IAppointment, IDoctor } from "../../types/backendType";
 import { getDoctorImageUri } from "../../services/Doctor";
+import { CONSULTATION_RATE_LABEL } from "../../screens/appointments/BookAppointmentScreen";
 
 interface Props {
-  appointment: IAppointment | null;
-  visible: boolean;
-  onClose: () => void;
-  onAccept?: (appt: IAppointment) => void;
-  onReject?: (appt: IAppointment) => void;
-  onBookAgain?: () => void;
-  onJoinCall?: (appt: IAppointment) => void;
+  appointment:      IAppointment | null;
+  visible:          boolean;
+  onClose:          () => void;
+  onAccept?:        (appt: IAppointment) => void;
+  onReject?:        (appt: IAppointment) => void;
+  onBookAgain?:     () => void;
+  onJoinCall?:      (appt: IAppointment) => void;
+  onOpenChat?:      (appt: IAppointment) => void;
   getEffectiveStatus: (appt: IAppointment) => string;
-  role: "user" | "doctor";
-  onOpenChat?: () => void;
+  role:             "user" | "doctor";
 }
 
 export default function AppointmentModal({
@@ -34,27 +30,20 @@ export default function AppointmentModal({
   onReject,
   onBookAgain,
   onJoinCall,
+  onOpenChat,
   getEffectiveStatus,
   role,
-  onOpenChat,
 }: Props) {
   if (!appointment) return null;
 
-  const doctor =
-    typeof appointment.doctorId === "object"
-      ? (appointment.doctorId as IDoctor)
-      : null;
-  const effectiveStatus = getEffectiveStatus(appointment);
+  const doctor           = typeof appointment.doctorId === "object" ? (appointment.doctorId as IDoctor) : null;
+  const effectiveStatus  = getEffectiveStatus(appointment);
 
   const formatDate = (date: Date | string) => {
     const d = typeof date === "string" ? new Date(date) : date;
     return d.toLocaleString("en-US", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      weekday: "short", year: "numeric", month: "short",
+      day: "numeric", hour: "2-digit", minute: "2-digit",
     });
   };
 
@@ -65,191 +54,107 @@ export default function AppointmentModal({
       case "rejected":
       case "cancelled":    return "#9CA3AF";
       case "in-progress":  return "#EF4444";
-      case "call-ended":   return "#6B7280";
+      case "call-ended":
       case "completed":    return "#6B7280";
       case "rescheduled":  return "#3B82F6";
       default:             return "#D1D5DB";
     }
   };
 
-  // Check if scheduled time window (including grace period) has passed
   const isScheduledTimeExhausted = () => {
     if (!appointment.scheduledAt) return true;
-    const appointmentTime = new Date(appointment.scheduledAt);
-    const duration = appointment.duration || 30;
-    const appointmentEndTime = new Date(
-      appointmentTime.getTime() + duration * 60 * 1000
-    );
-    const now = new Date();
-    const graceMinutesAfter = 15;
-    const endWindow = new Date(
-      appointmentEndTime.getTime() + graceMinutesAfter * 60 * 1000
-    );
-    return now > endWindow;
+    const endTime  = new Date(new Date(appointment.scheduledAt).getTime() + (appointment.duration || 30) * 60000);
+    const endWindow = new Date(endTime.getTime() + 15 * 60000);
+    return new Date() > endWindow;
   };
 
-  // User: call ended but time window still open → can call back
-  const canCallBack = () => {
-    if (role !== "user") return false;
-    const isCallEnded =
-      effectiveStatus === "call-ended" || appointment.callStatus === "ended";
-    const timeNotExhausted = !isScheduledTimeExhausted();
-    const isNotCancelled =
-      effectiveStatus !== "cancelled" && effectiveStatus !== "rejected";
-    return isCallEnded && timeNotExhausted && isNotCancelled;
-  };
+  const canCallBack = () =>
+    role === "user" &&
+    (effectiveStatus === "call-ended" || appointment.callStatus === "ended") &&
+    !isScheduledTimeExhausted() &&
+    !["cancelled", "rejected"].includes(effectiveStatus);
 
-  // User: show "Book Again" when time window is fully exhausted
-  const shouldShowBookAgain = () => {
-    if (role !== "user") return false;
-    const isCallEnded =
-      effectiveStatus === "call-ended" ||
-      effectiveStatus === "completed" ||
-      appointment.callStatus === "ended";
-    return isCallEnded && isScheduledTimeExhausted();
-  };
+  const shouldShowBookAgain = () =>
+    role === "user" &&
+    (effectiveStatus === "call-ended" || effectiveStatus === "completed" || appointment.callStatus === "ended") &&
+    isScheduledTimeExhausted();
 
-  // Doctor: can start or rejoin call within ±15 min window
   const canStartOrRejoinCall = () => {
-    if (role !== "doctor") return false;
-    if (!appointment.scheduledAt) return false;
-
-    const appointmentTime = new Date(appointment.scheduledAt);
-    const duration = appointment.duration || 30;
-    const appointmentEndTime = new Date(
-      appointmentTime.getTime() + duration * 60 * 1000
-    );
-    const now = new Date();
-
-    const startWindow = new Date(
-      appointmentTime.getTime() - 15 * 60 * 1000
-    );
-    const endWindow = new Date(
-      appointmentEndTime.getTime() + 15 * 60 * 1000
-    );
-
-    const isWithinWindow = now >= startWindow && now <= endWindow;
-    const isConfirmed =
-      effectiveStatus === "confirmed" ||
-      effectiveStatus === "in-progress" ||
-      effectiveStatus === "call-ended";
-    const isNotTerminal =
-      effectiveStatus !== "completed" &&
-      effectiveStatus !== "cancelled" &&
-      effectiveStatus !== "rejected";
-
-    return isWithinWindow && isConfirmed && isNotTerminal;
+    if (role !== "doctor" || !appointment.scheduledAt) return false;
+    const apptTime   = new Date(appointment.scheduledAt);
+    const endTime    = new Date(apptTime.getTime() + (appointment.duration || 30) * 60000);
+    const now        = new Date();
+    const startWin   = new Date(apptTime.getTime() - 15 * 60000);
+    const endWin     = new Date(endTime.getTime()  + 15 * 60000);
+    return now >= startWin && now <= endWin &&
+      ["confirmed", "in-progress", "call-ended"].includes(effectiveStatus) &&
+      !["completed", "cancelled", "rejected"].includes(effectiveStatus);
   };
 
-  // Minutes remaining until appointment end time
   const getRemainingMinutes = () => {
     if (!appointment.scheduledAt) return 0;
-    const appointmentTime = new Date(appointment.scheduledAt);
-    const duration = appointment.duration || 30;
-    const appointmentEndTime = new Date(
-      appointmentTime.getTime() + duration * 60 * 1000
-    );
-    const now = new Date();
-    const remainingMs = appointmentEndTime.getTime() - now.getTime();
-    const remainingMinutes = Math.ceil(remainingMs / 60000);
-    return remainingMinutes > 0 ? remainingMinutes : 0;
+    const endTime = new Date(new Date(appointment.scheduledAt).getTime() + (appointment.duration || 30) * 60000);
+    return Math.max(0, Math.ceil((endTime.getTime() - Date.now()) / 60000));
   };
 
   const getCallButtonText = () => {
     if (appointment.callStatus === "in-progress") return "Rejoin Call";
-    if (
-      appointment.callStatus === "ended" ||
-      effectiveStatus === "call-ended"
-    ) {
+    if (appointment.callStatus === "ended" || effectiveStatus === "call-ended")
       return role === "doctor" ? "Start New Call" : "Call Back";
-    }
-    if (effectiveStatus === "confirmed") return "Start Call";
-    return "Join Call";
+    return effectiveStatus === "confirmed" ? "Start Video Call" : "Join Call";
   };
 
-  const showCallButton =
-    (role === "doctor" && canStartOrRejoinCall()) ||
-    (role === "user" && canCallBack());
+  // ── Visibility logic ──────────────────────────────────────────────────────
+  const showCallBtn   = (role === "doctor" && canStartOrRejoinCall()) || (role === "user" && canCallBack());
 
-  // Whether to show the Open Chat button
-  const showChatButton =
+  // ✅ Chat button is now primary for confirmed appointments on both sides
+  const showChatBtn   =
     effectiveStatus === "confirmed" &&
     !!appointment.conversationId &&
     !!onOpenChat;
 
-  // Show the default Close button only when no other primary action is present
-  const showCloseButton =
+  const showCloseBtn  =
+    !showChatBtn &&
     !(role === "doctor" && effectiveStatus === "pending") &&
-    !showCallButton &&
+    !showCallBtn &&
     !shouldShowBookAgain();
 
-  console.log("Modal Debug:", {
-    role,
-    effectiveStatus,
-    callStatus: appointment.callStatus,
-    canStartOrRejoin: canStartOrRejoinCall(),
-    canCallBack: canCallBack(),
-    shouldShowBookAgain: shouldShowBookAgain(),
-    isTimeExhausted: isScheduledTimeExhausted(),
-    remainingMinutes: getRemainingMinutes(),
-    scheduledAt: appointment.scheduledAt,
-    now: new Date().toISOString(),
-  });
-
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.dragIndicator} />
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <View style={styles.drag} />
 
-          {/* ── Header ── */}
+          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Appointment Details</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close-circle" size={28} color="#333" />
             </TouchableOpacity>
           </View>
 
-          {/* ── Scrollable body ── */}
-          <ScrollView
-            contentContainerStyle={{ paddingBottom: 16 }}
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
+
             {/* Status badge */}
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(effectiveStatus) },
-              ]}
-            >
-              <Text style={styles.statusText}>
-                {effectiveStatus.toUpperCase()}
-              </Text>
+            <View style={[styles.badge, { backgroundColor: getStatusColor(effectiveStatus) }]}>
+              <Text style={styles.badgeText}>{effectiveStatus.toUpperCase()}</Text>
+            </View>
+
+            {/* ── Consultation fee ── */}
+            <View style={styles.feeRow}>
+              <Ionicons name="cash-outline" size={18} color="#D81E5B" />
+              <Text style={styles.feeLabel}>Consultation Fee</Text>
+              <Text style={styles.feeValue}>{CONSULTATION_RATE_LABEL}</Text>
             </View>
 
             {/* Doctor */}
             {doctor && (
               <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="person" size={20} color="#666" />
-                  <Text style={styles.sectionLabel}>Doctor</Text>
-                </View>
+                <SectionHeader icon="person" label="Doctor" />
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <Image
-                    source={{ uri: getDoctorImageUri(doctor) }}
-                    style={styles.avatar}
-                  />
+                  <Image source={{ uri: getDoctorImageUri(doctor) }} style={styles.avatar} />
                   <Text style={styles.sectionValue}>
-                    Dr. {doctor.firstName} {doctor.lastName} —{" "}
-                    {doctor.specialization}
+                    Dr. {doctor.firstName} {doctor.lastName} — {doctor.specialization}
                   </Text>
                 </View>
               </View>
@@ -257,207 +162,110 @@ export default function AppointmentModal({
 
             {/* Patient */}
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="person" size={20} color="#666" />
-                <Text style={styles.sectionLabel}>Patient</Text>
-              </View>
-              <Text style={styles.sectionValue}>
-                {appointment.patientSnapshot?.name || "Unknown"}
-              </Text>
+              <SectionHeader icon="person" label="Patient" />
+              <Text style={styles.sectionValue}>{appointment.patientSnapshot?.name || "Unknown"}</Text>
             </View>
 
             {/* Scheduled time */}
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="calendar" size={20} color="#666" />
-                <Text style={styles.sectionLabel}>Scheduled Time</Text>
-              </View>
-              <Text style={styles.sectionValue}>
-                {formatDate(appointment.scheduledAt)}
-              </Text>
+              <SectionHeader icon="calendar" label="Scheduled Time" />
+              <Text style={styles.sectionValue}>{formatDate(appointment.scheduledAt)}</Text>
             </View>
 
             {/* Reason */}
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="document-text" size={20} color="#666" />
-                <Text style={styles.sectionLabel}>Reason for Visit</Text>
-              </View>
-              <Text style={styles.sectionValue}>
-                {appointment.reason || "No details provided"}
-              </Text>
+              <SectionHeader icon="document-text" label="Reason for Visit" />
+              <Text style={styles.sectionValue}>{appointment.reason || "No details provided"}</Text>
             </View>
-
-            {/* Consultation type */}
-            {appointment.consultationType && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="videocam" size={20} color="#666" />
-                  <Text style={styles.sectionLabel}>Consultation Type</Text>
-                </View>
-                <Text style={styles.sectionValue}>
-                  {appointment.consultationType}
-                </Text>
-              </View>
-            )}
 
             {/* Notes */}
             {appointment.notes && (
               <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="chatbox" size={20} color="#666" />
-                  <Text style={styles.sectionLabel}>Notes</Text>
-                </View>
+                <SectionHeader icon="chatbox" label="Notes" />
                 <Text style={styles.sectionValue}>{appointment.notes}</Text>
               </View>
             )}
 
             {/* Call duration */}
-            {appointment.callDuration &&
-              (effectiveStatus === "call-ended" ||
-                effectiveStatus === "completed") && (
-                <View style={styles.section}>
-                  <View style={styles.sectionHeader}>
-                    <Ionicons name="timer" size={20} color="#666" />
-                    <Text style={styles.sectionLabel}>Call Duration</Text>
-                  </View>
-                  <Text style={styles.sectionValue}>
-                    {Math.floor(appointment.callDuration / 60)} min{" "}
-                    {appointment.callDuration % 60} sec
-                  </Text>
-                </View>
-              )}
+            {!!appointment.callDuration && ["call-ended", "completed"].includes(effectiveStatus) && (
+              <View style={styles.section}>
+                <SectionHeader icon="timer" label="Call Duration" />
+                <Text style={styles.sectionValue}>
+                  {Math.floor(appointment.callDuration / 60)}m {appointment.callDuration % 60}s
+                </Text>
+              </View>
+            )}
 
-            {/* Time remaining for call-back window */}
+            {/* Callback window remaining */}
             {canCallBack() && (
               <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="time" size={20} color="#10B981" />
-                  <Text style={[styles.sectionLabel, { color: "#10B981" }]}>
-                    Time Remaining
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.sectionValue,
-                    { color: "#10B981", fontWeight: "700" },
-                  ]}
-                >
-                  {getRemainingMinutes()} minute
-                  {getRemainingMinutes() !== 1 ? "s" : ""} left — You can call
-                  back!
+                <SectionHeader icon="time" label="Time Remaining" color="#10B981" />
+                <Text style={[styles.sectionValue, { color: "#10B981", fontWeight: "700" }]}>
+                  {getRemainingMinutes()} min{getRemainingMinutes() !== 1 ? "s" : ""} left — You can call back!
                 </Text>
               </View>
             )}
 
-            {/* Upcoming appointment status */}
-            {effectiveStatus === "confirmed" && appointment.scheduledAt && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Ionicons name="time" size={20} color="#666" />
-                  <Text style={styles.sectionLabel}>Status</Text>
-                </View>
-                <Text style={styles.sectionValue}>
-                  {(() => {
-                    const now = new Date();
-                    const scheduled = new Date(appointment.scheduledAt);
-                    const diffMins = Math.floor(
-                      (scheduled.getTime() - now.getTime()) / 60000
-                    );
-                    if (diffMins < -15) return "Appointment in progress";
-                    if (diffMins < 0)  return "Appointment starting now";
-                    if (diffMins < 15) return `Starting in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`;
-                    return `Starts in ${Math.floor(diffMins / 60)}h ${diffMins % 60}m`;
-                  })()}
+            {/* ✅ Chat prompt for confirmed appointments */}
+            {showChatBtn && (
+              <View style={styles.chatPrompt}>
+                <Ionicons name="chatbubbles" size={20} color="#D81E5B" />
+                <Text style={styles.chatPromptText}>
+                  Your chat room is ready. Chat with your {role === "doctor" ? "patient" : "doctor"} or start a video call from inside the chat.
                 </Text>
               </View>
             )}
+
           </ScrollView>
 
           {/* ── Action buttons ── */}
-          <View style={styles.actionsContainer}>
-            {/* Doctor: accept / reject pending appointment */}
-            {role === "doctor" &&
-              effectiveStatus === "pending" &&
-              onAccept &&
-              onReject && (
-                <View style={styles.rowActions}>
-                  <TouchableOpacity
-                    style={[styles.button, styles.rejectButton]}
-                    onPress={() => onReject(appointment)}
-                  >
-                    <Text style={styles.buttonText}>Reject</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.button, styles.acceptButton]}
-                    onPress={() => onAccept(appointment)}
-                  >
-                    <Text style={styles.buttonText}>Accept</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+          <View style={styles.actions}>
 
-            {/* Start / Rejoin / Call Back */}
-            {showCallButton && onJoinCall && (
+            {/* Doctor: accept / reject */}
+            {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
+              <View style={styles.rowActions}>
+                <TouchableOpacity style={[styles.btn, styles.rejectBtn]} onPress={() => onReject(appointment)}>
+                  <Text style={styles.btnText}>Reject</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={() => onAccept(appointment)}>
+                  <Text style={styles.btnText}>Accept</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ✅ Open Chat — PRIMARY action for confirmed appointments */}
+            {showChatBtn && (
               <TouchableOpacity
-                style={[styles.button, styles.callButton]}
-                onPress={() => onJoinCall(appointment)}
+                style={[styles.btn, styles.chatBtn]}
+                onPress={() => onOpenChat!(appointment)}
               >
-                <View style={styles.buttonInner}>
-                  <Ionicons
-                    name="videocam"
-                    size={20}
-                    color="#fff"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.buttonText}>{getCallButtonText()}</Text>
-                </View>
+                <Ionicons name="chatbubble" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.btnText}>
+                  {role === "doctor" ? "Chat with Patient" : "Open Chat Room"}
+                </Text>
               </TouchableOpacity>
             )}
 
-            {/* User: Book Again */}
+            {/* Video call */}
+            {showCallBtn && onJoinCall && (
+              <TouchableOpacity style={[styles.btn, styles.callBtn]} onPress={() => onJoinCall(appointment)}>
+                <Ionicons name="videocam" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.btnText}>{getCallButtonText()}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Book Again */}
             {role === "user" && shouldShowBookAgain() && onBookAgain && (
-              <TouchableOpacity
-                style={[styles.button, styles.bookAgainButton]}
-                onPress={onBookAgain}
-              >
-                <View style={styles.buttonInner}>
-                  <Ionicons
-                    name="calendar"
-                    size={20}
-                    color="#fff"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.buttonText}>Book Again</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-
-            {/* Open Chat */}
-            {showChatButton && (
-              <TouchableOpacity
-                style={[styles.button, styles.chatButton]}
-                onPress={onOpenChat}
-              >
-                <View style={styles.buttonInner}>
-                  <Ionicons
-                    name="chatbubble-outline"
-                    size={20}
-                    color="#fff"
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.buttonText}>Open Chat</Text>
-                </View>
+              <TouchableOpacity style={[styles.btn, styles.bookAgainBtn]} onPress={onBookAgain}>
+                <Ionicons name="calendar" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.btnText}>Book Again</Text>
               </TouchableOpacity>
             )}
 
             {/* Default close */}
-            {showCloseButton && (
-              <TouchableOpacity
-                style={[styles.button, styles.closeButton]}
-                onPress={onClose}
-              >
-                <Text style={styles.buttonText}>Close</Text>
+            {showCloseBtn && (
+              <TouchableOpacity style={[styles.btn, styles.closeBtn]} onPress={onClose}>
+                <Text style={styles.btnText}>Close</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -467,109 +275,83 @@ export default function AppointmentModal({
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const SectionHeader = ({ icon, label, color = "#666" }: { icon: string; label: string; color?: string }) => (
+  <View style={styles.sectionHeader}>
+    <Ionicons name={icon as any} size={18} color={color} />
+    <Text style={[styles.sectionLabel, { color }]}>{label}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  sheet: {
     backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 34,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 34,
     maxHeight: "90%",
   },
-  dragIndicator: {
-    width: 40,
-    height: 4,
-    backgroundColor: "#ddd",
-    borderRadius: 2,
-    alignSelf: "center",
+  drag: {
+    width: 40, height: 4, backgroundColor: "#ddd",
+    borderRadius: 2, alignSelf: "center", marginBottom: 16,
+  },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  headerTitle: { fontSize: 22, fontWeight: "700", color: "#222" },
+
+  badge: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 20, alignSelf: "flex-start", marginBottom: 16,
+  },
+  badgeText: { fontSize: 12, fontWeight: "700", color: "#fff", letterSpacing: 0.5 },
+
+  // Rate row
+  feeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFF0F6",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginBottom: 16,
   },
-  header: {
+  feeLabel: { flex: 1, fontSize: 14, color: "#555", fontWeight: "600" },
+  feeValue: { fontSize: 16, fontWeight: "800", color: "#D81E5B" },
+
+  section: { marginBottom: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: "#F0F0F0" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  sectionLabel:  { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
+  sectionValue:  { fontSize: 15, color: "#222", fontWeight: "500", lineHeight: 22 },
+  avatar:        { width: 40, height: 40, borderRadius: 20, backgroundColor: "#EEE" },
+
+  // Chat prompt banner
+  chatPrompt: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: "#222" },
-  statusBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: "flex-start",
-    marginBottom: 20,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: 0.5,
-  },
-  section: {
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#666",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  sectionValue: {
-    fontSize: 16,
-    color: "#222",
-    fontWeight: "500",
-    lineHeight: 22,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#EEE",
-  },
-  actionsContainer: {
-    paddingTop: 8,
+    alignItems: "flex-start",
     gap: 10,
-  },
-  rowActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 14,
+    backgroundColor: "#FFF0F6",
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    padding: 14,
+    marginTop: 4,
   },
-  buttonInner: {
+  chatPromptText: { flex: 1, fontSize: 13, color: "#555", lineHeight: 18 },
+
+  // Actions
+  actions:    { paddingTop: 8, gap: 10 },
+  rowActions: { flexDirection: "row", gap: 12 },
+  btn: {
+    flex: 1,
     flexDirection: "row",
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  acceptButton:   { backgroundColor: "#4CAF50" },
-  rejectButton:   { backgroundColor: "#F44336" },
-  closeButton:    { backgroundColor: "#2196F3" },
-  callButton:     { backgroundColor: "#10B981" },
-  bookAgainButton:{ backgroundColor: "#D81E5B" },
-  chatButton:     { backgroundColor: "#4FC3F7" },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#fff",
-  },
+  btnText:      { fontSize: 15, fontWeight: "700", color: "#fff" },
+  acceptBtn:    { backgroundColor: "#4CAF50" },
+  rejectBtn:    { backgroundColor: "#F44336" },
+  closeBtn:     { backgroundColor: "#2196F3" },
+  callBtn:      { backgroundColor: "#10B981" },
+  bookAgainBtn: { backgroundColor: "#D81E5B" },
+  chatBtn:      { backgroundColor: "#D81E5B" },  // primary brand color — most prominent
 });

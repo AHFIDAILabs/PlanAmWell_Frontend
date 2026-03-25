@@ -13,10 +13,7 @@ export const getOrCreateConversation = async (
 ): Promise<IConversation | null> => {
   try {
     const response = await axios.get(`${BASE_URL}/conversation/${appointmentId}`);
-    
-    if (response.data.success) {
-      return response.data.data;
-    }
+    if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to get conversation:", error.response?.data || error.message);
@@ -30,10 +27,7 @@ export const getOrCreateConversation = async (
 export const getUserConversations = async (): Promise<IConversation[]> => {
   try {
     const response = await axios.get(`${BASE_URL}/conversations`);
-    
-    if (response.data.success) {
-      return response.data.data;
-    }
+    if (response.data.success) return response.data.data;
     return [];
   } catch (error: any) {
     console.error("[Chat] Failed to get conversations:", error.response?.data || error.message);
@@ -42,30 +36,59 @@ export const getUserConversations = async (): Promise<IConversation[]> => {
 };
 
 /**
- * Send a message
+ * Send a message (text, image, or document)
  */
 export const sendMessage = async (
   conversationId: string,
   content: string,
-  messageType: "text" | "image" | "audio" = "text",
+  messageType: "text" | "image" | "audio" | "document" = "text",
   mediaUrl?: string
 ): Promise<IMessage | null> => {
   try {
     const response = await axios.post(
       `${BASE_URL}/conversation/${conversationId}/message`,
-      {
-        content,
-        messageType,
-        mediaUrl,
-      }
+      { content, messageType, mediaUrl }
     );
-    
-    if (response.data.success) {
-      return response.data.data;
-    }
+    if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to send message:", error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Upload a file (image or document) to the chat media endpoint.
+ * Uses the same axios instance so auth headers are automatically included.
+ * Returns { url, fileType, fileName, mimeType } or null on failure.
+ */
+export const uploadChatFile = async (
+  uri: string,
+  mimeType: string,
+  fileName: string
+): Promise<{ url: string; fileType: "image" | "document"; fileName: string; mimeType: string } | null> => {
+  try {
+    // Build FormData — React Native's fetch/axios handles the file blob from a URI natively
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      type: mimeType,
+      name: fileName,
+    } as any);
+
+    // Use the shared axios instance so the Authorization header is included automatically
+    const response = await axios.post(`${BASE_URL}/upload`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      // Give uploads more time than regular API calls
+      timeout: 60000,
+    });
+
+    if (response.data.success) return response.data.data;
+    return null;
+  } catch (error: any) {
+    console.error("[Chat] Upload failed:", error.response?.data || error.message);
     throw error;
   }
 };
@@ -81,14 +104,9 @@ export const getMessages = async (
   try {
     const response = await axios.get(
       `${BASE_URL}/conversation/${conversationId}/messages`,
-      {
-        params: { page, limit },
-      }
+      { params: { page, limit } }
     );
-    
-    if (response.data.success) {
-      return response.data.data;
-    }
+    if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to get messages:", error.response?.data || error.message);
@@ -101,10 +119,7 @@ export const getMessages = async (
  */
 export const markMessagesAsRead = async (conversationId: string): Promise<boolean> => {
   try {
-    const response = await axios.post(
-      `${BASE_URL}/conversation/${conversationId}/read`
-    );
-    
+    const response = await axios.post(`${BASE_URL}/conversation/${conversationId}/read`);
     return response.data.success;
   } catch (error: any) {
     console.error("[Chat] Failed to mark as read:", error.response?.data || error.message);
@@ -120,10 +135,9 @@ export const updateTypingIndicator = async (
   isTyping: boolean
 ): Promise<void> => {
   try {
-    await axios.post(`${BASE_URL}/conversation/${conversationId}/typing`, {
-      isTyping,
-    });
+    await axios.post(`${BASE_URL}/conversation/${conversationId}/typing`, { isTyping });
   } catch (error: any) {
+    // Non-critical — don't throw
     console.error("[Chat] Failed to update typing:", error.response?.data || error.message);
   }
 };
@@ -135,13 +149,8 @@ export const requestVideoCall = async (
   conversationId: string
 ): Promise<IVideoCallRequest | null> => {
   try {
-    const response = await axios.post(
-      `${BASE_URL}/conversation/${conversationId}/video-request`
-    );
-    
-    if (response.data.success) {
-      return response.data.data;
-    }
+    const response = await axios.post(`${BASE_URL}/conversation/${conversationId}/video-request`);
+    if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to request video call:", error.response?.data || error.message);
@@ -162,10 +171,7 @@ export const respondToVideoCall = async (
       `${BASE_URL}/conversation/${conversationId}/video-request/${requestId}/respond`,
       { accept }
     );
-    
-    if (response.data.success) {
-      return response.data.data;
-    }
+    if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to respond to video call:", error.response?.data || error.message);
@@ -184,7 +190,6 @@ export const cancelVideoCallRequest = async (
     const response = await axios.delete(
       `${BASE_URL}/conversation/${conversationId}/video-request/${requestId}`
     );
-    
     return response.data.success;
   } catch (error: any) {
     console.error("[Chat] Failed to cancel video call:", error.response?.data || error.message);

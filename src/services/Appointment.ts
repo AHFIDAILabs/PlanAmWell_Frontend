@@ -15,6 +15,8 @@ export interface CreateAppointmentData {
   reason?: string;
   notes?: string;
   shareUserInfo?: boolean;
+  paymentReference? : string;
+paymentStatus?: "pending" | "paid" | "failed";
 }
 
 interface UpdateAppointmentData {

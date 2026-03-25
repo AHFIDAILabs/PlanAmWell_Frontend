@@ -196,6 +196,7 @@ export interface INotification {
     doctorName?: string;
     scheduledAt?: string;
     time?: string;
+    senderName?: string;
   };
   createdAt: string;
 }
@@ -244,7 +245,7 @@ export interface IAppointmentsSummary {
 
 export interface IAppointment {
   _id?: string;
-  userId: string;
+  userId: string | IUser;
   doctorId: string | IDoctor;
   consultationType?: "video" | "in-person" | "chat" | "audio";
   conversationId?: string;
@@ -277,6 +278,7 @@ export interface IAppointment {
   callQuality?: "excellent" | "good" | "fair" | "poor";
 
   paymentStatus?: "pending" | "paid" | "failed";
+  paymentReference?: string;
 
   reason?: string;
   notes?: string;
@@ -338,7 +340,7 @@ export type NotificationData =
 
     // types/backendType.ts - ADD THESE TYPES
 
-export type MessageType = "text" | "image" | "video" | "audio" | "system";
+export type MessageType = "text" | "image" | "video" | "audio" | "system" | "document";
 export type MessageStatus = "sent" | "delivered" | "read";
 
 export interface IMessage {

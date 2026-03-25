@@ -65,7 +65,15 @@ export type AppStackParamList = {
 
   OrdersScreen: {
     
-  }
+  };
+
+  PaymentScreen: {
+    doctor: IDoctor;
+    scheduledAt: string;       
+    reason: string;
+    notes?: string;
+    shareUserInfo: boolean;
+  };
   
   ConversationsListScreen: undefined;
 };

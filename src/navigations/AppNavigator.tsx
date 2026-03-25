@@ -36,6 +36,7 @@ import IncomingCallScreen from "../screens/video/IncomingCallScreen";
 
 import { AppStackParamList } from "../types/App";
 import { IDoctor } from "../types/backendType";
+import { PaymentScreen } from "../screens/payment/PaymentScreen";
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
@@ -97,6 +98,7 @@ export default function AppNavigator() {
         name="PaymentMethodScreen"
         component={PaymentMethodScreen}
       />
+      <RootStack.Screen name="PaymentScreen" component={PaymentScreen} />
       <RootStack.Screen name="WebViewScreen" component={WebViewScreen} />
       <RootStack.Screen
         name="NotificationsScreen"
