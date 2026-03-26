@@ -58,7 +58,7 @@ const handleBookPress = async () => {
   // ── Modal Actions ─────────────────────────────────────────────
   const handleRegister = () => {
     setShowRegisterModal(false);
-    navigation.navigate("Register"); // navigate to registration
+navigation.navigate("AuthStack", { screen: "Register" });
   };
 
   const handleCancelModal = () => {
