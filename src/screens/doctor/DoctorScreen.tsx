@@ -23,10 +23,8 @@ import { getDoctorImageUri } from "../../services/Doctor";
 import { useAuth } from "../../hooks/useAuth";
 
 // ── Composite Navigation Type ─────────────────────────────────────────
-type DoctorScreenNavigationProp = CompositeNavigationProp<
-  NativeStackNavigationProp<AppStackParamList, "DoctorScreen">,   // AppStack
-  NativeStackNavigationProp<AuthStackParamList, "Register"> // AuthStack
->;
+type DoctorScreenNavigationProp = NativeStackNavigationProp<AppStackParamList, "DoctorScreen">;
+
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "DoctorScreen">;
 

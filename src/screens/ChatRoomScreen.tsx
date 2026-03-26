@@ -49,41 +49,44 @@ import {
   cancelVideoCallRequest,
   uploadChatFile,
 } from "../services/Chat";
-import { endAppointment } from "../services/Appointment"; 
+import { endAppointment } from "../services/Appointment";
 import { getDoctorImageUri } from "../services/Doctor";
 
 type ChatRoomRouteProps = RouteProp<AppStackParamList, "ChatRoomScreen">;
 
 export const ChatRoomScreen: React.FC = () => {
-  const route      = useRoute<ChatRoomRouteProps>();
+  const route = useRoute<ChatRoomRouteProps>();
   const navigation = useNavigation<any>();
   const { user, getUserRole } = useAuth();
-  const userRole   = getUserRole();
-  const insets     = useSafeAreaInsets();
+  const userRole = getUserRole();
+  const insets = useSafeAreaInsets();
+  const appointmentEndedRef = useRef(false);
 
   const { appointmentId, conversationId: initialConversationId } = route.params;
 
-  const [conversation, setConversation]                 = useState<IConversation | null>(null);
-  const [messages, setMessages]                         = useState<IMessage[]>([]);
-  const [loading, setLoading]                           = useState(true);
-  const [sending, setSending]                           = useState(false);
-  const [uploading, setUploading]                       = useState(false);
-  const [inputText, setInputText]                       = useState("");
-  const [isTyping, setIsTyping]                         = useState(false);
-  const [otherUserTyping, setOtherUserTyping]           = useState(false);
-  const [showAttachMenu, setShowAttachMenu]             = useState(false);
-  const [videoRequestModal, setVideoRequestModal]       = useState(false);
-  const [incomingVideoRequest, setIncomingVideoRequest] = useState<IVideoCallRequest | null>(null);
-  const [outgoingVideoRequest, setOutgoingVideoRequest] = useState<IVideoCallRequest | null>(null);
-  const [requestCountdown, setRequestCountdown]         = useState(60);
+  const [conversation, setConversation] = useState<IConversation | null>(null);
+  const [messages, setMessages] = useState<IMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [otherUserTyping, setOtherUserTyping] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [videoRequestModal, setVideoRequestModal] = useState(false);
+  const [incomingVideoRequest, setIncomingVideoRequest] =
+    useState<IVideoCallRequest | null>(null);
+  const [outgoingVideoRequest, setOutgoingVideoRequest] =
+    useState<IVideoCallRequest | null>(null);
+  const [requestCountdown, setRequestCountdown] = useState(60);
   // ── NEW: appointment-ended state ──────────────────────────────────────────
-  const [appointmentEnded, setAppointmentEnded]         = useState(false);
-  const [endingAppointment, setEndingAppointment]       = useState(false);
+  const [appointmentEnded, setAppointmentEnded] = useState(false);
+  const [endingAppointment, setEndingAppointment] = useState(false);
 
-  const flatListRef      = useRef<FlatList>(null);
+  const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const currentUserId    = user?._id;
-  const isDoctor         = userRole === "Doctor";
+  const currentUserId = user?._id;
+  const isDoctor = userRole === "Doctor";
 
   // ─── Derived state ──────────────────────────────────────────────────────────
   const otherParticipant = useMemo(() => {
@@ -115,7 +118,11 @@ export const ChatRoomScreen: React.FC = () => {
     try {
       setLoading(true);
       if (!appointmentId) {
-        Toast.show({ type: "error", text1: "Cannot open chat", text2: "Missing appointment information" });
+        Toast.show({
+          type: "error",
+          text1: "Cannot open chat",
+          text2: "Missing appointment information",
+        });
         setLoading(false);
         return;
       }
@@ -123,25 +130,44 @@ export const ChatRoomScreen: React.FC = () => {
       if (conv) {
         setConversation(conv);
         setMessages([...conv.messages]);
-        // ── If conversation is already inactive, lock immediately ─────────
-        if (!conv.isActive) setAppointmentEnded(true);
+
+        // ── Only update appointmentEnded from server if we haven't
+        //    already confirmed it ended locally ─────────────────────
+        if (!appointmentEndedRef.current) {
+          if (!conv.isActive) {
+            appointmentEndedRef.current = true;
+            setAppointmentEnded(true);
+          }
+        }
+
         await markMessagesAsRead(conv._id);
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150);
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: false }),
+          150,
+        );
       }
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to load chat", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Failed to load chat",
+        text2: error.message,
+      });
     } finally {
       setLoading(false);
     }
   }, [appointmentId]);
 
-  useEffect(() => { loadConversation(); }, [loadConversation]);
+  useEffect(() => {
+    loadConversation();
+  }, [loadConversation]);
 
   // ─── Socket: join room ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!conversation) return;
     socketService.joinAppointment(appointmentId);
-    return () => { socketService.leaveAppointment(appointmentId); };
+    return () => {
+      socketService.leaveAppointment(appointmentId);
+    };
   }, [conversation, appointmentId]);
 
   // ─── Socket: listeners ─────────────────────────────────────────────────────
@@ -150,15 +176,28 @@ export const ChatRoomScreen: React.FC = () => {
     const socket = socketService.getSocket();
     if (!socket) return;
 
-    const handleNewMessage = (data: { conversationId: string; message: IMessage }) => {
+    const handleNewMessage = (data: {
+      conversationId: string;
+      message: IMessage;
+    }) => {
       if (data.conversationId !== conversation._id) return;
       setMessages((prev) => [...prev, data.message]);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(
+        () => flatListRef.current?.scrollToEnd({ animated: true }),
+        100,
+      );
       markMessagesAsRead(conversation._id);
     };
 
-    const handleTyping = (data: { conversationId: string; isTyping: boolean; senderRole: string }) => {
-      if (data.conversationId === conversation._id && data.senderRole !== userRole) {
+    const handleTyping = (data: {
+      conversationId: string;
+      isTyping: boolean;
+      senderRole: string;
+    }) => {
+      if (
+        data.conversationId === conversation._id &&
+        data.senderRole !== userRole
+      ) {
         setOtherUserTyping(data.isTyping);
       }
     };
@@ -167,8 +206,10 @@ export const ChatRoomScreen: React.FC = () => {
       if (data.conversationId !== conversation._id) return;
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.senderId === currentUserId ? { ...msg, status: "read" as const } : msg
-        )
+          msg.senderId === currentUserId
+            ? { ...msg, status: "read" as const }
+            : msg,
+        ),
       );
     };
 
@@ -183,7 +224,11 @@ export const ChatRoomScreen: React.FC = () => {
     }) => {
       if (data.conversationId !== conversation._id) return;
       if (data.status === "accepted") {
-        Toast.show({ type: "success", text1: "Call Accepted", text2: "Connecting..." });
+        Toast.show({
+          type: "success",
+          text1: "Call Accepted",
+          text2: "Connecting...",
+        });
         setTimeout(() => {
           navigation.navigate("VideoCallScreen", {
             appointmentId,
@@ -209,39 +254,55 @@ export const ChatRoomScreen: React.FC = () => {
     // ── NEW: appointment ended (doctor manual OR cron auto-expiry) ────────────
     const handleAppointmentEnded = (data: { appointmentId: string }) => {
       if (data.appointmentId !== appointmentId) return;
+      appointmentEndedRef.current = true;
       setAppointmentEnded(true);
-      setConversation((prev) => prev ? { ...prev, isActive: false } : prev);
+      setConversation((prev) => (prev ? { ...prev, isActive: false } : prev));
       Toast.show({
         type: "info",
         text1: "Appointment Ended",
-        text2: isDoctor ? "You have ended this appointment." : "This appointment has been ended by your doctor.",
+        text2: isDoctor
+          ? "You have ended this appointment."
+          : "This appointment has been ended by your doctor.",
       });
     };
 
-    socket.on("new-message",          handleNewMessage);
-    socket.on("typing-indicator",     handleTyping);
-    socket.on("messages-read",        handleMessagesRead);
-    socket.on("video-call-request",   handleVideoRequest);
-    socket.on("video-call-response",  handleVideoResponse);
-    socket.on("appointment-ended",    handleAppointmentEnded); // ← NEW
+    socket.on("new-message", handleNewMessage);
+    socket.on("typing-indicator", handleTyping);
+    socket.on("messages-read", handleMessagesRead);
+    socket.on("video-call-request", handleVideoRequest);
+    socket.on("video-call-response", handleVideoResponse);
+    socket.on("appointment-ended", handleAppointmentEnded); // ← NEW
 
     return () => {
-      socket.off("new-message",         handleNewMessage);
-      socket.off("typing-indicator",    handleTyping);
-      socket.off("messages-read",       handleMessagesRead);
-      socket.off("video-call-request",  handleVideoRequest);
+      socket.off("new-message", handleNewMessage);
+      socket.off("typing-indicator", handleTyping);
+      socket.off("messages-read", handleMessagesRead);
+      socket.off("video-call-request", handleVideoRequest);
       socket.off("video-call-response", handleVideoResponse);
-      socket.off("appointment-ended",   handleAppointmentEnded); // ← NEW
+      socket.off("appointment-ended", handleAppointmentEnded); // ← NEW
     };
-  }, [conversation, currentUserId, userRole, appointmentId, navigation,
-      loadConversation, otherParticipantName, isDoctor]);
+  }, [
+    conversation,
+    currentUserId,
+    userRole,
+    appointmentId,
+    navigation,
+    loadConversation,
+    otherParticipantName,
+    isDoctor,
+  ]);
 
   // ─── Video request countdown ────────────────────────────────────────────────
   useEffect(() => {
     if (!conversation?.activeVideoRequest) return;
-    const expiresAt = new Date(conversation.activeVideoRequest.expiresAt).getTime();
+    const expiresAt = new Date(
+      conversation.activeVideoRequest.expiresAt,
+    ).getTime();
     const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+      const remaining = Math.max(
+        0,
+        Math.floor((expiresAt - Date.now()) / 1000),
+      );
       setRequestCountdown(remaining);
       if (remaining === 0) {
         clearInterval(interval);
@@ -266,78 +327,78 @@ export const ChatRoomScreen: React.FC = () => {
   }, [conversation?.activeVideoRequest, currentUserId]);
 
   // ─── End appointment (Doctor only) ─────────────────────────────────────────
- const handleEndAppointment = () => {
-  Alert.alert(
-    "End Appointment",
-    "Are you sure you want to end this appointment? The chat will become read-only and the patient will be notified.",
-    [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "End Appointment",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setEndingAppointment(true);
+  const handleEndAppointment = () => {
+    Alert.alert(
+      "End Appointment",
+      "Are you sure you want to end this appointment? The chat will become read-only and the patient will be notified.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "End Appointment",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setEndingAppointment(true);
 
-            await endAppointment(appointmentId);
+              await endAppointment(appointmentId);
 
-            // ── Immediate UI update ───────────────────────────────────────
-            setAppointmentEnded(true);
-            setConversation((prev) =>
-              prev ? { ...prev, isActive: false } : prev
-            );
+              // ── Immediate UI update ───────────────────────────────────────
+              appointmentEndedRef.current = true;
+              setAppointmentEnded(true);
+              setConversation((prev) =>
+                prev ? { ...prev, isActive: false } : prev,
+              );
 
-            // ── Prompt doctor to write consultation note ─────────────────
-            if (isDoctor) {
-              const patientId =
-                conversation?.participants?.userId?._id ||
-                (conversation?.participants?.userId as any)?._id;
+              // ── Prompt doctor to write consultation note ─────────────────
+              if (isDoctor) {
+                const patientId =
+                  conversation?.participants?.userId?._id ||
+                  (conversation?.participants?.userId as any)?._id;
 
-              const patientName =
-                (conversation?.participants?.userId as any)?.name || "Patient";
+                const patientName =
+                  (conversation?.participants?.userId as any)?.name ||
+                  "Patient";
 
-              if (patientId) {
-                setTimeout(() => {
-                  Alert.alert(
-                    "Write Consultation Note?",
-                    "Would you like to write a consultation note for this patient? This becomes part of their medical record.",
-                    [
-                      { text: "Not Now", style: "cancel" },
-                      {
-                        text: "Write Note",
-                        onPress: () =>
-                          navigation.navigate(
-                            "MedicalRecordEditorScreen",
-                            {
+                if (patientId) {
+                  setTimeout(() => {
+                    Alert.alert(
+                      "Write Consultation Note?",
+                      "Would you like to write a consultation note for this patient? This becomes part of their medical record.",
+                      [
+                        { text: "Not Now", style: "cancel" },
+                        {
+                          text: "Write Note",
+                          onPress: () =>
+                            navigation.navigate("MedicalRecordEditorScreen", {
                               appointmentId,
                               patientId: String(patientId),
                               patientName,
-                            }
-                          ),
-                      },
-                    ]
-                  );
-                }, 600); // allow UI to reflect ended state first
+                            }),
+                        },
+                      ],
+                    );
+                  }, 600); // allow UI to reflect ended state first
+                }
               }
+            } catch (error: any) {
+              Toast.show({
+                type: "error",
+                text1: "Failed to end appointment",
+                text2: error.message,
+              });
+            } finally {
+              setEndingAppointment(false);
             }
-          } catch (error: any) {
-            Toast.show({
-              type: "error",
-              text1: "Failed to end appointment",
-              text2: error.message,
-            });
-          } finally {
-            setEndingAppointment(false);
-          }
+          },
         },
-      },
-    ]
-  );
-};
+      ],
+    );
+  };
 
   // ─── Send text message ──────────────────────────────────────────────────────
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !conversation || sending || appointmentEnded) return;
+    if (!inputText.trim() || !conversation || sending || appointmentEnded)
+      return;
     const messageText = inputText.trim();
     setInputText("");
 
@@ -347,13 +408,24 @@ export const ChatRoomScreen: React.FC = () => {
 
     try {
       setSending(true);
-      const newMessage = await sendMessage(conversation._id, messageText, "text");
+      const newMessage = await sendMessage(
+        conversation._id,
+        messageText,
+        "text",
+      );
       if (newMessage) {
         setMessages((prev) => [...prev, newMessage]);
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100,
+        );
       }
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to send message", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Failed to send message",
+        text2: error.message,
+      });
       setInputText(messageText);
     } finally {
       setSending(false);
@@ -380,7 +452,7 @@ export const ChatRoomScreen: React.FC = () => {
     uri: string,
     mimeType: string,
     fileName: string,
-    type: "image" | "document"
+    type: "image" | "document",
   ) => {
     if (!conversation || appointmentEnded) return;
     setShowAttachMenu(false);
@@ -396,15 +468,22 @@ export const ChatRoomScreen: React.FC = () => {
         conversation._id,
         uploaded.fileName,
         backendMessageType,
-        uploaded.url
+        uploaded.url,
       );
 
       if (newMessage) {
         setMessages((prev) => [...prev, newMessage]);
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100,
+        );
       }
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Upload failed", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Upload failed",
+        text2: error.message,
+      });
     } finally {
       setUploading(false);
     }
@@ -414,7 +493,10 @@ export const ChatRoomScreen: React.FC = () => {
     setShowAttachMenu(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow access to your photo library.");
+      Alert.alert(
+        "Permission needed",
+        "Please allow access to your photo library.",
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -423,7 +505,7 @@ export const ChatRoomScreen: React.FC = () => {
       allowsEditing: false,
     });
     if (result.canceled || !result.assets[0]) return;
-    const asset    = result.assets[0];
+    const asset = result.assets[0];
     const fileName = asset.uri.split("/").pop() || "image.jpg";
     const mimeType = asset.mimeType || "image/jpeg";
     await handleUploadAndSend(asset.uri, mimeType, fileName, "image");
@@ -436,10 +518,18 @@ export const ChatRoomScreen: React.FC = () => {
       Alert.alert("Permission needed", "Please allow access to your camera.");
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: false });
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+      allowsEditing: false,
+    });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    await handleUploadAndSend(asset.uri, "image/jpeg", `photo_${Date.now()}.jpg`, "image");
+    await handleUploadAndSend(
+      asset.uri,
+      "image/jpeg",
+      `photo_${Date.now()}.jpg`,
+      "image",
+    );
   };
 
   const handlePickDocument = async () => {
@@ -454,11 +544,15 @@ export const ChatRoomScreen: React.FC = () => {
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets[0]) return;
-      const asset    = result.assets[0];
+      const asset = result.assets[0];
       const mimeType = asset.mimeType || "application/octet-stream";
       await handleUploadAndSend(asset.uri, mimeType, asset.name, "document");
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Could not open file picker", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Could not open file picker",
+        text2: error.message,
+      });
     }
   };
 
@@ -466,26 +560,46 @@ export const ChatRoomScreen: React.FC = () => {
   const handleRequestVideoCall = async () => {
     if (!conversation || appointmentEnded) return;
     if (conversation.activeVideoRequest?.status === "pending") {
-      Toast.show({ type: "info", text1: "Request Pending", text2: "A video call request is already active" });
+      Toast.show({
+        type: "info",
+        text1: "Request Pending",
+        text2: "A video call request is already active",
+      });
       return;
     }
     try {
       const request = await requestVideoCall(conversation._id);
       if (request) {
         setOutgoingVideoRequest(request);
-        Toast.show({ type: "success", text1: "Request Sent", text2: "Waiting for response..." });
+        Toast.show({
+          type: "success",
+          text1: "Request Sent",
+          text2: "Waiting for response...",
+        });
       }
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Request Failed", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Request Failed",
+        text2: error.message,
+      });
     }
   };
 
   const handleRespondToVideoRequest = async (accept: boolean) => {
     if (!conversation || !incomingVideoRequest) return;
     try {
-      const response = await respondToVideoCall(conversation._id, incomingVideoRequest._id!, accept);
+      const response = await respondToVideoCall(
+        conversation._id,
+        incomingVideoRequest._id!,
+        accept,
+      );
       if (response && accept) {
-        Toast.show({ type: "success", text1: "Joining Call", text2: "Connecting..." });
+        Toast.show({
+          type: "success",
+          text1: "Joining Call",
+          text2: "Connecting...",
+        });
         setTimeout(() => {
           navigation.navigate("VideoCallScreen", {
             appointmentId: response.appointmentId,
@@ -500,7 +614,11 @@ export const ChatRoomScreen: React.FC = () => {
       setIncomingVideoRequest(null);
       loadConversation();
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Response Failed", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Response Failed",
+        text2: error.message,
+      });
     }
   };
 
@@ -512,16 +630,22 @@ export const ChatRoomScreen: React.FC = () => {
       Toast.show({ type: "info", text1: "Request Cancelled" });
       loadConversation();
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Cancel Failed", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Cancel Failed",
+        text2: error.message,
+      });
     }
   };
 
   // ─── Render message ─────────────────────────────────────────────────────────
   const renderMessage = ({ item }: { item: IMessage }) => {
-    const isOwn    = item.senderId === currentUserId;
+    const isOwn = item.senderId === currentUserId;
     const isSystem = item.messageType === "system";
-    const isImage  = item.messageType === "image" && !!item.mediaUrl;
-    const isDoc    = (item.messageType === "audio" || item.messageType === "document") && !!item.mediaUrl;
+    const isImage = item.messageType === "image" && !!item.mediaUrl;
+    const isDoc =
+      (item.messageType === "audio" || item.messageType === "document") &&
+      !!item.mediaUrl;
 
     if (isSystem) {
       return (
@@ -533,14 +657,27 @@ export const ChatRoomScreen: React.FC = () => {
 
     return (
       <View style={[styles.msgRow, isOwn ? styles.ownRow : styles.otherRow]}>
-        <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
-
+        <View
+          style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}
+        >
           {isImage && (
-            <TouchableOpacity activeOpacity={0.85}
-              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}>
-              <Image source={{ uri: item.mediaUrl }} style={styles.imageMsg} resizeMode="cover" />
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}
+            >
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={styles.imageMsg}
+                resizeMode="cover"
+              />
               {item.content && item.content !== item.mediaUrl && (
-                <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText, { marginTop: 4 }]}>
+                <Text
+                  style={[
+                    styles.msgText,
+                    isOwn ? styles.ownText : styles.otherText,
+                    { marginTop: 4 },
+                  ]}
+                >
                   {item.content}
                 </Text>
               )}
@@ -548,16 +685,34 @@ export const ChatRoomScreen: React.FC = () => {
           )}
 
           {isDoc && (
-            <TouchableOpacity style={styles.docContainer} activeOpacity={0.8}
-              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}>
+            <TouchableOpacity
+              style={styles.docContainer}
+              activeOpacity={0.8}
+              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}
+            >
               <View style={[styles.docIconBox, isOwn && styles.docIconBoxOwn]}>
-                <Ionicons name="document-text" size={24} color={isOwn ? "#fff" : "#D81E5B"} />
+                <Ionicons
+                  name="document-text"
+                  size={24}
+                  color={isOwn ? "#fff" : "#D81E5B"}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.docName, isOwn ? styles.ownText : styles.otherText]} numberOfLines={2}>
+                <Text
+                  style={[
+                    styles.docName,
+                    isOwn ? styles.ownText : styles.otherText,
+                  ]}
+                  numberOfLines={2}
+                >
                   {item.content}
                 </Text>
-                <Text style={[styles.docTap, isOwn ? { color: "#FFE0EB" } : { color: "#999" }]}>
+                <Text
+                  style={[
+                    styles.docTap,
+                    isOwn ? { color: "#FFE0EB" } : { color: "#999" },
+                  ]}
+                >
                   Tap to open
                 </Text>
               </View>
@@ -565,18 +720,37 @@ export const ChatRoomScreen: React.FC = () => {
           )}
 
           {!isImage && !isDoc && (
-            <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}>
+            <Text
+              style={[
+                styles.msgText,
+                isOwn ? styles.ownText : styles.otherText,
+              ]}
+            >
               {item.content}
             </Text>
           )}
 
           <View style={styles.msgFooter}>
-            <Text style={[styles.msgTime, isOwn ? styles.ownTime : styles.otherTime]}>
-              {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <Text
+              style={[
+                styles.msgTime,
+                isOwn ? styles.ownTime : styles.otherTime,
+              ]}
+            >
+              {new Date(item.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </Text>
             {isOwn && (
               <Ionicons
-                name={item.status === "read" ? "checkmark-done" : item.status === "delivered" ? "checkmark-done-outline" : "checkmark"}
+                name={
+                  item.status === "read"
+                    ? "checkmark-done"
+                    : item.status === "delivered"
+                      ? "checkmark-done-outline"
+                      : "checkmark"
+                }
                 size={14}
                 color={item.status === "read" ? "#4FC3F7" : "#B0BEC5"}
                 style={{ marginLeft: 4 }}
@@ -603,15 +777,20 @@ export const ChatRoomScreen: React.FC = () => {
   // ─── Main render ────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
-
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <Ionicons name="chevron-back" size={28} color="#111" />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerInfo}>
-          <Image source={{ uri: otherParticipantImage }} style={styles.avatar} />
+          <Image
+            source={{ uri: otherParticipantImage }}
+            style={styles.avatar}
+          />
           <View>
             <Text style={styles.headerName}>{otherParticipantName}</Text>
             {otherUserTyping && !appointmentEnded && (
@@ -630,7 +809,11 @@ export const ChatRoomScreen: React.FC = () => {
             onPress={handleRequestVideoCall}
             disabled={!!outgoingVideoRequest}
           >
-            <Ionicons name="videocam" size={24} color={outgoingVideoRequest ? "#999" : "#D81E5B"} />
+            <Ionicons
+              name="videocam"
+              size={24}
+              color={outgoingVideoRequest ? "#999" : "#D81E5B"}
+            />
           </TouchableOpacity>
         )}
 
@@ -641,10 +824,11 @@ export const ChatRoomScreen: React.FC = () => {
             onPress={handleEndAppointment}
             disabled={endingAppointment}
           >
-            {endingAppointment
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={styles.endButtonText}>End</Text>
-            }
+            {endingAppointment ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.endButtonText}>End</Text>
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -654,7 +838,9 @@ export const ChatRoomScreen: React.FC = () => {
         <View style={styles.requestBanner}>
           <View style={styles.requestBannerContent}>
             <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.requestBannerText}>Waiting for response... ({requestCountdown}s)</Text>
+            <Text style={styles.requestBannerText}>
+              Waiting for response... ({requestCountdown}s)
+            </Text>
           </View>
           <TouchableOpacity onPress={handleCancelVideoRequest}>
             <Text style={styles.requestBannerCancel}>Cancel</Text>
@@ -694,7 +880,9 @@ export const ChatRoomScreen: React.FC = () => {
           keyExtractor={(item) => item._id}
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: false })
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
@@ -707,20 +895,35 @@ export const ChatRoomScreen: React.FC = () => {
         {/* ── Attachment menu — hidden when ended ── */}
         {showAttachMenu && !appointmentEnded && (
           <View style={styles.attachMenu}>
-            <TouchableOpacity style={styles.attachOption} onPress={handlePickImage}>
-              <View style={[styles.attachIconBox, { backgroundColor: "#E8F5E9" }]}>
+            <TouchableOpacity
+              style={styles.attachOption}
+              onPress={handlePickImage}
+            >
+              <View
+                style={[styles.attachIconBox, { backgroundColor: "#E8F5E9" }]}
+              >
                 <Ionicons name="image" size={24} color="#4CAF50" />
               </View>
               <Text style={styles.attachLabel}>Gallery</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.attachOption} onPress={handleTakePhoto}>
-              <View style={[styles.attachIconBox, { backgroundColor: "#E3F2FD" }]}>
+            <TouchableOpacity
+              style={styles.attachOption}
+              onPress={handleTakePhoto}
+            >
+              <View
+                style={[styles.attachIconBox, { backgroundColor: "#E3F2FD" }]}
+              >
                 <Ionicons name="camera" size={24} color="#2196F3" />
               </View>
               <Text style={styles.attachLabel}>Camera</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.attachOption} onPress={handlePickDocument}>
-              <View style={[styles.attachIconBox, { backgroundColor: "#FFF3E0" }]}>
+            <TouchableOpacity
+              style={styles.attachOption}
+              onPress={handlePickDocument}
+            >
+              <View
+                style={[styles.attachIconBox, { backgroundColor: "#FFF3E0" }]}
+              >
                 <Ionicons name="document-text" size={24} color="#FF9800" />
               </View>
               <Text style={styles.attachLabel}>Document</Text>
@@ -731,17 +934,30 @@ export const ChatRoomScreen: React.FC = () => {
         {/* ── Input bar OR read-only footer ── */}
         {appointmentEnded ? (
           // Read-only footer shown to both parties
-          <View style={[styles.endedFooter, { paddingBottom: insets.bottom + 8 }]}>
+          <View
+            style={[styles.endedFooter, { paddingBottom: insets.bottom + 8 }]}
+          >
             <Ionicons name="lock-closed" size={16} color="#999" />
-            <Text style={styles.endedFooterText}>This chat is now read-only</Text>
+            <Text style={styles.endedFooterText}>
+              This chat is now read-only
+            </Text>
           </View>
         ) : (
-          <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 8 }]}>
+          <View
+            style={[
+              styles.inputContainer,
+              { paddingBottom: insets.bottom + 8 },
+            ]}
+          >
             <TouchableOpacity
               style={styles.attachButton}
               onPress={() => setShowAttachMenu((v) => !v)}
             >
-              <Ionicons name={showAttachMenu ? "close" : "attach"} size={24} color="#D81E5B" />
+              <Ionicons
+                name={showAttachMenu ? "close" : "attach"}
+                size={24}
+                color="#D81E5B"
+              />
             </TouchableOpacity>
 
             <TextInput
@@ -755,14 +971,18 @@ export const ChatRoomScreen: React.FC = () => {
             />
 
             <TouchableOpacity
-              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+              style={[
+                styles.sendButton,
+                !inputText.trim() && styles.sendButtonDisabled,
+              ]}
               onPress={handleSendMessage}
               disabled={!inputText.trim() || sending}
             >
-              {sending
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Ionicons name="send" size={20} color="#fff" />
-              }
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -773,7 +993,9 @@ export const ChatRoomScreen: React.FC = () => {
         visible={videoRequestModal}
         animationType="slide"
         transparent
-        onRequestClose={() => { if (!incomingVideoRequest) setVideoRequestModal(false); }}
+        onRequestClose={() => {
+          if (!incomingVideoRequest) setVideoRequestModal(false);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.videoRequestModal}>
@@ -783,7 +1005,9 @@ export const ChatRoomScreen: React.FC = () => {
               <Text style={styles.videoRequestSubtitle}>
                 {otherParticipantName} wants to start a video call
               </Text>
-              <Text style={styles.videoRequestCountdown}>Expires in {requestCountdown}s</Text>
+              <Text style={styles.videoRequestCountdown}>
+                Expires in {requestCountdown}s
+              </Text>
             </View>
             <View style={styles.videoRequestActions}>
               <TouchableOpacity
@@ -804,7 +1028,6 @@ export const ChatRoomScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 };
@@ -812,10 +1035,15 @@ export const ChatRoomScreen: React.FC = () => {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F5F5F5" },
-  flex:   { flex: 1 },
+  flex: { flex: 1 },
 
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
-  loadingText:      { fontSize: 16, color: "#666" },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingText: { fontSize: 16, color: "#666" },
 
   header: {
     flexDirection: "row",
@@ -826,13 +1054,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
   },
-  backButton:      { marginRight: 12 },
-  headerInfo:      { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar:          { width: 40, height: 40, borderRadius: 20, backgroundColor: "#E0E0E0" },
-  headerName:      { fontSize: 16, fontWeight: "700", color: "#111" },
+  backButton: { marginRight: 12 },
+  headerInfo: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E0E0E0",
+  },
+  headerName: { fontSize: 16, fontWeight: "700", color: "#111" },
   typingIndicator: { fontSize: 12, color: "#4FC3F7", fontStyle: "italic" },
-  endedBadge:      { fontSize: 11, color: "#6B7280", fontStyle: "italic" },
-  videoButton:     { padding: 8 },
+  endedBadge: { fontSize: 11, color: "#6B7280", fontStyle: "italic" },
+  videoButton: { padding: 8 },
 
   // ── End appointment button ──────────────────────────────────────────────────
   endButton: {
@@ -874,57 +1107,98 @@ const styles = StyleSheet.create({
 
   requestBanner: {
     backgroundColor: "#4CAF50",
-    paddingHorizontal: 16, paddingVertical: 12,
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   requestBannerContent: { flexDirection: "row", alignItems: "center", gap: 12 },
-  requestBannerText:    { color: "#fff", fontSize: 14, fontWeight: "600" },
-  requestBannerCancel:  { color: "#fff", fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
+  requestBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  requestBannerCancel: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
 
   uploadBanner: {
     backgroundColor: "#FF9800",
-    paddingHorizontal: 16, paddingVertical: 10,
-    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   uploadBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 
-  messagesList:   { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 8 },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 100 },
-  emptyText:      { fontSize: 18, fontWeight: "600", color: "#999", marginTop: 16 },
-  emptySubtext:   { fontSize: 14, color: "#BBB", marginTop: 4 },
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 100,
+  },
+  emptyText: { fontSize: 18, fontWeight: "600", color: "#999", marginTop: 16 },
+  emptySubtext: { fontSize: 14, color: "#BBB", marginTop: 4 },
 
   systemMsgContainer: { alignItems: "center", marginVertical: 12 },
   systemMsgText: {
-    fontSize: 12, color: "#999",
+    fontSize: 12,
+    color: "#999",
     backgroundColor: "#F0F0F0",
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 12, textAlign: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    textAlign: "center",
   },
 
-  msgRow:   { marginVertical: 4, maxWidth: "78%" },
-  ownRow:   { alignSelf: "flex-end" },
+  msgRow: { marginVertical: 4, maxWidth: "78%" },
+  ownRow: { alignSelf: "flex-end" },
   otherRow: { alignSelf: "flex-start" },
 
-  bubble:      { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
-  ownBubble:   { backgroundColor: "#D81E5B", borderBottomRightRadius: 4 },
-  otherBubble: { backgroundColor: "#fff",    borderBottomLeftRadius: 4 },
+  bubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
+  ownBubble: { backgroundColor: "#D81E5B", borderBottomRightRadius: 4 },
+  otherBubble: { backgroundColor: "#fff", borderBottomLeftRadius: 4 },
 
-  msgText:   { fontSize: 15, lineHeight: 20 },
-  ownText:   { color: "#fff" },
+  msgText: { fontSize: 15, lineHeight: 20 },
+  ownText: { color: "#fff" },
   otherText: { color: "#111" },
 
   msgFooter: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  msgTime:   { fontSize: 11 },
-  ownTime:   { color: "#FFE0EB" },
+  msgTime: { fontSize: 11 },
+  ownTime: { color: "#FFE0EB" },
   otherTime: { color: "#999" },
 
-  imageMsg: { width: 220, height: 180, borderRadius: 12, backgroundColor: "#E0E0E0" },
+  imageMsg: {
+    width: 220,
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: "#E0E0E0",
+  },
 
-  docContainer:  { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 180, maxWidth: 240 },
-  docIconBox:    { width: 44, height: 44, borderRadius: 10, backgroundColor: "#FFF0F6", justifyContent: "center", alignItems: "center" },
+  docContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 180,
+    maxWidth: 240,
+  },
+  docIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#FFF0F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   docIconBoxOwn: { backgroundColor: "rgba(255,255,255,0.25)" },
-  docName:       { fontSize: 13, fontWeight: "600", flexWrap: "wrap" },
-  docTap:        { fontSize: 11, marginTop: 2 },
+  docName: { fontSize: 13, fontWeight: "600", flexWrap: "wrap" },
+  docTap: { fontSize: 11, marginTop: 2 },
 
   inputContainer: {
     flexDirection: "row",
@@ -936,7 +1210,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#E0E0E0",
     gap: 8,
   },
-  attachButton:       { padding: 8, justifyContent: "center", alignItems: "center" },
+  attachButton: { padding: 8, justifyContent: "center", alignItems: "center" },
   input: {
     flex: 1,
     backgroundColor: "#F5F5F5",
@@ -947,7 +1221,14 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     color: "#111",
   },
-  sendButton:         { width: 44, height: 44, borderRadius: 22, backgroundColor: "#D81E5B", justifyContent: "center", alignItems: "center" },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#D81E5B",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   sendButtonDisabled: { backgroundColor: "#CCC" },
 
   attachMenu: {
@@ -959,19 +1240,55 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
   },
-  attachOption:  { alignItems: "center", gap: 6 },
-  attachIconBox: { width: 52, height: 52, borderRadius: 14, justifyContent: "center", alignItems: "center" },
-  attachLabel:   { fontSize: 11, fontWeight: "600", color: "#555" },
+  attachOption: { alignItems: "center", gap: 6 },
+  attachIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  attachLabel: { fontSize: 11, fontWeight: "600", color: "#555" },
 
-  modalOverlay:         { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
-  videoRequestModal:    { backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 },
-  videoRequestHeader:   { alignItems: "center", marginBottom: 24 },
-  videoRequestTitle:    { fontSize: 20, fontWeight: "700", color: "#111", marginTop: 16 },
-  videoRequestSubtitle: { fontSize: 15, color: "#666", marginTop: 8, textAlign: "center" },
-  videoRequestCountdown:{ fontSize: 13, color: "#999", marginTop: 8 },
-  videoRequestActions:  { flexDirection: "row", gap: 12 },
-  videoRequestButton:   { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
-  declineButton:        { backgroundColor: "#F44336" },
-  acceptButton:         { backgroundColor: "#4CAF50" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  videoRequestModal: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+  },
+  videoRequestHeader: { alignItems: "center", marginBottom: 24 },
+  videoRequestTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111",
+    marginTop: 16,
+  },
+  videoRequestSubtitle: {
+    fontSize: 15,
+    color: "#666",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  videoRequestCountdown: { fontSize: 13, color: "#999", marginTop: 8 },
+  videoRequestActions: { flexDirection: "row", gap: 12 },
+  videoRequestButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  declineButton: { backgroundColor: "#F44336" },
+  acceptButton: { backgroundColor: "#4CAF50" },
   videoRequestButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
