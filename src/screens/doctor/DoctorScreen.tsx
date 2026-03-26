@@ -20,6 +20,7 @@ import { AppStackParamList } from "../../types/App";
 import { AuthStackParamList } from "../../types/Auth";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getDoctorImageUri } from "../../services/Doctor";
+import { useAuth } from "../../hooks/useAuth";
 
 // ── Composite Navigation Type ─────────────────────────────────────────
 type DoctorScreenNavigationProp = CompositeNavigationProp<
@@ -34,26 +35,25 @@ export const DoctorScreen: React.FC = () => {
   const route = useRoute<DoctorRouteProps>();
   const navigation = useNavigation<DoctorScreenNavigationProp>();
   const doctor = route.params?.doctor;
+  const {isAnonymous} = useAuth();
 
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   // ── Handle Book Appointment Press ──────────────────────────────
-  const handleBookPress = async () => {
-    try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
-
-      if (!token) {
-        // ❌ Show registration modal
-        setShowRegisterModal(true);
-        return;
-      }
-
-      // ✅ User is registered → navigate to booking screen
-      navigation.navigate("BookAppointmentScreen", { doctor });
-    } catch (error) {
-      console.error("Auth check failed:", error);
+const handleBookPress = async () => {
+  try {
+    // Check if user is anonymous / guest
+    if (isAnonymous) {
+      setShowRegisterModal(true);
+      return;
     }
-  };
+
+    // ✅ User is registered → navigate to booking screen
+    navigation.navigate("BookAppointmentScreen", { doctor });
+  } catch (error) {
+    console.error("Auth check failed:", error);
+  }
+};
 
   // ── Modal Actions ─────────────────────────────────────────────
   const handleRegister = () => {
