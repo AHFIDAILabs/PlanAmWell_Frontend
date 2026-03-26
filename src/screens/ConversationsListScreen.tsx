@@ -277,7 +277,7 @@ export const ConversationsListScreen: React.FC = () => {
       {isDoctor() ? (
         <DoctorBottomBar activeRoute="ConversationsListScreen" messagesCount={0} />
       ) : (
-        <BottomBar activeRoute="ConversationsListScreen" />
+        <BottomBar activeRoute="ConversationsListScreen" cartItemCount={0} />
       )}
     </SafeAreaView>
   );

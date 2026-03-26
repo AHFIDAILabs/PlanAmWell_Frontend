@@ -1,6 +1,12 @@
 // components/common/BottomBar.tsx
 import React, { useContext, useState, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, CommonActions } from "@react-navigation/native";
@@ -9,19 +15,20 @@ import CartModal from "../product/cartModal";
 
 interface BottomBarProps {
   activeRoute: string;
+  cartItemCount: number;
 }
 
 const ALL_TABS = [
-  { name: "Home",      icon: "home",           route: "HomeScreen" },
-  { name: "Doctors",   icon: "heart",          route: "AllDoctorScreen" },
-  { name: "Cart",      icon: "shopping-cart",  route: null,                      isCart: true },
-  { name: "Shop",      icon: "box",            route: "ProductsScreen" },
-  { name: "Chat",      icon: "message-circle", route: "ConversationsListScreen" },
-  { name: "Schedule",  icon: "calendar",       route: "MyAppointments" },
-  { name: "Alerts",    icon: "bell",           route: "NotificationsScreen" },
-  { name: "Profile",   icon: "user",           route: "ProfileScreen" },
-  { name: "Partners",  icon: "users",          route: "AllActivePartnerScreen" },
-  { name: "History",   icon: "clock",          route: "ConsultationHistory" },
+  { name: "Home", icon: "home", route: "HomeScreen" },
+  { name: "Doctors", icon: "heart", route: "AllDoctorScreen" },
+  { name: "Cart", icon: "shopping-cart", route: null, isCart: true },
+  { name: "Shop", icon: "box", route: "ProductsScreen" },
+  { name: "Chat", icon: "message-circle", route: "ConversationsListScreen" },
+  { name: "Schedule", icon: "calendar", route: "MyAppointments" },
+  { name: "Alerts", icon: "bell", route: "NotificationsScreen" },
+  { name: "Profile", icon: "user", route: "ProfileScreen" },
+  { name: "Partners", icon: "users", route: "AllActivePartnerScreen" },
+  { name: "History", icon: "clock", route: "ConsultationHistory" },
 ];
 
 const BottomBar = ({ activeRoute }: BottomBarProps) => {
@@ -38,7 +45,7 @@ const BottomBar = ({ activeRoute }: BottomBarProps) => {
     }
     if (tab.route === "HomeScreen") {
       navigation.dispatch(
-        CommonActions.reset({ index: 0, routes: [{ name: "HomeScreen" }] })
+        CommonActions.reset({ index: 0, routes: [{ name: "HomeScreen" }] }),
       );
       return;
     }

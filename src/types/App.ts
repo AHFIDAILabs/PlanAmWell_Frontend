@@ -76,4 +76,18 @@ export type AppStackParamList = {
   };
   
   ConversationsListScreen: undefined;
+
+   // Medical Records
+  MedicalRecordEditorScreen: {
+    appointmentId: string;
+    patientId: string;
+    patientName: string;
+    existingNoteId?: string;  // if editing an existing note
+  };
+  PatientRecordScreen: {
+    patientId: string;
+    patientName: string;
+    appointmentId: string;
+  };
+  MyMedicalRecordScreen: undefined;
 };

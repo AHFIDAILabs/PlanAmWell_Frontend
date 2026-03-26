@@ -405,7 +405,7 @@ const renderItem = ({ item }: { item: IAppointment }) => {
         role="user"
       />
 
-      <BottomBar activeRoute={"MyAppointmentsScreen"} />
+      <BottomBar activeRoute={"MyAppointmentsScreen"} cartItemCount={0} />
     </SafeAreaView>
   );
 };

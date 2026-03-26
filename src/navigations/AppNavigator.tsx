@@ -37,6 +37,9 @@ import IncomingCallScreen from "../screens/video/IncomingCallScreen";
 import { AppStackParamList } from "../types/App";
 import { IDoctor } from "../types/backendType";
 import { PaymentScreen } from "../screens/payment/PaymentScreen";
+import MedicalRecordEditorScreen from "../screens/doctor/MedicalRecordEditorScreen";
+import PatientRecordScreen from "../screens/doctor/PatientRecordScreen";
+import { MyMedicalRecordScreen } from "../screens/patient/MyMedicalRecordScreen";
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
@@ -126,6 +129,10 @@ export default function AppNavigator() {
         name="ConsultationHistory"
         component={ConsultationHistoryScreen}
       />
+
+      <RootStack.Screen name="MedicalRecordEditorScreen" component={MedicalRecordEditorScreen} />
+<RootStack.Screen name="PatientRecordScreen"        component={PatientRecordScreen} />
+<RootStack.Screen name="MyMedicalRecordScreen"      component={MyMedicalRecordScreen} />
       <RootStack.Screen name="VideoCallScreen" component={VideoCallScreen} />
 
       {/* Advocacy */}

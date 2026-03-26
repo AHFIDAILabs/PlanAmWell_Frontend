@@ -265,6 +265,39 @@ export const NotificationsScreen = () => {
         return;
       }
 
+       // ── Medical record access request (patient responds) ──────────────────────
+    if (
+      notification.type === "system" &&
+      notification.metadata?.type === "record_access_request"
+    ) {
+      navigation.navigate("MyMedicalRecordScreen");
+      return;
+    }
+ 
+    // ── Doctor notified their access was approved/denied ──────────────────────
+    if (
+      notification.type === "system" &&
+      notification.metadata?.type === "record_access_response" &&
+      notification.metadata?.approved &&
+      notification.metadata?.patientId
+    ) {
+      navigation.navigate("PatientRecordScreen", {
+        patientId:   notification.metadata.patientId,
+        patientName: "Patient",
+        appointmentId: notification.metadata.appointmentId || "",
+      });
+      return;
+    }
+ 
+    // ── Patient notified that doctor viewed record ─────────────────────────────
+    if (
+      notification.type === "system" &&
+      notification.metadata?.type === "record_accessed"
+    ) {
+      navigation.navigate("MyMedicalRecordScreen");
+      return;
+    }
+
       if (notification.type !== 'appointment') return;
 
       const appointmentId = notification.metadata?.appointmentId;
@@ -383,7 +416,7 @@ export const NotificationsScreen = () => {
           </View>
         )}
       </View>
-      <BottomBar activeRoute="NotificationScreen" />
+      <BottomBar activeRoute="NotificationScreen" cartItemCount={0} />
     </SafeAreaView>
   );
 };

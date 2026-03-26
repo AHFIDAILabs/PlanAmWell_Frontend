@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,37 +6,66 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
 } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { TOKEN_KEY } from "../../services/Auth";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation, RouteProp, useRoute } from "@react-navigation/native";
+import { useNavigation, RouteProp, useRoute, CompositeNavigationProp } from "@react-navigation/native";
 
 import Header from "../../components/home/header";
 import BottomBar from "../../components/common/BottomBar";
 import { AppStackParamList } from "../../types/App";
+import { AuthStackParamList } from "../../types/Auth";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getDoctorImageUri } from "../../services/Doctor";
 
-
-// 1️⃣ Create a strongly typed navigation prop for DoctorScreen
-type DoctorScreenNavigationProp = NativeStackNavigationProp<
-  AppStackParamList,
-  "DoctorScreen"
+// ── Composite Navigation Type ─────────────────────────────────────────
+type DoctorScreenNavigationProp = CompositeNavigationProp<
+  NativeStackNavigationProp<AppStackParamList, "DoctorScreen">,   // AppStack
+  NativeStackNavigationProp<AuthStackParamList, "Register"> // AuthStack
 >;
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "DoctorScreen">;
 
+// ── Component ───────────────────────────────────────────────────────────
 export const DoctorScreen: React.FC = () => {
   const route = useRoute<DoctorRouteProps>();
-  const navigation = useNavigation<DoctorScreenNavigationProp>(); // ✅ Strongly typed
+  const navigation = useNavigation<DoctorScreenNavigationProp>();
   const doctor = route.params?.doctor;
 
-  const handleBookPress = () => {
-    // Now TypeScript knows BookAppointmentScreen exists and expects doctor param
-    navigation.navigate("BookAppointmentScreen", { doctor });
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+  // ── Handle Book Appointment Press ──────────────────────────────
+  const handleBookPress = async () => {
+    try {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+
+      if (!token) {
+        // ❌ Show registration modal
+        setShowRegisterModal(true);
+        return;
+      }
+
+      // ✅ User is registered → navigate to booking screen
+      navigation.navigate("BookAppointmentScreen", { doctor });
+    } catch (error) {
+      console.error("Auth check failed:", error);
+    }
   };
 
-  // get doctor imageuri
+  // ── Modal Actions ─────────────────────────────────────────────
+  const handleRegister = () => {
+    setShowRegisterModal(false);
+    navigation.navigate("Register"); // navigate to registration
+  };
+
+  const handleCancelModal = () => {
+    setShowRegisterModal(false);
+  };
+
+  // ── Doctor Image URI ──────────────────────────────────────────
   const doctorImageUri = getDoctorImageUri(doctor);
 
   return (
@@ -86,10 +115,44 @@ export const DoctorScreen: React.FC = () => {
       </ScrollView>
 
       <BottomBar activeRoute="AllDoctorScreen" cartItemCount={0} />
+
+      {/* ── Registration Modal ─────────────────────────────── */}
+      <Modal
+        visible={showRegisterModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Registration Required</Text>
+            <Text style={styles.modalMessage}>
+              You need to register to book an appointment.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: "#D81E5B" }]}
+                onPress={handleRegister}
+              >
+                <Text style={styles.modalButtonText}>Register Now</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: "#aaa" }]}
+                onPress={handleCancelModal}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
+// ── Styles ───────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { padding: 20, alignItems: "center" },
   headerBg: { position: "absolute", top: 0, width: "100%", height: 250 },
@@ -113,12 +176,7 @@ const styles = StyleSheet.create({
   stat: { alignItems: "center" },
   statValue: { fontSize: 20, fontWeight: "700", color: "#D81E5B" },
   statLabel: { fontSize: 12, color: "#777" },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 25,
-    alignSelf: "flex-start",
-  },
+  sectionTitle: { fontSize: 18, fontWeight: "700", marginTop: 25, alignSelf: "flex-start" },
   about: { fontSize: 15, color: "#555", lineHeight: 22, marginTop: 8 },
   button: {
     backgroundColor: "#D81E5B",
@@ -133,5 +191,30 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  // ── Modal styles ───────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    width: "85%",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+  },
+  modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 12 },
+  modalMessage: { fontSize: 15, color: "#555", textAlign: "center", marginBottom: 20 },
+  modalButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%" },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginHorizontal: 5,
+    alignItems: "center",
+  },
+  modalButtonText: { color: "#fff", fontWeight: "600" },
 });

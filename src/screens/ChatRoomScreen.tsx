@@ -266,38 +266,74 @@ export const ChatRoomScreen: React.FC = () => {
   }, [conversation?.activeVideoRequest, currentUserId]);
 
   // ─── End appointment (Doctor only) ─────────────────────────────────────────
-  const handleEndAppointment = () => {
-    Alert.alert(
-      "End Appointment",
-      "Are you sure you want to end this appointment? The chat will become read-only and the patient will be notified.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "End Appointment",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setEndingAppointment(true);
-              await endAppointment(appointmentId);
-              // The socket event "appointment-ended" will handle the UI lock.
-              // We also set it locally immediately so the doctor's screen
-              // responds without waiting for the round-trip.
-              setAppointmentEnded(true);
-              setConversation((prev) => prev ? { ...prev, isActive: false } : prev);
-            } catch (error: any) {
-              Toast.show({
-                type: "error",
-                text1: "Failed to end appointment",
-                text2: error.message,
-              });
-            } finally {
-              setEndingAppointment(false);
+ const handleEndAppointment = () => {
+  Alert.alert(
+    "End Appointment",
+    "Are you sure you want to end this appointment? The chat will become read-only and the patient will be notified.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "End Appointment",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setEndingAppointment(true);
+
+            await endAppointment(appointmentId);
+
+            // ── Immediate UI update ───────────────────────────────────────
+            setAppointmentEnded(true);
+            setConversation((prev) =>
+              prev ? { ...prev, isActive: false } : prev
+            );
+
+            // ── Prompt doctor to write consultation note ─────────────────
+            if (isDoctor) {
+              const patientId =
+                conversation?.participants?.userId?._id ||
+                (conversation?.participants?.userId as any)?._id;
+
+              const patientName =
+                (conversation?.participants?.userId as any)?.name || "Patient";
+
+              if (patientId) {
+                setTimeout(() => {
+                  Alert.alert(
+                    "Write Consultation Note?",
+                    "Would you like to write a consultation note for this patient? This becomes part of their medical record.",
+                    [
+                      { text: "Not Now", style: "cancel" },
+                      {
+                        text: "Write Note",
+                        onPress: () =>
+                          navigation.navigate(
+                            "MedicalRecordEditorScreen",
+                            {
+                              appointmentId,
+                              patientId: String(patientId),
+                              patientName,
+                            }
+                          ),
+                      },
+                    ]
+                  );
+                }, 600); // allow UI to reflect ended state first
+              }
             }
-          },
+          } catch (error: any) {
+            Toast.show({
+              type: "error",
+              text1: "Failed to end appointment",
+              text2: error.message,
+            });
+          } finally {
+            setEndingAppointment(false);
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   // ─── Send text message ──────────────────────────────────────────────────────
   const handleSendMessage = async () => {

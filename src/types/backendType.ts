@@ -191,6 +191,9 @@ export interface INotification {
     orderId?: string;
     appointmentId?: string;
     conversationId?: string;
+     patientId?: string;
+    type: "record_access_response" | "record_access_request" | "record_accessed"
+    approved?: boolean;
     articleId?: string;
     status?: string;
     doctorName?: string;
@@ -252,7 +255,7 @@ export interface IAppointment {
 
   scheduledAt: Date;
   proposedAt?: Date;
-
+expiresAt?: Date;
   duration?: number;
 
   status:
@@ -392,4 +395,95 @@ export interface IConversation {
   createdAt: string;
   updatedAt: string;
   lastActivityAt: string;
+}
+
+export interface IPrescription {
+  drug: string;
+  dosage: string;
+  form: string;
+  frequency: string;
+  duration: string;
+  instructions?: string;
+}
+ 
+export interface IDiagnosisEntry {
+  code?: string;
+  description: string;
+  severity?: "mild" | "moderate" | "severe";
+}
+ 
+export interface IVitalSigns {
+  bloodPressure?: string;
+  pulse?: string;
+  temperature?: string;
+  weight?: string;
+  height?: string;
+  bmi?: string;
+  oxygenSaturation?: string;
+}
+ 
+export interface ILabTest {
+  name: string;
+  result?: string;
+  unit?: string;
+  referenceRange?: string;
+  status?: "normal" | "abnormal" | "pending";
+}
+ 
+export interface IConsultationNote {
+  _id: string;
+  appointmentId: string;
+  doctorId: string;
+  doctorName: string;
+  doctorSpecialization: string;
+  privateNotes: string;
+  doctorLicenseNumber: string;
+  consultationDate: string;
+  chiefComplaint: string;
+  vitalSigns?: IVitalSigns;
+  diagnosis: IDiagnosisEntry[];
+  prescriptions: IPrescription[];
+  labTests: ILabTest[];
+  followUpInstructions?: string;
+  followUpDate?: string;
+  attachments: Array<{ url: string; name: string; type: string }>;
+  createdAt: string;
+  updatedAt: string;
+  // privateNotes is intentionally omitted from frontend type
+}
+ 
+export interface IMedicalRecord {
+  _id: string;
+  patientId: string;
+  patientSnapshot: {
+    name: string;
+    email?: string;
+    phone?: string;
+    gender?: string;
+    dateOfBirth?: string;
+    bloodGroup?: string;
+    allergies?: string[];
+    homeAddress?: string;
+  };
+  consultationNotes: IConsultationNote[];
+  accessLog: Array<{
+    doctorId: string;
+    doctorName: string;
+    appointmentId: string;
+    accessedAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+ 
+export interface IAccessRequest {
+  _id: string;
+  patientId: string;
+  requestingDoctorId: string | IDoctor;
+  appointmentId: string;
+  status: "pending" | "approved" | "denied" | "expired";
+  requestedAt: string;
+  respondedAt?: string;
+  expiresAt: string;
+  notifiedPatient: boolean;
 }
