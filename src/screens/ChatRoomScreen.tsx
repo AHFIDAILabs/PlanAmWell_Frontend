@@ -26,18 +26,18 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { RouteProp, useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
-
+import {
+  RouteProp,
+  useRoute,
+  useNavigation,
+  useFocusEffect,
+} from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 
 import { AppStackParamList } from "../types/App";
-import {
-  IConversation,
-  IMessage,
-  IVideoCallRequest,
-} from "../types/backendType";
+import { IConversation, IMessage, IVideoCallRequest } from "../types/backendType";
 import { useAuth } from "../hooks/useAuth";
 import socketService from "../services/socketService";
 import {
@@ -49,6 +49,7 @@ import {
   respondToVideoCall,
   cancelVideoCallRequest,
   uploadChatFile,
+  unlockConversation,   // ← new service call (add to Chat.ts — see note below)
 } from "../services/Chat";
 import { endAppointment } from "../services/Appointment";
 import { getDoctorImageUri } from "../services/Doctor";
@@ -61,9 +62,8 @@ export const ChatRoomScreen: React.FC = () => {
   const { user, getUserRole } = useAuth();
   const userRole = getUserRole();
   const insets = useSafeAreaInsets();
-  const appointmentEndedRef = useRef(false);
 
-  const { appointmentId, conversationId: initialConversationId } = route.params;
+  const { appointmentId } = route.params;
 
   const [conversation, setConversation] = useState<IConversation | null>(null);
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -75,21 +75,32 @@ export const ChatRoomScreen: React.FC = () => {
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [videoRequestModal, setVideoRequestModal] = useState(false);
-  const [incomingVideoRequest, setIncomingVideoRequest] =
-    useState<IVideoCallRequest | null>(null);
-  const [outgoingVideoRequest, setOutgoingVideoRequest] =
-    useState<IVideoCallRequest | null>(null);
+  const [incomingVideoRequest, setIncomingVideoRequest] = useState<IVideoCallRequest | null>(null);
+  const [outgoingVideoRequest, setOutgoingVideoRequest] = useState<IVideoCallRequest | null>(null);
   const [requestCountdown, setRequestCountdown] = useState(60);
-  // ── NEW: appointment-ended state ──────────────────────────────────────────
-  const [appointmentEnded, setAppointmentEnded] = useState(false);
+
+  // ── Lock state: driven by conversation.isActive from the server ──────────────
+  // isLocked = true  → read-only, "End" button is gone, "Unlock" button shown (doctor only)
+  // isLocked = false → active,    "End" button shown (doctor only)
+  const [isLocked, setIsLocked] = useState(false);
   const [endingAppointment, setEndingAppointment] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+
+  // Ref mirrors isLocked so socket handlers and useFocusEffect always
+  // see the latest value without needing it in their dep arrays.
+  const isLockedRef = useRef(false);
 
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = user?._id;
   const isDoctor = userRole === "Doctor";
 
-  // ─── Derived state ──────────────────────────────────────────────────────────
+  // ── Keep ref in sync with state ───────────────────────────────────────────────
+  useEffect(() => {
+    isLockedRef.current = isLocked;
+  }, [isLocked]);
+
+  // ─── Derived state ────────────────────────────────────────────────────────────
   const otherParticipant = useMemo(() => {
     if (!conversation?.participants) return null;
     if (typeof conversation.participants.doctorId === "string") return null;
@@ -102,7 +113,9 @@ export const ChatRoomScreen: React.FC = () => {
     if (!otherParticipant) return "...";
     return isDoctor
       ? (otherParticipant as any)?.name || "Patient"
-      : `Dr. ${(otherParticipant as any)?.firstName || ""} ${(otherParticipant as any)?.lastName || ""}`.trim();
+      : `Dr. ${(otherParticipant as any)?.firstName || ""} ${
+          (otherParticipant as any)?.lastName || ""
+        }`.trim();
   }, [otherParticipant, isDoctor]);
 
   const otherParticipantImage = useMemo(() => {
@@ -114,45 +127,32 @@ export const ChatRoomScreen: React.FC = () => {
       : getDoctorImageUri(otherParticipant as any);
   }, [otherParticipant, isDoctor]);
 
-  // ─── Load conversation ──────────────────────────────────────────────────────
+  // ─── Load conversation ────────────────────────────────────────────────────────
   const loadConversation = useCallback(async () => {
     try {
       setLoading(true);
       if (!appointmentId) {
-        Toast.show({
-          type: "error",
-          text1: "Cannot open chat",
-          text2: "Missing appointment information",
-        });
+        Toast.show({ type: "error", text1: "Cannot open chat", text2: "Missing appointment information" });
         setLoading(false);
         return;
       }
+
       const conv = await getOrCreateConversation(appointmentId);
       if (conv) {
         setConversation(conv);
         setMessages([...conv.messages]);
 
-        // ── Only update appointmentEnded from server if we haven't
-        //    already confirmed it ended locally ─────────────────────
-        if (!appointmentEndedRef.current) {
-          if (!conv.isActive) {
-            appointmentEndedRef.current = true;
-            setAppointmentEnded(true);
-          }
-        }
+        // isActive is the single source of truth for lock state.
+        // Always trust the server value on load/reload.
+        const locked = !conv.isActive;
+        isLockedRef.current = locked;
+        setIsLocked(locked);
 
         await markMessagesAsRead(conv._id);
-        setTimeout(
-          () => flatListRef.current?.scrollToEnd({ animated: false }),
-          150,
-        );
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150);
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Failed to load chat",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Failed to load chat", text2: error.message });
     } finally {
       setLoading(false);
     }
@@ -162,43 +162,41 @@ export const ChatRoomScreen: React.FC = () => {
     loadConversation();
   }, [loadConversation]);
 
-  // ─── Socket: join room ──────────────────────────────────────────────────────
+  // ─── useFocusEffect: re-enforce lock when screen regains focus ────────────────
+  // This fires when the doctor returns from MedicalRecordEditorScreen.
+  // If isLockedRef.current is true, we immediately re-assert the locked UI
+  // without a network call — preventing any flash of unlocked state.
+  useFocusEffect(
+    useCallback(() => {
+      if (isLockedRef.current) {
+        setIsLocked(true);
+        setConversation((prev) => (prev ? { ...prev, isActive: false } : prev));
+      }
+    }, [])
+  );
+
+  // ─── Socket: join room ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!conversation) return;
     socketService.joinAppointment(appointmentId);
-    return () => {
-      socketService.leaveAppointment(appointmentId);
-    };
+    return () => { socketService.leaveAppointment(appointmentId); };
   }, [conversation, appointmentId]);
 
-  // ─── Socket: listeners ─────────────────────────────────────────────────────
+  // ─── Socket: listeners ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!conversation) return;
     const socket = socketService.getSocket();
     if (!socket) return;
 
-    const handleNewMessage = (data: {
-      conversationId: string;
-      message: IMessage;
-    }) => {
+    const handleNewMessage = (data: { conversationId: string; message: IMessage }) => {
       if (data.conversationId !== conversation._id) return;
       setMessages((prev) => [...prev, data.message]);
-      setTimeout(
-        () => flatListRef.current?.scrollToEnd({ animated: true }),
-        100,
-      );
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       markMessagesAsRead(conversation._id);
     };
 
-    const handleTyping = (data: {
-      conversationId: string;
-      isTyping: boolean;
-      senderRole: string;
-    }) => {
-      if (
-        data.conversationId === conversation._id &&
-        data.senderRole !== userRole
-      ) {
+    const handleTyping = (data: { conversationId: string; isTyping: boolean; senderRole: string }) => {
+      if (data.conversationId === conversation._id && data.senderRole !== userRole) {
         setOtherUserTyping(data.isTyping);
       }
     };
@@ -207,10 +205,8 @@ export const ChatRoomScreen: React.FC = () => {
       if (data.conversationId !== conversation._id) return;
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.senderId === currentUserId
-            ? { ...msg, status: "read" as const }
-            : msg,
-        ),
+          msg.senderId === currentUserId ? { ...msg, status: "read" as const } : msg
+        )
       );
     };
 
@@ -225,11 +221,7 @@ export const ChatRoomScreen: React.FC = () => {
     }) => {
       if (data.conversationId !== conversation._id) return;
       if (data.status === "accepted") {
-        Toast.show({
-          type: "success",
-          text1: "Call Accepted",
-          text2: "Connecting...",
-        });
+        Toast.show({ type: "success", text1: "Call Accepted", text2: "Connecting..." });
         setTimeout(() => {
           navigation.navigate("VideoCallScreen", {
             appointmentId,
@@ -252,19 +244,34 @@ export const ChatRoomScreen: React.FC = () => {
       loadConversation();
     };
 
-    // ── NEW: appointment ended (doctor manual OR cron auto-expiry) ────────────
+    // ── Appointment ended (emitted by endAppointment on backend) ──────────────
     const handleAppointmentEnded = (data: { appointmentId: string }) => {
       if (data.appointmentId !== appointmentId) return;
-      appointmentEndedRef.current = true;
-      setAppointmentEnded(true);
+      isLockedRef.current = true;
+      setIsLocked(true);
       setConversation((prev) => (prev ? { ...prev, isActive: false } : prev));
       Toast.show({
         type: "info",
         text1: "Appointment Ended",
         text2: isDoctor
-          ? "You have ended this appointment."
+          ? "You have ended this appointment. Chat is now read-only."
           : "This appointment has been ended by your doctor.",
       });
+    };
+
+    // ── Conversation unlocked (emitted by updateAppointment on new confirmation) ─
+    const handleConversationUnlocked = (data: { conversationId: string }) => {
+      if (!conversation || data.conversationId !== conversation._id) return;
+      isLockedRef.current = false;
+      setIsLocked(false);
+      setConversation((prev) => (prev ? { ...prev, isActive: true } : prev));
+      Toast.show({
+        type: "success",
+        text1: "Chat Unlocked",
+        text2: "A new appointment has been confirmed. You can chat again.",
+      });
+      // Reload to pull in the new system message
+      loadConversation();
     };
 
     socket.on("new-message", handleNewMessage);
@@ -272,7 +279,8 @@ export const ChatRoomScreen: React.FC = () => {
     socket.on("messages-read", handleMessagesRead);
     socket.on("video-call-request", handleVideoRequest);
     socket.on("video-call-response", handleVideoResponse);
-    socket.on("appointment-ended", handleAppointmentEnded); // ← NEW
+    socket.on("appointment-ended", handleAppointmentEnded);
+    socket.on("conversation-unlocked", handleConversationUnlocked);
 
     return () => {
       socket.off("new-message", handleNewMessage);
@@ -280,7 +288,8 @@ export const ChatRoomScreen: React.FC = () => {
       socket.off("messages-read", handleMessagesRead);
       socket.off("video-call-request", handleVideoRequest);
       socket.off("video-call-response", handleVideoResponse);
-      socket.off("appointment-ended", handleAppointmentEnded); // ← NEW
+      socket.off("appointment-ended", handleAppointmentEnded);
+      socket.off("conversation-unlocked", handleConversationUnlocked);
     };
   }, [
     conversation,
@@ -293,17 +302,12 @@ export const ChatRoomScreen: React.FC = () => {
     isDoctor,
   ]);
 
-  // ─── Video request countdown ────────────────────────────────────────────────
+  // ─── Video request countdown ──────────────────────────────────────────────────
   useEffect(() => {
     if (!conversation?.activeVideoRequest) return;
-    const expiresAt = new Date(
-      conversation.activeVideoRequest.expiresAt,
-    ).getTime();
+    const expiresAt = new Date(conversation.activeVideoRequest.expiresAt).getTime();
     const interval = setInterval(() => {
-      const remaining = Math.max(
-        0,
-        Math.floor((expiresAt - Date.now()) / 1000),
-      );
+      const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
       setRequestCountdown(remaining);
       if (remaining === 0) {
         clearInterval(interval);
@@ -327,25 +331,11 @@ export const ChatRoomScreen: React.FC = () => {
     }
   }, [conversation?.activeVideoRequest, currentUserId]);
 
-useFocusEffect(
-  useCallback(() => {
-    // When screen regains focus (e.g. returning from MedicalRecordEditorScreen),
-    // if we already know the appointment ended, enforce the locked UI immediately
-    // without making a network call — the ref is the source of truth.
-    if (appointmentEndedRef.current) {
-      setAppointmentEnded(true);
-      setConversation((prev) =>
-        prev ? { ...prev, isActive: false } : prev
-      );
-    }
-  }, [])
-);
-
-  // ─── End appointment (Doctor only) ─────────────────────────────────────────
+  // ─── End Appointment (Doctor only) ───────────────────────────────────────────
   const handleEndAppointment = () => {
     Alert.alert(
       "End Appointment",
-      "Are you sure you want to end this appointment? The chat will become read-only and the patient will be notified.",
+      "Are you sure you want to end this appointment? The chat will become read-only. You can unlock it manually later or it will auto-unlock when a new appointment is confirmed.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -354,103 +344,115 @@ useFocusEffect(
           onPress: async () => {
             try {
               setEndingAppointment(true);
-
               await endAppointment(appointmentId);
 
-              // ── Immediate UI update ───────────────────────────────────────
-              appointmentEndedRef.current = true;
-              setAppointmentEnded(true);
-              setConversation((prev) =>
-                prev ? { ...prev, isActive: false } : prev,
-              );
+              // Immediately lock the UI — the socket event will also arrive
+              // shortly and is handled by handleAppointmentEnded above.
+              isLockedRef.current = true;
+              setIsLocked(true);
+              setConversation((prev) => (prev ? { ...prev, isActive: false } : prev));
 
-              // ── Prompt doctor to write consultation note ─────────────────
-              if (isDoctor) {
-                const patientId =
-                  conversation?.participants?.userId?._id ||
-                  (conversation?.participants?.userId as any)?._id;
+              // Prompt doctor to write consultation note
+              const patientId =
+                conversation?.participants?.userId?._id ||
+                (conversation?.participants?.userId as any)?._id;
+              const patientName =
+                (conversation?.participants?.userId as any)?.name || "Patient";
 
-                const patientName =
-                  (conversation?.participants?.userId as any)?.name ||
-                  "Patient";
-
-                if (patientId) {
-                  setTimeout(() => {
-                    Alert.alert(
-                      "Write Consultation Note?",
-                      "Would you like to write a consultation note for this patient? This becomes part of their medical record.",
-                      [
-                        { text: "Not Now", style: "cancel" },
-                        {
-                          text: "Write Note",
-                          onPress: () =>
-                            navigation.navigate("MedicalRecordEditorScreen", {
-                              appointmentId,
-                              patientId: String(patientId),
-                              patientName,
-                            }),
-                        },
-                      ],
-                    );
-                  }, 600); // allow UI to reflect ended state first
-                }
+              if (patientId) {
+                setTimeout(() => {
+                  Alert.alert(
+                    "Write Consultation Note?",
+                    "Would you like to write a consultation note for this patient? This becomes part of their medical record.",
+                    [
+                      { text: "Not Now", style: "cancel" },
+                      {
+                        text: "Write Note",
+                        onPress: () =>
+                          navigation.navigate("MedicalRecordEditorScreen", {
+                            appointmentId,
+                            patientId: String(patientId),
+                            patientName,
+                          }),
+                      },
+                    ]
+                  );
+                }, 600);
               }
             } catch (error: any) {
-              Toast.show({
-                type: "error",
-                text1: "Failed to end appointment",
-                text2: error.message,
-              });
+              Toast.show({ type: "error", text1: "Failed to end appointment", text2: error.message });
             } finally {
               setEndingAppointment(false);
             }
           },
         },
-      ],
+      ]
     );
   };
 
-  // ─── Send text message ──────────────────────────────────────────────────────
+  // ─── Manual Unlock (Doctor only) ─────────────────────────────────────────────
+  const handleUnlockConversation = () => {
+    Alert.alert(
+      "Unlock Chat",
+      "This will reopen the chat so both you and the patient can send messages again. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unlock",
+          onPress: async () => {
+            if (!conversation) return;
+            try {
+              setUnlocking(true);
+              await unlockConversation(conversation._id);
+
+              // Immediately unlock the UI
+              isLockedRef.current = false;
+              setIsLocked(false);
+              setConversation((prev) => (prev ? { ...prev, isActive: true } : prev));
+
+              // Reload to pull in the system message added by the backend
+              await loadConversation();
+
+              Toast.show({ type: "success", text1: "Chat unlocked." });
+            } catch (error: any) {
+              Toast.show({ type: "error", text1: "Failed to unlock chat", text2: error.message });
+            } finally {
+              setUnlocking(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ─── Send text message ────────────────────────────────────────────────────────
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !conversation || sending || appointmentEnded)
-      return;
+    if (!inputText.trim() || !conversation || sending || isLocked) return;
     const messageText = inputText.trim();
     setInputText("");
-
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     updateTypingIndicator(conversation._id, false);
     setIsTyping(false);
 
     try {
       setSending(true);
-      const newMessage = await sendMessage(
-        conversation._id,
-        messageText,
-        "text",
-      );
+      const newMessage = await sendMessage(conversation._id, messageText, "text");
       if (newMessage) {
         setMessages((prev) => [...prev, newMessage]);
-        setTimeout(
-          () => flatListRef.current?.scrollToEnd({ animated: true }),
-          100,
-        );
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Failed to send message",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Failed to send message", text2: error.message });
       setInputText(messageText);
     } finally {
       setSending(false);
     }
   };
 
-  // ─── Typing indicator ───────────────────────────────────────────────────────
+  // ─── Typing indicator ─────────────────────────────────────────────────────────
   const handleTextChange = (text: string) => {
     setInputText(text);
-    if (!conversation || appointmentEnded) return;
+    if (!conversation || isLocked) return;
     if (text.length > 0 && !isTyping) {
       setIsTyping(true);
       updateTypingIndicator(conversation._id, true);
@@ -462,43 +464,22 @@ useFocusEffect(
     }, 2000);
   };
 
-  // ─── Upload + send ──────────────────────────────────────────────────────────
-  const handleUploadAndSend = async (
-    uri: string,
-    mimeType: string,
-    fileName: string,
-    type: "image" | "document",
-  ) => {
-    if (!conversation || appointmentEnded) return;
+  // ─── Upload + send ────────────────────────────────────────────────────────────
+  const handleUploadAndSend = async (uri: string, mimeType: string, fileName: string, type: "image" | "document") => {
+    if (!conversation || isLocked) return;
     setShowAttachMenu(false);
     try {
       setUploading(true);
       const uploaded = await uploadChatFile(uri, mimeType, fileName);
       if (!uploaded) throw new Error("Upload returned empty response");
-
-      const backendMessageType: "image" | "audio" | "document" =
-        type === "image" ? "image" : "document";
-
-      const newMessage = await sendMessage(
-        conversation._id,
-        uploaded.fileName,
-        backendMessageType,
-        uploaded.url,
-      );
-
+      const backendMessageType: "image" | "audio" | "document" = type === "image" ? "image" : "document";
+      const newMessage = await sendMessage(conversation._id, uploaded.fileName, backendMessageType, uploaded.url);
       if (newMessage) {
         setMessages((prev) => [...prev, newMessage]);
-        setTimeout(
-          () => flatListRef.current?.scrollToEnd({ animated: true }),
-          100,
-        );
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Upload failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Upload failed", text2: error.message });
     } finally {
       setUploading(false);
     }
@@ -507,114 +488,61 @@ useFocusEffect(
   const handlePickImage = async () => {
     setShowAttachMenu(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission needed",
-        "Please allow access to your photo library.",
-      );
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      allowsEditing: false,
-    });
+    if (status !== "granted") { Alert.alert("Permission needed", "Please allow access to your photo library."); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    const fileName = asset.uri.split("/").pop() || "image.jpg";
-    const mimeType = asset.mimeType || "image/jpeg";
-    await handleUploadAndSend(asset.uri, mimeType, fileName, "image");
+    await handleUploadAndSend(asset.uri, asset.mimeType || "image/jpeg", asset.uri.split("/").pop() || "image.jpg", "image");
   };
 
   const handleTakePhoto = async () => {
     setShowAttachMenu(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow access to your camera.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-      allowsEditing: false,
-    });
+    if (status !== "granted") { Alert.alert("Permission needed", "Please allow access to your camera."); return; }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    await handleUploadAndSend(
-      asset.uri,
-      "image/jpeg",
-      `photo_${Date.now()}.jpg`,
-      "image",
-    );
+    await handleUploadAndSend(result.assets[0].uri, "image/jpeg", `photo_${Date.now()}.jpg`, "image");
   };
 
   const handlePickDocument = async () => {
     setShowAttachMenu(false);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          "application/pdf",
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ],
+        type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets[0]) return;
       const asset = result.assets[0];
-      const mimeType = asset.mimeType || "application/octet-stream";
-      await handleUploadAndSend(asset.uri, mimeType, asset.name, "document");
+      await handleUploadAndSend(asset.uri, asset.mimeType || "application/octet-stream", asset.name, "document");
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Could not open file picker",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Could not open file picker", text2: error.message });
     }
   };
 
-  // ─── Video call handlers ────────────────────────────────────────────────────
+  // ─── Video call handlers ──────────────────────────────────────────────────────
   const handleRequestVideoCall = async () => {
-    if (!conversation || appointmentEnded) return;
+    if (!conversation || isLocked) return;
     if (conversation.activeVideoRequest?.status === "pending") {
-      Toast.show({
-        type: "info",
-        text1: "Request Pending",
-        text2: "A video call request is already active",
-      });
+      Toast.show({ type: "info", text1: "Request Pending", text2: "A video call request is already active" });
       return;
     }
     try {
       const request = await requestVideoCall(conversation._id);
       if (request) {
         setOutgoingVideoRequest(request);
-        Toast.show({
-          type: "success",
-          text1: "Request Sent",
-          text2: "Waiting for response...",
-        });
+        Toast.show({ type: "success", text1: "Request Sent", text2: "Waiting for response..." });
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Request Failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Request Failed", text2: error.message });
     }
   };
 
   const handleRespondToVideoRequest = async (accept: boolean) => {
     if (!conversation || !incomingVideoRequest) return;
     try {
-      const response = await respondToVideoCall(
-        conversation._id,
-        incomingVideoRequest._id!,
-        accept,
-      );
+      const response = await respondToVideoCall(conversation._id, incomingVideoRequest._id!, accept);
       if (response && accept) {
-        Toast.show({
-          type: "success",
-          text1: "Joining Call",
-          text2: "Connecting...",
-        });
+        Toast.show({ type: "success", text1: "Joining Call", text2: "Connecting..." });
         setTimeout(() => {
           navigation.navigate("VideoCallScreen", {
             appointmentId: response.appointmentId,
@@ -629,11 +557,7 @@ useFocusEffect(
       setIncomingVideoRequest(null);
       loadConversation();
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Response Failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Response Failed", text2: error.message });
     }
   };
 
@@ -645,22 +569,16 @@ useFocusEffect(
       Toast.show({ type: "info", text1: "Request Cancelled" });
       loadConversation();
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Cancel Failed",
-        text2: error.message,
-      });
+      Toast.show({ type: "error", text1: "Cancel Failed", text2: error.message });
     }
   };
 
-  // ─── Render message ─────────────────────────────────────────────────────────
+  // ─── Render message ───────────────────────────────────────────────────────────
   const renderMessage = ({ item }: { item: IMessage }) => {
     const isOwn = item.senderId === currentUserId;
     const isSystem = item.messageType === "system";
     const isImage = item.messageType === "image" && !!item.mediaUrl;
-    const isDoc =
-      (item.messageType === "audio" || item.messageType === "document") &&
-      !!item.mediaUrl;
+    const isDoc = (item.messageType === "audio" || item.messageType === "document") && !!item.mediaUrl;
 
     if (isSystem) {
       return (
@@ -672,27 +590,12 @@ useFocusEffect(
 
     return (
       <View style={[styles.msgRow, isOwn ? styles.ownRow : styles.otherRow]}>
-        <View
-          style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}
-        >
+        <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
           {isImage && (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}
-            >
-              <Image
-                source={{ uri: item.mediaUrl }}
-                style={styles.imageMsg}
-                resizeMode="cover"
-              />
+            <TouchableOpacity activeOpacity={0.85} onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}>
+              <Image source={{ uri: item.mediaUrl }} style={styles.imageMsg} resizeMode="cover" />
               {item.content && item.content !== item.mediaUrl && (
-                <Text
-                  style={[
-                    styles.msgText,
-                    isOwn ? styles.ownText : styles.otherText,
-                    { marginTop: 4 },
-                  ]}
-                >
+                <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText, { marginTop: 4 }]}>
                   {item.content}
                 </Text>
               )}
@@ -700,34 +603,15 @@ useFocusEffect(
           )}
 
           {isDoc && (
-            <TouchableOpacity
-              style={styles.docContainer}
-              activeOpacity={0.8}
-              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}
-            >
+            <TouchableOpacity style={styles.docContainer} activeOpacity={0.8} onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}>
               <View style={[styles.docIconBox, isOwn && styles.docIconBoxOwn]}>
-                <Ionicons
-                  name="document-text"
-                  size={24}
-                  color={isOwn ? "#fff" : "#D81E5B"}
-                />
+                <Ionicons name="document-text" size={24} color={isOwn ? "#fff" : "#D81E5B"} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.docName,
-                    isOwn ? styles.ownText : styles.otherText,
-                  ]}
-                  numberOfLines={2}
-                >
+                <Text style={[styles.docName, isOwn ? styles.ownText : styles.otherText]} numberOfLines={2}>
                   {item.content}
                 </Text>
-                <Text
-                  style={[
-                    styles.docTap,
-                    isOwn ? { color: "#FFE0EB" } : { color: "#999" },
-                  ]}
-                >
+                <Text style={[styles.docTap, isOwn ? { color: "#FFE0EB" } : { color: "#999" }]}>
                   Tap to open
                 </Text>
               </View>
@@ -735,27 +619,14 @@ useFocusEffect(
           )}
 
           {!isImage && !isDoc && (
-            <Text
-              style={[
-                styles.msgText,
-                isOwn ? styles.ownText : styles.otherText,
-              ]}
-            >
+            <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}>
               {item.content}
             </Text>
           )}
 
           <View style={styles.msgFooter}>
-            <Text
-              style={[
-                styles.msgTime,
-                isOwn ? styles.ownTime : styles.otherTime,
-              ]}
-            >
-              {new Date(item.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+            <Text style={[styles.msgTime, isOwn ? styles.ownTime : styles.otherTime]}>
+              {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </Text>
             {isOwn && (
               <Ionicons
@@ -763,8 +634,8 @@ useFocusEffect(
                   item.status === "read"
                     ? "checkmark-done"
                     : item.status === "delivered"
-                      ? "checkmark-done-outline"
-                      : "checkmark"
+                    ? "checkmark-done-outline"
+                    : "checkmark"
                 }
                 size={14}
                 color={item.status === "read" ? "#4FC3F7" : "#B0BEC5"}
@@ -777,7 +648,7 @@ useFocusEffect(
     );
   };
 
-  // ─── Loading screen ─────────────────────────────────────────────────────────
+  // ─── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={styles.screen}>
@@ -789,62 +660,76 @@ useFocusEffect(
     );
   }
 
-  // ─── Main render ────────────────────────────────────────────────────────────
+  // ─── Main render ──────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
+
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#111" />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerInfo}>
-          <Image
-            source={{ uri: otherParticipantImage }}
-            style={styles.avatar}
-          />
+          <Image source={{ uri: otherParticipantImage }} style={styles.avatar} />
           <View>
             <Text style={styles.headerName}>{otherParticipantName}</Text>
-            {otherUserTyping && !appointmentEnded && (
+            {otherUserTyping && !isLocked && (
               <Text style={styles.typingIndicator}>typing...</Text>
             )}
-            {appointmentEnded && (
-              <Text style={styles.endedBadge}>Appointment Ended</Text>
+            {isLocked && (
+              <Text style={styles.endedBadge}>Chat locked</Text>
             )}
           </View>
         </TouchableOpacity>
 
-        {/* Video call button — hidden when ended */}
-        {!appointmentEnded && (
+        {/* Video call button — hidden when locked */}
+        {!isLocked && (
           <TouchableOpacity
             style={styles.videoButton}
             onPress={handleRequestVideoCall}
             disabled={!!outgoingVideoRequest}
           >
-            <Ionicons
-              name="videocam"
-              size={24}
-              color={outgoingVideoRequest ? "#999" : "#D81E5B"}
-            />
+            <Ionicons name="videocam" size={24} color={outgoingVideoRequest ? "#999" : "#D81E5B"} />
           </TouchableOpacity>
         )}
 
-        {/* End Appointment button — Doctor only, hidden when already ended */}
-        {isDoctor && !appointmentEnded && (
-          <TouchableOpacity
-            style={styles.endButton}
-            onPress={handleEndAppointment}
-            disabled={endingAppointment}
-          >
-            {endingAppointment ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.endButtonText}>End</Text>
+        {/* Doctor header actions */}
+        {isDoctor && (
+          <>
+            {/* When NOT locked: show "End" button */}
+            {!isLocked && (
+              <TouchableOpacity
+                style={styles.endButton}
+                onPress={handleEndAppointment}
+                disabled={endingAppointment}
+              >
+                {endingAppointment ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.endButtonText}>End</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+
+            {/* When locked: show "Unlock" button */}
+            {isLocked && (
+              <TouchableOpacity
+                style={styles.unlockButton}
+                onPress={handleUnlockConversation}
+                disabled={unlocking}
+              >
+                {unlocking ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="lock-open-outline" size={14} color="#fff" />
+                    <Text style={styles.unlockButtonText}>Unlock</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
 
@@ -871,14 +756,14 @@ useFocusEffect(
         </View>
       )}
 
-      {/* ── Ended banner — visible to both parties ── */}
-      {appointmentEnded && (
+      {/* ── Locked banner — visible to both parties when chat is locked ── */}
+      {isLocked && (
         <View style={styles.endedBanner}>
-          <Ionicons name="checkmark-circle" size={18} color="#fff" />
+          <Ionicons name="lock-closed" size={16} color="#fff" />
           <Text style={styles.endedBannerText}>
             {isDoctor
-              ? "You ended this appointment. The chat is now read-only."
-              : "This appointment has ended. The chat is now read-only."}
+              ? "This appointment has ended. Chat is read-only. Tap Unlock to reopen."
+              : "This appointment has ended. The chat is read-only."}
           </Text>
         </View>
       )}
@@ -895,9 +780,7 @@ useFocusEffect(
           keyExtractor={(item) => item._id}
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: false })
-          }
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
@@ -907,38 +790,23 @@ useFocusEffect(
           }
         />
 
-        {/* ── Attachment menu — hidden when ended ── */}
-        {showAttachMenu && !appointmentEnded && (
+        {/* Attachment menu — hidden when locked */}
+        {showAttachMenu && !isLocked && (
           <View style={styles.attachMenu}>
-            <TouchableOpacity
-              style={styles.attachOption}
-              onPress={handlePickImage}
-            >
-              <View
-                style={[styles.attachIconBox, { backgroundColor: "#E8F5E9" }]}
-              >
+            <TouchableOpacity style={styles.attachOption} onPress={handlePickImage}>
+              <View style={[styles.attachIconBox, { backgroundColor: "#E8F5E9" }]}>
                 <Ionicons name="image" size={24} color="#4CAF50" />
               </View>
               <Text style={styles.attachLabel}>Gallery</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.attachOption}
-              onPress={handleTakePhoto}
-            >
-              <View
-                style={[styles.attachIconBox, { backgroundColor: "#E3F2FD" }]}
-              >
+            <TouchableOpacity style={styles.attachOption} onPress={handleTakePhoto}>
+              <View style={[styles.attachIconBox, { backgroundColor: "#E3F2FD" }]}>
                 <Ionicons name="camera" size={24} color="#2196F3" />
               </View>
               <Text style={styles.attachLabel}>Camera</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.attachOption}
-              onPress={handlePickDocument}
-            >
-              <View
-                style={[styles.attachIconBox, { backgroundColor: "#FFF3E0" }]}
-              >
+            <TouchableOpacity style={styles.attachOption} onPress={handlePickDocument}>
+              <View style={[styles.attachIconBox, { backgroundColor: "#FFF3E0" }]}>
                 <Ionicons name="document-text" size={24} color="#FF9800" />
               </View>
               <Text style={styles.attachLabel}>Document</Text>
@@ -947,32 +815,20 @@ useFocusEffect(
         )}
 
         {/* ── Input bar OR read-only footer ── */}
-        {appointmentEnded ? (
-          // Read-only footer shown to both parties
-          <View
-            style={[styles.endedFooter, { paddingBottom: insets.bottom + 8 }]}
-          >
+        {isLocked ? (
+          <View style={[styles.endedFooter, { paddingBottom: insets.bottom + 8 }]}>
             <Ionicons name="lock-closed" size={16} color="#999" />
             <Text style={styles.endedFooterText}>
-              This chat is now read-only
+              {isDoctor ? "Chat locked — tap Unlock to reopen" : "This chat is read-only"}
             </Text>
           </View>
         ) : (
-          <View
-            style={[
-              styles.inputContainer,
-              { paddingBottom: insets.bottom + 8 },
-            ]}
-          >
+          <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 8 }]}>
             <TouchableOpacity
               style={styles.attachButton}
               onPress={() => setShowAttachMenu((v) => !v)}
             >
-              <Ionicons
-                name={showAttachMenu ? "close" : "attach"}
-                size={24}
-                color="#D81E5B"
-              />
+              <Ionicons name={showAttachMenu ? "close" : "attach"} size={24} color="#D81E5B" />
             </TouchableOpacity>
 
             <TextInput
@@ -986,10 +842,7 @@ useFocusEffect(
             />
 
             <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !inputText.trim() && styles.sendButtonDisabled,
-              ]}
+              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
               onPress={handleSendMessage}
               disabled={!inputText.trim() || sending}
             >
@@ -1008,9 +861,7 @@ useFocusEffect(
         visible={videoRequestModal}
         animationType="slide"
         transparent
-        onRequestClose={() => {
-          if (!incomingVideoRequest) setVideoRequestModal(false);
-        }}
+        onRequestClose={() => { if (!incomingVideoRequest) setVideoRequestModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.videoRequestModal}>
@@ -1020,9 +871,7 @@ useFocusEffect(
               <Text style={styles.videoRequestSubtitle}>
                 {otherParticipantName} wants to start a video call
               </Text>
-              <Text style={styles.videoRequestCountdown}>
-                Expires in {requestCountdown}s
-              </Text>
+              <Text style={styles.videoRequestCountdown}>Expires in {requestCountdown}s</Text>
             </View>
             <View style={styles.videoRequestActions}>
               <TouchableOpacity
@@ -1047,17 +896,11 @@ useFocusEffect(
   );
 };
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F5F5F5" },
   flex: { flex: 1 },
-
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-  },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 16, color: "#666" },
 
   header: {
@@ -1071,18 +914,13 @@ const styles = StyleSheet.create({
   },
   backButton: { marginRight: 12 },
   headerInfo: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#E0E0E0",
-  },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#E0E0E0" },
   headerName: { fontSize: 16, fontWeight: "700", color: "#111" },
   typingIndicator: { fontSize: 12, color: "#4FC3F7", fontStyle: "italic" },
-  endedBadge: { fontSize: 11, color: "#6B7280", fontStyle: "italic" },
+  endedBadge: { fontSize: 11, color: "#EF4444", fontStyle: "italic" },
   videoButton: { padding: 8 },
 
-  // ── End appointment button ──────────────────────────────────────────────────
+  // ── End button (active appointment) ──────────────────────────────────────────
   endButton: {
     backgroundColor: "#EF4444",
     paddingHorizontal: 12,
@@ -1095,9 +933,22 @@ const styles = StyleSheet.create({
   },
   endButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 
-  // ── Ended banner ────────────────────────────────────────────────────────────
+  // ── Unlock button (locked appointment) ───────────────────────────────────────
+  unlockButton: {
+    backgroundColor: "#16A34A",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  unlockButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+
+  // ── Locked banner ─────────────────────────────────────────────────────────────
   endedBanner: {
-    backgroundColor: "#6B7280",
+    backgroundColor: "#374151",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -1106,7 +957,7 @@ const styles = StyleSheet.create({
   },
   endedBannerText: { color: "#fff", fontSize: 13, fontWeight: "600", flex: 1 },
 
-  // ── Ended footer (replaces input bar) ───────────────────────────────────────
+  // ── Read-only footer ──────────────────────────────────────────────────────────
   endedFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -1130,12 +981,7 @@ const styles = StyleSheet.create({
   },
   requestBannerContent: { flexDirection: "row", alignItems: "center", gap: 12 },
   requestBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  requestBannerCancel: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-    textDecorationLine: "underline",
-  },
+  requestBannerCancel: { color: "#fff", fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
 
   uploadBanner: {
     backgroundColor: "#FF9800",
@@ -1147,17 +993,8 @@ const styles = StyleSheet.create({
   },
   uploadBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 
-  messagesList: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: 8,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingTop: 100,
-  },
+  messagesList: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 8 },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 100 },
   emptyText: { fontSize: 18, fontWeight: "600", color: "#999", marginTop: 16 },
   emptySubtext: { fontSize: 14, color: "#BBB", marginTop: 4 },
 
@@ -1189,28 +1026,10 @@ const styles = StyleSheet.create({
   ownTime: { color: "#FFE0EB" },
   otherTime: { color: "#999" },
 
-  imageMsg: {
-    width: 220,
-    height: 180,
-    borderRadius: 12,
-    backgroundColor: "#E0E0E0",
-  },
+  imageMsg: { width: 220, height: 180, borderRadius: 12, backgroundColor: "#E0E0E0" },
 
-  docContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    minWidth: 180,
-    maxWidth: 240,
-  },
-  docIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: "#FFF0F6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  docContainer: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 180, maxWidth: 240 },
+  docIconBox: { width: 44, height: 44, borderRadius: 10, backgroundColor: "#FFF0F6", justifyContent: "center", alignItems: "center" },
   docIconBoxOwn: { backgroundColor: "rgba(255,255,255,0.25)" },
   docName: { fontSize: 13, fontWeight: "600", flexWrap: "wrap" },
   docTap: { fontSize: 11, marginTop: 2 },
@@ -1236,14 +1055,7 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     color: "#111",
   },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#D81E5B",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#D81E5B", justifyContent: "center", alignItems: "center" },
   sendButtonDisabled: { backgroundColor: "#CCC" },
 
   attachMenu: {
@@ -1256,53 +1068,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   attachOption: { alignItems: "center", gap: 6 },
-  attachIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  attachIconBox: { width: 52, height: 52, borderRadius: 14, justifyContent: "center", alignItems: "center" },
   attachLabel: { fontSize: 11, fontWeight: "600", color: "#555" },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  videoRequestModal: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 24,
-    width: "100%",
-    maxWidth: 400,
-  },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
+  videoRequestModal: { backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 },
   videoRequestHeader: { alignItems: "center", marginBottom: 24 },
-  videoRequestTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111",
-    marginTop: 16,
-  },
-  videoRequestSubtitle: {
-    fontSize: 15,
-    color: "#666",
-    marginTop: 8,
-    textAlign: "center",
-  },
+  videoRequestTitle: { fontSize: 20, fontWeight: "700", color: "#111", marginTop: 16 },
+  videoRequestSubtitle: { fontSize: 15, color: "#666", marginTop: 8, textAlign: "center" },
   videoRequestCountdown: { fontSize: 13, color: "#999", marginTop: 8 },
   videoRequestActions: { flexDirection: "row", gap: 12 },
-  videoRequestButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
+  videoRequestButton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
   declineButton: { backgroundColor: "#F44336" },
   acceptButton: { backgroundColor: "#4CAF50" },
   videoRequestButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },

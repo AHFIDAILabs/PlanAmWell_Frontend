@@ -158,6 +158,7 @@ export const requestVideoCall = async (
   }
 };
 
+
 /**
  * Respond to video call request
  */
@@ -195,4 +196,9 @@ export const cancelVideoCallRequest = async (
     console.error("[Chat] Failed to cancel video call:", error.response?.data || error.message);
     return false;
   }
+};
+
+export const unlockConversation = async (conversationId: string): Promise<boolean> => {
+  const response = await axios.patch(`${BASE_URL}/conversation/${conversationId}/unlock`);
+  return response.data.success;
 };
