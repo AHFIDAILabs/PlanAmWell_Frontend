@@ -82,11 +82,10 @@ export const ChatRoomScreen: React.FC = () => {
   const [endingAppointment, setEndingAppointment] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
 
-  // isLockedRef mirrors isLocked for use inside socket handlers (avoids stale closure)
+  // Mirrors isLocked for use inside socket handlers (avoids stale closure)
   const isLockedRef = useRef(false);
 
-  // hasMountedRef: prevents useFocusEffect from firing a reload on the very first
-  // mount (the mount useEffect handles the first load)
+  // Prevents useFocusEffect from double-firing on the very first mount
   const hasMountedRef = useRef(false);
 
   const flatListRef = useRef<FlatList>(null);
@@ -94,7 +93,7 @@ export const ChatRoomScreen: React.FC = () => {
   const currentUserId = user?._id;
   const isDoctor = userRole === "Doctor";
 
-  // Keep isLockedRef in sync
+  // Keep isLockedRef in sync with isLocked state
   useEffect(() => {
     isLockedRef.current = isLocked;
   }, [isLocked]);
@@ -125,20 +124,28 @@ export const ChatRoomScreen: React.FC = () => {
   }, [otherParticipant, isDoctor]);
 
   // ─── loadConversation ─────────────────────────────────────────────────────────
-  // The ONLY function that sets lock state. Always trusts server's isActive.
+  // Single source of truth for lock state — always trusts server's isActive.
+  // Called on mount AND every time the screen regains focus.
   const loadConversation = useCallback(async () => {
     try {
       setLoading(true);
       if (!appointmentId) {
-        Toast.show({ type: "error", text1: "Cannot open chat", text2: "Missing appointment information" });
+        Toast.show({
+          type: "error",
+          text1: "Cannot open chat",
+          text2: "Missing appointment information",
+        });
         return;
       }
+
       const conv = await getOrCreateConversation(appointmentId);
       if (conv) {
         setConversation(conv);
         setMessages([...conv.messages]);
 
-        // Server's isActive is the single source of truth — always apply it
+        // Server's isActive is the ONLY source of truth — always apply it.
+        // This is what prevents the lock state from flipping back when
+        // navigating away and returning.
         const locked = !conv.isActive;
         isLockedRef.current = locked;
         setIsLocked(locked);
@@ -147,24 +154,25 @@ export const ChatRoomScreen: React.FC = () => {
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150);
       }
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to load chat", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Failed to load chat",
+        text2: error.message,
+      });
     } finally {
       setLoading(false);
     }
   }, [appointmentId]);
 
   // ─── Mount: load once ─────────────────────────────────────────────────────────
-  // Fires exactly once. Sets hasMountedRef = true after completion so
-  // useFocusEffect knows the first load is done and can take over on refocus.
   useEffect(() => {
     loadConversation().then(() => {
       hasMountedRef.current = true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // empty array = mount only, intentional
+  }, []); // intentionally empty — mount only
 
   // ─── Focus: reload from server on every return to this screen ────────────────
-  // Skips the first mount focus (hasMountedRef guards it).
   // This is what keeps lock state correct after navigating to/from note editor,
   // video call screen, or any other screen.
   useFocusEffect(
@@ -174,11 +182,13 @@ export const ChatRoomScreen: React.FC = () => {
     }, [loadConversation])
   );
 
-  // ─── Socket: join room ────────────────────────────────────────────────────────
+  // ─── Socket: join/leave room ──────────────────────────────────────────────────
   useEffect(() => {
     if (!conversation) return;
     socketService.joinAppointment(appointmentId);
-    return () => { socketService.leaveAppointment(appointmentId); };
+    return () => {
+      socketService.leaveAppointment(appointmentId);
+    };
   }, [conversation, appointmentId]);
 
   // ─── Socket: listeners ────────────────────────────────────────────────────────
@@ -187,15 +197,25 @@ export const ChatRoomScreen: React.FC = () => {
     const socket = socketService.getSocket();
     if (!socket) return;
 
-    const handleNewMessage = (data: { conversationId: string; message: IMessage }) => {
+    const handleNewMessage = (data: {
+      conversationId: string;
+      message: IMessage;
+    }) => {
       if (data.conversationId !== conversation._id) return;
       setMessages((prev) => [...prev, data.message]);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       markMessagesAsRead(conversation._id);
     };
 
-    const handleTyping = (data: { conversationId: string; isTyping: boolean; senderRole: string }) => {
-      if (data.conversationId === conversation._id && data.senderRole !== userRole) {
+    const handleTyping = (data: {
+      conversationId: string;
+      isTyping: boolean;
+      senderRole: string;
+    }) => {
+      if (
+        data.conversationId === conversation._id &&
+        data.senderRole !== userRole
+      ) {
         setOtherUserTyping(data.isTyping);
       }
     };
@@ -204,7 +224,9 @@ export const ChatRoomScreen: React.FC = () => {
       if (data.conversationId !== conversation._id) return;
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.senderId === currentUserId ? { ...msg, status: "read" as const } : msg
+          msg.senderId === currentUserId
+            ? { ...msg, status: "read" as const }
+            : msg
         )
       );
     };
@@ -243,7 +265,7 @@ export const ChatRoomScreen: React.FC = () => {
       loadConversation();
     };
 
-    // Backend emits this when doctor calls endAppointment
+    // Emitted by backend when doctor calls endAppointment
     const handleAppointmentEnded = (data: { appointmentId: string }) => {
       if (data.appointmentId !== appointmentId) return;
       isLockedRef.current = true;
@@ -258,7 +280,8 @@ export const ChatRoomScreen: React.FC = () => {
       });
     };
 
-    // Backend emits this when a new appointment is confirmed (auto-unlock)
+    // Emitted by backend when a new appointment is confirmed (auto-unlock)
+    // OR when doctor manually unlocks via unlockConversation endpoint
     const handleConversationUnlocked = (data: { conversationId: string }) => {
       if (data.conversationId !== conversation._id) return;
       isLockedRef.current = false;
@@ -267,7 +290,7 @@ export const ChatRoomScreen: React.FC = () => {
       Toast.show({
         type: "success",
         text1: "Chat Unlocked",
-        text2: "A new appointment has been confirmed. You can chat again.",
+        text2: "You can now send messages again.",
       });
       loadConversation();
     };
@@ -289,7 +312,16 @@ export const ChatRoomScreen: React.FC = () => {
       socket.off("appointment-ended", handleAppointmentEnded);
       socket.off("conversation-unlocked", handleConversationUnlocked);
     };
-  }, [conversation, currentUserId, userRole, appointmentId, navigation, loadConversation, otherParticipantName, isDoctor]);
+  }, [
+    conversation,
+    currentUserId,
+    userRole,
+    appointmentId,
+    navigation,
+    loadConversation,
+    otherParticipantName,
+    isDoctor,
+  ]);
 
   // ─── Video request countdown ──────────────────────────────────────────────────
   useEffect(() => {
@@ -321,6 +353,7 @@ export const ChatRoomScreen: React.FC = () => {
   }, [conversation?.activeVideoRequest, currentUserId]);
 
   // ─── End Appointment ──────────────────────────────────────────────────────────
+  // Only locks the chat. Note-writing is completely independent.
   const handleEndAppointment = () => {
     Alert.alert(
       "End Appointment",
@@ -335,39 +368,24 @@ export const ChatRoomScreen: React.FC = () => {
               setEndingAppointment(true);
               await endAppointment(appointmentId);
 
-              // Lock immediately (socket event is also coming — idempotent)
+              // Lock immediately — socket event is also coming (idempotent)
               isLockedRef.current = true;
               setIsLocked(true);
-              setConversation((prev) => (prev ? { ...prev, isActive: false } : prev));
+              setConversation((prev) =>
+                prev ? { ...prev, isActive: false } : prev
+              );
 
-              const patientId =
-                conversation?.participants?.userId?._id ||
-                (conversation?.participants?.userId as any)?._id;
-              const patientName =
-                (conversation?.participants?.userId as any)?.name || "Patient";
-
-              if (patientId) {
-                setTimeout(() => {
-                  Alert.alert(
-                    "Write Consultation Note?",
-                    "Would you like to write a consultation note for this patient?",
-                    [
-                      { text: "Not Now", style: "cancel" },
-                      {
-                        text: "Write Note",
-                        onPress: () =>
-                          navigation.navigate("MedicalRecordEditorScreen", {
-                            appointmentId,
-                            patientId: String(patientId),
-                            patientName,
-                          }),
-                      },
-                    ]
-                  );
-                }, 600);
-              }
+              Toast.show({
+                type: "info",
+                text1: "Appointment Ended",
+                text2: "Chat is now read-only.",
+              });
             } catch (error: any) {
-              Toast.show({ type: "error", text1: "Failed to end appointment", text2: error.message });
+              Toast.show({
+                type: "error",
+                text1: "Failed to end appointment",
+                text2: error.message,
+              });
             } finally {
               setEndingAppointment(false);
             }
@@ -393,11 +411,17 @@ export const ChatRoomScreen: React.FC = () => {
               await unlockConversation(conversation._id);
               isLockedRef.current = false;
               setIsLocked(false);
-              setConversation((prev) => (prev ? { ...prev, isActive: true } : prev));
+              setConversation((prev) =>
+                prev ? { ...prev, isActive: true } : prev
+              );
               await loadConversation();
               Toast.show({ type: "success", text1: "Chat unlocked." });
             } catch (error: any) {
-              Toast.show({ type: "error", text1: "Failed to unlock chat", text2: error.message });
+              Toast.show({
+                type: "error",
+                text1: "Failed to unlock chat",
+                text2: error.message,
+              });
             } finally {
               setUnlocking(false);
             }
@@ -405,6 +429,30 @@ export const ChatRoomScreen: React.FC = () => {
         },
       ]
     );
+  };
+
+  // ─── Navigate to Note Editor (completely independent of lock state) ───────────
+  const handleOpenNoteEditor = () => {
+    const patientId =
+      conversation?.participants?.userId?._id ||
+      (conversation?.participants?.userId as any)?._id;
+    const patientName =
+      (conversation?.participants?.userId as any)?.name || "Patient";
+
+    if (!patientId) {
+      Toast.show({
+        type: "error",
+        text1: "Cannot open notes",
+        text2: "Patient information not available.",
+      });
+      return;
+    }
+
+    navigation.navigate("MedicalRecordEditorScreen", {
+      appointmentId,
+      patientId: String(patientId),
+      patientName,
+    });
   };
 
   // ─── Send message ─────────────────────────────────────────────────────────────
@@ -423,7 +471,11 @@ export const ChatRoomScreen: React.FC = () => {
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Failed to send message", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Failed to send message",
+        text2: error.message,
+      });
       setInputText(messageText);
     } finally {
       setSending(false);
@@ -445,15 +497,26 @@ export const ChatRoomScreen: React.FC = () => {
   };
 
   // ─── Upload helpers ───────────────────────────────────────────────────────────
-  const handleUploadAndSend = async (uri: string, mimeType: string, fileName: string, type: "image" | "document") => {
+  const handleUploadAndSend = async (
+    uri: string,
+    mimeType: string,
+    fileName: string,
+    type: "image" | "document"
+  ) => {
     if (!conversation || isLocked) return;
     setShowAttachMenu(false);
     try {
       setUploading(true);
       const uploaded = await uploadChatFile(uri, mimeType, fileName);
       if (!uploaded) throw new Error("Upload returned empty response");
-      const backendType: "image" | "audio" | "document" = type === "image" ? "image" : "document";
-      const newMessage = await sendMessage(conversation._id, uploaded.fileName, backendType, uploaded.url);
+      const backendType: "image" | "audio" | "document" =
+        type === "image" ? "image" : "document";
+      const newMessage = await sendMessage(
+        conversation._id,
+        uploaded.fileName,
+        backendType,
+        uploaded.url
+      );
       if (newMessage) {
         setMessages((prev) => [...prev, newMessage]);
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -468,34 +531,66 @@ export const ChatRoomScreen: React.FC = () => {
   const handlePickImage = async () => {
     setShowAttachMenu(false);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") { Alert.alert("Permission needed", "Please allow access to your photo library."); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow access to your photo library.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    await handleUploadAndSend(asset.uri, asset.mimeType || "image/jpeg", asset.uri.split("/").pop() || "image.jpg", "image");
+    await handleUploadAndSend(
+      asset.uri,
+      asset.mimeType || "image/jpeg",
+      asset.uri.split("/").pop() || "image.jpg",
+      "image"
+    );
   };
 
   const handleTakePhoto = async () => {
     setShowAttachMenu(false);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") { Alert.alert("Permission needed", "Please allow access to your camera."); return; }
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow access to your camera.");
+      return;
+    }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
-    await handleUploadAndSend(result.assets[0].uri, "image/jpeg", `photo_${Date.now()}.jpg`, "image");
+    await handleUploadAndSend(
+      result.assets[0].uri,
+      "image/jpeg",
+      `photo_${Date.now()}.jpg`,
+      "image"
+    );
   };
 
   const handlePickDocument = async () => {
     setShowAttachMenu(false);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+        type: [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ],
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets[0]) return;
       const asset = result.assets[0];
-      await handleUploadAndSend(asset.uri, asset.mimeType || "application/octet-stream", asset.name, "document");
+      await handleUploadAndSend(
+        asset.uri,
+        asset.mimeType || "application/octet-stream",
+        asset.name,
+        "document"
+      );
     } catch (error: any) {
-      Toast.show({ type: "error", text1: "Could not open file picker", text2: error.message });
+      Toast.show({
+        type: "error",
+        text1: "Could not open file picker",
+        text2: error.message,
+      });
     }
   };
 
@@ -503,7 +598,11 @@ export const ChatRoomScreen: React.FC = () => {
   const handleRequestVideoCall = async () => {
     if (!conversation || isLocked) return;
     if (conversation.activeVideoRequest?.status === "pending") {
-      Toast.show({ type: "info", text1: "Request Pending", text2: "A video call request is already active" });
+      Toast.show({
+        type: "info",
+        text1: "Request Pending",
+        text2: "A video call request is already active",
+      });
       return;
     }
     try {
@@ -520,7 +619,11 @@ export const ChatRoomScreen: React.FC = () => {
   const handleRespondToVideoRequest = async (accept: boolean) => {
     if (!conversation || !incomingVideoRequest) return;
     try {
-      const response = await respondToVideoCall(conversation._id, incomingVideoRequest._id!, accept);
+      const response = await respondToVideoCall(
+        conversation._id,
+        incomingVideoRequest._id!,
+        accept
+      );
       if (response && accept) {
         Toast.show({ type: "success", text1: "Joining Call", text2: "Connecting..." });
         setTimeout(() => {
@@ -558,7 +661,9 @@ export const ChatRoomScreen: React.FC = () => {
     const isOwn = item.senderId === currentUserId;
     const isSystem = item.messageType === "system";
     const isImage = item.messageType === "image" && !!item.mediaUrl;
-    const isDoc = (item.messageType === "audio" || item.messageType === "document") && !!item.mediaUrl;
+    const isDoc =
+      (item.messageType === "audio" || item.messageType === "document") &&
+      !!item.mediaUrl;
 
     if (isSystem) {
       return (
@@ -572,34 +677,87 @@ export const ChatRoomScreen: React.FC = () => {
       <View style={[styles.msgRow, isOwn ? styles.ownRow : styles.otherRow]}>
         <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
           {isImage && (
-            <TouchableOpacity activeOpacity={0.85} onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}>
-              <Image source={{ uri: item.mediaUrl }} style={styles.imageMsg} resizeMode="cover" />
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}
+            >
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={styles.imageMsg}
+                resizeMode="cover"
+              />
               {item.content && item.content !== item.mediaUrl && (
-                <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText, { marginTop: 4 }]}>{item.content}</Text>
+                <Text
+                  style={[
+                    styles.msgText,
+                    isOwn ? styles.ownText : styles.otherText,
+                    { marginTop: 4 },
+                  ]}
+                >
+                  {item.content}
+                </Text>
               )}
             </TouchableOpacity>
           )}
           {isDoc && (
-            <TouchableOpacity style={styles.docContainer} activeOpacity={0.8} onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}>
+            <TouchableOpacity
+              style={styles.docContainer}
+              activeOpacity={0.8}
+              onPress={() => item.mediaUrl && Linking.openURL(item.mediaUrl)}
+            >
               <View style={[styles.docIconBox, isOwn && styles.docIconBoxOwn]}>
-                <Ionicons name="document-text" size={24} color={isOwn ? "#fff" : "#D81E5B"} />
+                <Ionicons
+                  name="document-text"
+                  size={24}
+                  color={isOwn ? "#fff" : "#D81E5B"}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.docName, isOwn ? styles.ownText : styles.otherText]} numberOfLines={2}>{item.content}</Text>
-                <Text style={[styles.docTap, isOwn ? { color: "#FFE0EB" } : { color: "#999" }]}>Tap to open</Text>
+                <Text
+                  style={[
+                    styles.docName,
+                    isOwn ? styles.ownText : styles.otherText,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {item.content}
+                </Text>
+                <Text
+                  style={[
+                    styles.docTap,
+                    isOwn ? { color: "#FFE0EB" } : { color: "#999" },
+                  ]}
+                >
+                  Tap to open
+                </Text>
               </View>
             </TouchableOpacity>
           )}
           {!isImage && !isDoc && (
-            <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}>{item.content}</Text>
+            <Text
+              style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}
+            >
+              {item.content}
+            </Text>
           )}
           <View style={styles.msgFooter}>
-            <Text style={[styles.msgTime, isOwn ? styles.ownTime : styles.otherTime]}>
-              {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <Text
+              style={[styles.msgTime, isOwn ? styles.ownTime : styles.otherTime]}
+            >
+              {new Date(item.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </Text>
             {isOwn && (
               <Ionicons
-                name={item.status === "read" ? "checkmark-done" : item.status === "delivered" ? "checkmark-done-outline" : "checkmark"}
+                name={
+                  item.status === "read"
+                    ? "checkmark-done"
+                    : item.status === "delivered"
+                    ? "checkmark-done-outline"
+                    : "checkmark"
+                }
                 size={14}
                 color={item.status === "read" ? "#4FC3F7" : "#B0BEC5"}
                 style={{ marginLeft: 4 }}
@@ -625,47 +783,101 @@ export const ChatRoomScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <Ionicons name="chevron-back" size={28} color="#111" />
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.headerInfo}>
-          <Image source={{ uri: otherParticipantImage }} style={styles.avatar} />
+          <Image
+            source={{ uri: otherParticipantImage }}
+            style={styles.avatar}
+          />
           <View>
             <Text style={styles.headerName}>{otherParticipantName}</Text>
-            {otherUserTyping && !isLocked && <Text style={styles.typingIndicator}>typing...</Text>}
-            {isLocked && <Text style={styles.endedBadge}>Chat locked</Text>}
+            {otherUserTyping && !isLocked && (
+              <Text style={styles.typingIndicator}>typing...</Text>
+            )}
+            {isLocked && (
+              <Text style={styles.lockedBadge}>Chat locked</Text>
+            )}
           </View>
         </TouchableOpacity>
 
+        {/* Video call button — hidden when locked */}
         {!isLocked && (
-          <TouchableOpacity style={styles.videoButton} onPress={handleRequestVideoCall} disabled={!!outgoingVideoRequest}>
-            <Ionicons name="videocam" size={24} color={outgoingVideoRequest ? "#999" : "#D81E5B"} />
+          <TouchableOpacity
+            style={styles.videoButton}
+            onPress={handleRequestVideoCall}
+            disabled={!!outgoingVideoRequest}
+          >
+            <Ionicons
+              name="videocam"
+              size={24}
+              color={outgoingVideoRequest ? "#999" : "#D81E5B"}
+            />
           </TouchableOpacity>
         )}
 
-        {isDoctor && !isLocked && (
-          <TouchableOpacity style={styles.endButton} onPress={handleEndAppointment} disabled={endingAppointment}>
-            {endingAppointment
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={styles.endButtonText}>End</Text>}
-          </TouchableOpacity>
-        )}
-        {isDoctor && isLocked && (
-          <TouchableOpacity style={styles.unlockButton} onPress={handleUnlockConversation} disabled={unlocking}>
-            {unlocking
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <><Ionicons name="lock-open-outline" size={14} color="#fff" /><Text style={styles.unlockButtonText}>Unlock</Text></>}
-          </TouchableOpacity>
+        {/* Doctor-only controls */}
+        {isDoctor && (
+          <View style={styles.doctorControls}>
+            {/* Note icon — visible only when chat is active (unlocked) */}
+            {!isLocked && (
+              <TouchableOpacity
+                style={styles.noteButton}
+                onPress={handleOpenNoteEditor}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="document-text-outline" size={22} color="#6366F1" />
+              </TouchableOpacity>
+            )}
+
+            {/* End button → visible when unlocked | Unlock button → visible when locked */}
+            {!isLocked ? (
+              <TouchableOpacity
+                style={styles.endButton}
+                onPress={handleEndAppointment}
+                disabled={endingAppointment}
+              >
+                {endingAppointment ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.endButtonText}>End</Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.unlockButton}
+                onPress={handleUnlockConversation}
+                disabled={unlocking}
+              >
+                {unlocking ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="lock-open-outline" size={14} color="#fff" />
+                    <Text style={styles.unlockButtonText}>Unlock</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
 
+      {/* ── Outgoing video call banner ── */}
       {outgoingVideoRequest && (
         <View style={styles.requestBanner}>
           <View style={styles.requestBannerContent}>
             <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.requestBannerText}>Waiting for response... ({requestCountdown}s)</Text>
+            <Text style={styles.requestBannerText}>
+              Waiting for response... ({requestCountdown}s)
+            </Text>
           </View>
           <TouchableOpacity onPress={handleCancelVideoRequest}>
             <Text style={styles.requestBannerCancel}>Cancel</Text>
@@ -673,6 +885,7 @@ export const ChatRoomScreen: React.FC = () => {
         </View>
       )}
 
+      {/* ── Upload progress banner ── */}
       {uploading && (
         <View style={styles.uploadBanner}>
           <ActivityIndicator size="small" color="#fff" />
@@ -680,10 +893,11 @@ export const ChatRoomScreen: React.FC = () => {
         </View>
       )}
 
+      {/* ── Locked banner ── */}
       {isLocked && (
-        <View style={styles.endedBanner}>
+        <View style={styles.lockedBanner}>
           <Ionicons name="lock-closed" size={16} color="#fff" />
-          <Text style={styles.endedBannerText}>
+          <Text style={styles.lockedBannerText}>
             {isDoctor
               ? "Appointment ended. Chat is read-only. Tap Unlock to reopen."
               : "This appointment has ended. The chat is read-only."}
@@ -702,7 +916,9 @@ export const ChatRoomScreen: React.FC = () => {
           keyExtractor={(item) => item._id}
           renderItem={renderMessage}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: false })
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
@@ -712,6 +928,7 @@ export const ChatRoomScreen: React.FC = () => {
           }
         />
 
+        {/* ── Attach menu ── */}
         {showAttachMenu && !isLocked && (
           <View style={styles.attachMenu}>
             <TouchableOpacity style={styles.attachOption} onPress={handlePickImage}>
@@ -735,17 +952,32 @@ export const ChatRoomScreen: React.FC = () => {
           </View>
         )}
 
+        {/* ── Input area or locked footer ── */}
         {isLocked ? (
-          <View style={[styles.endedFooter, { paddingBottom: insets.bottom + 8 }]}>
+          <View style={[styles.lockedFooter, { paddingBottom: insets.bottom + 8 }]}>
             <Ionicons name="lock-closed" size={16} color="#999" />
-            <Text style={styles.endedFooterText}>
-              {isDoctor ? "Chat locked — tap Unlock to reopen" : "This chat is read-only"}
+            <Text style={styles.lockedFooterText}>
+              {isDoctor
+                ? "Chat locked — tap Unlock to reopen"
+                : "This chat is read-only"}
             </Text>
           </View>
         ) : (
-          <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 8 }]}>
-            <TouchableOpacity style={styles.attachButton} onPress={() => setShowAttachMenu((v) => !v)}>
-              <Ionicons name={showAttachMenu ? "close" : "attach"} size={24} color="#D81E5B" />
+          <View
+            style={[
+              styles.inputContainer,
+              { paddingBottom: insets.bottom + 8 },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.attachButton}
+              onPress={() => setShowAttachMenu((v) => !v)}
+            >
+              <Ionicons
+                name={showAttachMenu ? "close" : "attach"}
+                size={24}
+                color="#D81E5B"
+              />
             </TouchableOpacity>
             <TextInput
               style={styles.input}
@@ -757,31 +989,56 @@ export const ChatRoomScreen: React.FC = () => {
               maxLength={1000}
             />
             <TouchableOpacity
-              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+              style={[
+                styles.sendButton,
+                !inputText.trim() && styles.sendButtonDisabled,
+              ]}
               onPress={handleSendMessage}
               disabled={!inputText.trim() || sending}
             >
-              {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={20} color="#fff" />}
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
             </TouchableOpacity>
           </View>
         )}
       </KeyboardAvoidingView>
 
-      <Modal visible={videoRequestModal} animationType="slide" transparent onRequestClose={() => { if (!incomingVideoRequest) setVideoRequestModal(false); }}>
+      {/* ── Incoming video call modal ── */}
+      <Modal
+        visible={videoRequestModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!incomingVideoRequest) setVideoRequestModal(false);
+        }}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.videoRequestModal}>
             <View style={styles.videoRequestHeader}>
               <Ionicons name="videocam" size={48} color="#D81E5B" />
               <Text style={styles.videoRequestTitle}>Video Call Request</Text>
-              <Text style={styles.videoRequestSubtitle}>{otherParticipantName} wants to start a video call</Text>
-              <Text style={styles.videoRequestCountdown}>Expires in {requestCountdown}s</Text>
+              <Text style={styles.videoRequestSubtitle}>
+                {otherParticipantName} wants to start a video call
+              </Text>
+              <Text style={styles.videoRequestCountdown}>
+                Expires in {requestCountdown}s
+              </Text>
             </View>
             <View style={styles.videoRequestActions}>
-              <TouchableOpacity style={[styles.videoRequestButton, styles.declineButton]} onPress={() => handleRespondToVideoRequest(false)}>
+              <TouchableOpacity
+                style={[styles.videoRequestButton, styles.declineButton]}
+                onPress={() => handleRespondToVideoRequest(false)}
+              >
                 <Ionicons name="close-circle" size={24} color="#fff" />
                 <Text style={styles.videoRequestButtonText}>Decline</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.videoRequestButton, styles.acceptButton]} onPress={() => handleRespondToVideoRequest(true)}>
+              <TouchableOpacity
+                style={[styles.videoRequestButton, styles.acceptButton]}
+                onPress={() => handleRespondToVideoRequest(true)}
+              >
                 <Ionicons name="videocam" size={24} color="#fff" />
                 <Text style={styles.videoRequestButtonText}>Accept</Text>
               </TouchableOpacity>
@@ -796,36 +1053,151 @@ export const ChatRoomScreen: React.FC = () => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F5F5F5" },
   flex: { flex: 1 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
   loadingText: { fontSize: 16, color: "#666" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E0E0E0" },
+
+  // ── Header ──
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
   backButton: { marginRight: 12 },
-  headerInfo: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#E0E0E0" },
+  headerInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E0E0E0",
+  },
   headerName: { fontSize: 16, fontWeight: "700", color: "#111" },
   typingIndicator: { fontSize: 12, color: "#4FC3F7", fontStyle: "italic" },
-  endedBadge: { fontSize: 11, color: "#EF4444", fontStyle: "italic" },
+  lockedBadge: { fontSize: 11, color: "#EF4444", fontStyle: "italic" },
   videoButton: { padding: 8 },
-  endButton: { backgroundColor: "#EF4444", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginLeft: 8, minWidth: 44, alignItems: "center", justifyContent: "center" },
+
+  // Doctor header controls — note icon + end/unlock button
+  doctorControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginLeft: 4,
+  },
+  noteButton: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "#EEF2FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  endButton: {
+    backgroundColor: "#EF4444",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   endButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  unlockButton: { backgroundColor: "#16A34A", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginLeft: 8, flexDirection: "row", alignItems: "center", gap: 4 },
+  unlockButton: {
+    backgroundColor: "#16A34A",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   unlockButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  endedBanner: { backgroundColor: "#374151", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
-  endedBannerText: { color: "#fff", fontSize: 13, fontWeight: "600", flex: 1 },
-  endedFooter: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 16, paddingTop: 14, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E0E0E0" },
-  endedFooterText: { color: "#999", fontSize: 14 },
-  requestBanner: { backgroundColor: "#4CAF50", paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  requestBannerContent: { flexDirection: "row", alignItems: "center", gap: 12 },
+
+  // ── Banners ──
+  lockedBanner: {
+    backgroundColor: "#374151",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  lockedBannerText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+  },
+  requestBanner: {
+    backgroundColor: "#4CAF50",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  requestBannerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   requestBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  requestBannerCancel: { color: "#fff", fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
-  uploadBanner: { backgroundColor: "#FF9800", paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 10 },
+  requestBannerCancel: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+  uploadBanner: {
+    backgroundColor: "#FF9800",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   uploadBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  messagesList: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 8 },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 100 },
-  emptyText: { fontSize: 18, fontWeight: "600", color: "#999", marginTop: 16 },
+
+  // ── Messages ──
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 100,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#999",
+    marginTop: 16,
+  },
   emptySubtext: { fontSize: 14, color: "#BBB", marginTop: 4 },
   systemMsgContainer: { alignItems: "center", marginVertical: 12 },
-  systemMsgText: { fontSize: 12, color: "#999", backgroundColor: "#F0F0F0", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, textAlign: "center" },
+  systemMsgText: {
+    fontSize: 12,
+    color: "#999",
+    backgroundColor: "#F0F0F0",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    textAlign: "center",
+  },
   msgRow: { marginVertical: 4, maxWidth: "78%" },
   ownRow: { alignSelf: "flex-end" },
   otherRow: { alignSelf: "flex-start" },
@@ -839,29 +1211,138 @@ const styles = StyleSheet.create({
   msgTime: { fontSize: 11 },
   ownTime: { color: "#FFE0EB" },
   otherTime: { color: "#999" },
-  imageMsg: { width: 220, height: 180, borderRadius: 12, backgroundColor: "#E0E0E0" },
-  docContainer: { flexDirection: "row", alignItems: "center", gap: 10, minWidth: 180, maxWidth: 240 },
-  docIconBox: { width: 44, height: 44, borderRadius: 10, backgroundColor: "#FFF0F6", justifyContent: "center", alignItems: "center" },
+  imageMsg: {
+    width: 220,
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: "#E0E0E0",
+  },
+  docContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 180,
+    maxWidth: 240,
+  },
+  docIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#FFF0F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   docIconBoxOwn: { backgroundColor: "rgba(255,255,255,0.25)" },
   docName: { fontSize: 13, fontWeight: "600", flexWrap: "wrap" },
   docTap: { fontSize: 11, marginTop: 2 },
-  inputContainer: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 12, paddingTop: 10, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E0E0E0", gap: 8 },
-  attachButton: { padding: 8, justifyContent: "center", alignItems: "center" },
-  input: { flex: 1, backgroundColor: "#F5F5F5", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 100, color: "#111" },
-  sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#D81E5B", justifyContent: "center", alignItems: "center" },
+
+  // ── Input / locked footer ──
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+    gap: 8,
+  },
+  attachButton: {
+    padding: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  input: {
+    flex: 1,
+    backgroundColor: "#F5F5F5",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 15,
+    maxHeight: 100,
+    color: "#111",
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#D81E5B",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   sendButtonDisabled: { backgroundColor: "#CCC" },
-  attachMenu: { flexDirection: "row", gap: 12, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#F0F0F0", paddingVertical: 14, paddingHorizontal: 20 },
+  lockedFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+  },
+  lockedFooterText: { color: "#999", fontSize: 14 },
+
+  // ── Attach menu ──
+  attachMenu: {
+    flexDirection: "row",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+  },
   attachOption: { alignItems: "center", gap: 6 },
-  attachIconBox: { width: 52, height: 52, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  attachIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   attachLabel: { fontSize: 11, fontWeight: "600", color: "#555" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 },
-  videoRequestModal: { backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 },
+
+  // ── Video call modal ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  videoRequestModal: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+  },
   videoRequestHeader: { alignItems: "center", marginBottom: 24 },
-  videoRequestTitle: { fontSize: 20, fontWeight: "700", color: "#111", marginTop: 16 },
-  videoRequestSubtitle: { fontSize: 15, color: "#666", marginTop: 8, textAlign: "center" },
+  videoRequestTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111",
+    marginTop: 16,
+  },
+  videoRequestSubtitle: {
+    fontSize: 15,
+    color: "#666",
+    marginTop: 8,
+    textAlign: "center",
+  },
   videoRequestCountdown: { fontSize: 13, color: "#999", marginTop: 8 },
   videoRequestActions: { flexDirection: "row", gap: 12 },
-  videoRequestButton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 12 },
+  videoRequestButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
   declineButton: { backgroundColor: "#F44336" },
   acceptButton: { backgroundColor: "#4CAF50" },
   videoRequestButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
