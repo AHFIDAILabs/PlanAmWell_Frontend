@@ -26,7 +26,8 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import { RouteProp, useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
+
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -325,6 +326,20 @@ export const ChatRoomScreen: React.FC = () => {
       setVideoRequestModal(true);
     }
   }, [conversation?.activeVideoRequest, currentUserId]);
+
+useFocusEffect(
+  useCallback(() => {
+    // When screen regains focus (e.g. returning from MedicalRecordEditorScreen),
+    // if we already know the appointment ended, enforce the locked UI immediately
+    // without making a network call — the ref is the source of truth.
+    if (appointmentEndedRef.current) {
+      setAppointmentEnded(true);
+      setConversation((prev) =>
+        prev ? { ...prev, isActive: false } : prev
+      );
+    }
+  }, [])
+);
 
   // ─── End appointment (Doctor only) ─────────────────────────────────────────
   const handleEndAppointment = () => {

@@ -173,7 +173,11 @@ export default function MedicalRecordEditorScreen() {
       });
 
       Toast.show({ type: "success", text1: "Consultation note saved." });
-      navigation.goBack();
+navigation.navigate("ChatRoomScreen", { 
+  appointmentId, 
+  conversationId: undefined,
+  keepLocked: true   // signal to ChatRoomScreen to stay locked
+});
     } catch (error: any) {
       Toast.show({
         type: "error",
@@ -185,7 +189,7 @@ export default function MedicalRecordEditorScreen() {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Render 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       {/* Header */}
