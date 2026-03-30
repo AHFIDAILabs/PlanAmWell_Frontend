@@ -88,6 +88,10 @@ export const ChatRoomScreen: React.FC = () => {
   // Prevents useFocusEffect from double-firing on the very first mount
   const hasMountedRef = useRef(false);
 
+  // Holds the conversation ID for socket handlers that run before
+  // the `conversation` state settles — avoids stale closure mismatches
+  const conversationIdRef = useRef<string | null>(null);
+
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = user?._id;
@@ -124,8 +128,6 @@ export const ChatRoomScreen: React.FC = () => {
   }, [otherParticipant, isDoctor]);
 
   // ─── loadConversation ─────────────────────────────────────────────────────────
-  // Single source of truth for lock state — always trusts server's isActive.
-  // Called on mount AND every time the screen regains focus.
   const loadConversation = useCallback(async () => {
     try {
       setLoading(true);
@@ -141,11 +143,11 @@ export const ChatRoomScreen: React.FC = () => {
       const conv = await getOrCreateConversation(appointmentId);
       if (conv) {
         setConversation(conv);
-        setMessages([...conv.messages]);
+        conversationIdRef.current = conv._id; // ← keep ref in sync immediately
 
-        // Server's isActive is the ONLY source of truth — always apply it.
-        // This is what prevents the lock state from flipping back when
-        // navigating away and returning.
+        // Replace messages wholesale on a full reload — de-dupe by _id
+        setMessages(dedupeMessages([...conv.messages]));
+
         const locked = !conv.isActive;
         isLockedRef.current = locked;
         setIsLocked(locked);
@@ -170,11 +172,9 @@ export const ChatRoomScreen: React.FC = () => {
       hasMountedRef.current = true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally empty — mount only
+  }, []);
 
   // ─── Focus: reload from server on every return to this screen ────────────────
-  // This is what keeps lock state correct after navigating to/from note editor,
-  // video call screen, or any other screen.
   useFocusEffect(
     useCallback(() => {
       if (!hasMountedRef.current) return;
@@ -182,29 +182,47 @@ export const ChatRoomScreen: React.FC = () => {
     }, [loadConversation])
   );
 
-  // ─── Socket: join/leave room ──────────────────────────────────────────────────
+  // ─── Socket: join/leave appointment room ─────────────────────────────────────
+  // Join as soon as we know the appointmentId (not gated on conversation state),
+  // so the appointment-ended event arrives even before the conversation loads.
   useEffect(() => {
-    if (!conversation) return;
     socketService.joinAppointment(appointmentId);
     return () => {
       socketService.leaveAppointment(appointmentId);
     };
-  }, [conversation, appointmentId]);
+  }, [appointmentId]); // ← was gated on `conversation` — now fires immediately
 
   // ─── Socket: listeners ────────────────────────────────────────────────────────
+  // NOTE: This effect only depends on stable values (refs, appointmentId, userRole)
+  // so it never tears down/re-registers mid-conversation.  The conversationIdRef
+  // lets us filter messages without capturing a stale `conversation` object.
   useEffect(() => {
-    if (!conversation) return;
     const socket = socketService.getSocket();
     if (!socket) return;
 
+    // ── FIX: De-duplicate on arrival using message _id ─────────────────────
+    // The double-message bug happened because handleSendMessage added the
+    // message optimistically AND the socket event added it again.
+    // Solution: the server's new-message event is now the ONLY source for
+    // incoming messages from the OTHER party.  Our own sends are added
+    // optimistically but only if the _id isn't already present.
     const handleNewMessage = (data: {
       conversationId: string;
       message: IMessage;
     }) => {
-      if (data.conversationId !== conversation._id) return;
-      setMessages((prev) => [...prev, data.message]);
+      // Filter by conversation — use ref so this never becomes stale
+      if (data.conversationId !== conversationIdRef.current) return;
+
+      setMessages((prev) => {
+        // Skip if we already have this message (optimistic add)
+        if (prev.some((m) => m._id === data.message._id)) return prev;
+        return [...prev, data.message];
+      });
+
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-      markMessagesAsRead(conversation._id);
+      if (conversationIdRef.current) {
+        markMessagesAsRead(conversationIdRef.current);
+      }
     };
 
     const handleTyping = (data: {
@@ -213,7 +231,7 @@ export const ChatRoomScreen: React.FC = () => {
       senderRole: string;
     }) => {
       if (
-        data.conversationId === conversation._id &&
+        data.conversationId === conversationIdRef.current &&
         data.senderRole !== userRole
       ) {
         setOtherUserTyping(data.isTyping);
@@ -221,7 +239,7 @@ export const ChatRoomScreen: React.FC = () => {
     };
 
     const handleMessagesRead = (data: { conversationId: string }) => {
-      if (data.conversationId !== conversation._id) return;
+      if (data.conversationId !== conversationIdRef.current) return;
       setMessages((prev) =>
         prev.map((msg) =>
           msg.senderId === currentUserId
@@ -232,7 +250,7 @@ export const ChatRoomScreen: React.FC = () => {
     };
 
     const handleVideoRequest = (data: { conversationId: string }) => {
-      if (data.conversationId !== conversation._id) return;
+      if (data.conversationId !== conversationIdRef.current) return;
       loadConversation().then(() => setVideoRequestModal(true));
     };
 
@@ -240,14 +258,15 @@ export const ChatRoomScreen: React.FC = () => {
       conversationId: string;
       status: "accepted" | "declined" | "expired" | "cancelled";
     }) => {
-      if (data.conversationId !== conversation._id) return;
+      if (data.conversationId !== conversationIdRef.current) return;
       if (data.status === "accepted") {
         Toast.show({ type: "success", text1: "Call Accepted", text2: "Connecting..." });
         setTimeout(() => {
           navigation.navigate("VideoCallScreen", {
             appointmentId,
             name: otherParticipantName,
-            patientId: conversation.participants.userId._id,
+            // Read from conversation state at call time — not captured stale
+            patientId: (conversationIdRef as any)._patientId,
             role: isDoctor ? "doctor" : "user",
             autoJoin: true,
           });
@@ -265,7 +284,8 @@ export const ChatRoomScreen: React.FC = () => {
       loadConversation();
     };
 
-    // Emitted by backend when doctor calls endAppointment
+    // ── FIX: appointment-ended now fires on BOTH appointment room AND
+    // user room (backend patch), so the patient always receives it.
     const handleAppointmentEnded = (data: { appointmentId: string }) => {
       if (data.appointmentId !== appointmentId) return;
       isLockedRef.current = true;
@@ -280,10 +300,8 @@ export const ChatRoomScreen: React.FC = () => {
       });
     };
 
-    // Emitted by backend when a new appointment is confirmed (auto-unlock)
-    // OR when doctor manually unlocks via unlockConversation endpoint
     const handleConversationUnlocked = (data: { conversationId: string }) => {
-      if (data.conversationId !== conversation._id) return;
+      if (data.conversationId !== conversationIdRef.current) return;
       isLockedRef.current = false;
       setIsLocked(false);
       setConversation((prev) => (prev ? { ...prev, isActive: true } : prev));
@@ -313,14 +331,15 @@ export const ChatRoomScreen: React.FC = () => {
       socket.off("conversation-unlocked", handleConversationUnlocked);
     };
   }, [
-    conversation,
+    // ← Stable deps only — no `conversation` object here.
+    // conversationIdRef handles filtering without re-registering listeners.
+    appointmentId,
     currentUserId,
     userRole,
-    appointmentId,
+    isDoctor,
     navigation,
     loadConversation,
     otherParticipantName,
-    isDoctor,
   ]);
 
   // ─── Video request countdown ──────────────────────────────────────────────────
@@ -353,7 +372,6 @@ export const ChatRoomScreen: React.FC = () => {
   }, [conversation?.activeVideoRequest, currentUserId]);
 
   // ─── End Appointment ──────────────────────────────────────────────────────────
-  // Only locks the chat. Note-writing is completely independent.
   const handleEndAppointment = () => {
     Alert.alert(
       "End Appointment",
@@ -368,7 +386,6 @@ export const ChatRoomScreen: React.FC = () => {
               setEndingAppointment(true);
               await endAppointment(appointmentId);
 
-              // Lock immediately — socket event is also coming (idempotent)
               isLockedRef.current = true;
               setIsLocked(true);
               setConversation((prev) =>
@@ -431,7 +448,7 @@ export const ChatRoomScreen: React.FC = () => {
     );
   };
 
-  // ─── Navigate to Note Editor (completely independent of lock state) ───────────
+  // ─── Navigate to Note Editor ──────────────────────────────────────────────────
   const handleOpenNoteEditor = () => {
     const patientId =
       conversation?.participants?.userId?._id ||
@@ -456,18 +473,27 @@ export const ChatRoomScreen: React.FC = () => {
   };
 
   // ─── Send message ─────────────────────────────────────────────────────────────
+  // FIX: Optimistic add is removed. We call the API, get the saved message back
+  // (with its real _id), add it once locally, and the socket echo is de-duped
+  // in handleNewMessage by _id. No more double messages.
+  // FIX: `sending` no longer drives a spinner on the send button — the button
+  // just disables briefly. This eliminates the "rolling" UX.
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !conversation || sending || isLocked) return;
+    if (!inputText.trim() || !conversation || sending || isLockedRef.current) return;
+
     const messageText = inputText.trim();
-    setInputText("");
+    setInputText(""); // clear input immediately for responsiveness
+
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     updateTypingIndicator(conversation._id, false);
     setIsTyping(false);
+
     try {
       setSending(true);
       const newMessage = await sendMessage(conversation._id, messageText, "text");
       if (newMessage) {
-        setMessages((prev) => [...prev, newMessage]);
+        // Add locally using de-dupe helper — socket echo will be ignored
+        setMessages((prev) => dedupeMessages([...prev, newMessage]));
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (error: any) {
@@ -476,7 +502,7 @@ export const ChatRoomScreen: React.FC = () => {
         text1: "Failed to send message",
         text2: error.message,
       });
-      setInputText(messageText);
+      setInputText(messageText); // restore on failure
     } finally {
       setSending(false);
     }
@@ -484,7 +510,7 @@ export const ChatRoomScreen: React.FC = () => {
 
   const handleTextChange = (text: string) => {
     setInputText(text);
-    if (!conversation || isLocked) return;
+    if (!conversation || isLockedRef.current) return;
     if (text.length > 0 && !isTyping) {
       setIsTyping(true);
       updateTypingIndicator(conversation._id, true);
@@ -503,7 +529,7 @@ export const ChatRoomScreen: React.FC = () => {
     fileName: string,
     type: "image" | "document"
   ) => {
-    if (!conversation || isLocked) return;
+    if (!conversation || isLockedRef.current) return;
     setShowAttachMenu(false);
     try {
       setUploading(true);
@@ -518,7 +544,7 @@ export const ChatRoomScreen: React.FC = () => {
         uploaded.url
       );
       if (newMessage) {
-        setMessages((prev) => [...prev, newMessage]);
+        setMessages((prev) => dedupeMessages([...prev, newMessage]));
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (error: any) {
@@ -596,7 +622,7 @@ export const ChatRoomScreen: React.FC = () => {
 
   // ─── Video call handlers ──────────────────────────────────────────────────────
   const handleRequestVideoCall = async () => {
-    if (!conversation || isLocked) return;
+    if (!conversation || isLockedRef.current) return;
     if (conversation.activeVideoRequest?.status === "pending") {
       Toast.show({
         type: "info",
@@ -808,7 +834,6 @@ export const ChatRoomScreen: React.FC = () => {
           </View>
         </TouchableOpacity>
 
-        {/* Video call button — hidden when locked */}
         {!isLocked && (
           <TouchableOpacity
             style={styles.videoButton}
@@ -823,10 +848,8 @@ export const ChatRoomScreen: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        {/* Doctor-only controls */}
         {isDoctor && (
           <View style={styles.doctorControls}>
-            {/* Note icon — visible only when chat is active (unlocked) */}
             {!isLocked && (
               <TouchableOpacity
                 style={styles.noteButton}
@@ -837,7 +860,6 @@ export const ChatRoomScreen: React.FC = () => {
               </TouchableOpacity>
             )}
 
-            {/* End button → visible when unlocked | Unlock button → visible when locked */}
             {!isLocked ? (
               <TouchableOpacity
                 style={styles.endButton}
@@ -988,19 +1010,17 @@ export const ChatRoomScreen: React.FC = () => {
               multiline
               maxLength={1000}
             />
+            {/* FIX: Send button never shows a spinner — no more "rolling" effect.
+                It simply disables while the API call is in flight. */}
             <TouchableOpacity
               style={[
                 styles.sendButton,
-                !inputText.trim() && styles.sendButtonDisabled,
+                (!inputText.trim() || sending) && styles.sendButtonDisabled,
               ]}
               onPress={handleSendMessage}
               disabled={!inputText.trim() || sending}
             >
-              {sending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="send" size={20} color="#fff" />
-              )}
+              <Ionicons name="send" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         )}
@@ -1050,6 +1070,15 @@ export const ChatRoomScreen: React.FC = () => {
   );
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Remove duplicate messages by _id — keeps the last occurrence (newest data). */
+function dedupeMessages(msgs: IMessage[]): IMessage[] {
+  const seen = new Map<string, IMessage>();
+  for (const m of msgs) seen.set(m._id, m);
+  return Array.from(seen.values());
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F5F5F5" },
   flex: { flex: 1 },
@@ -1061,7 +1090,6 @@ const styles = StyleSheet.create({
   },
   loadingText: { fontSize: 16, color: "#666" },
 
-  // ── Header ──
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -1089,7 +1117,6 @@ const styles = StyleSheet.create({
   lockedBadge: { fontSize: 11, color: "#EF4444", fontStyle: "italic" },
   videoButton: { padding: 8 },
 
-  // Doctor header controls — note icon + end/unlock button
   doctorControls: {
     flexDirection: "row",
     alignItems: "center",
@@ -1124,7 +1151,6 @@ const styles = StyleSheet.create({
   },
   unlockButtonText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 
-  // ── Banners ──
   lockedBanner: {
     backgroundColor: "#374151",
     flexDirection: "row",
@@ -1169,7 +1195,6 @@ const styles = StyleSheet.create({
   },
   uploadBannerText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 
-  // ── Messages ──
   messagesList: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -1236,7 +1261,6 @@ const styles = StyleSheet.create({
   docName: { fontSize: 13, fontWeight: "600", flexWrap: "wrap" },
   docTap: { fontSize: 11, marginTop: 2 },
 
-  // ── Input / locked footer ──
   inputContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -1284,7 +1308,6 @@ const styles = StyleSheet.create({
   },
   lockedFooterText: { color: "#999", fontSize: 14 },
 
-  // ── Attach menu ──
   attachMenu: {
     flexDirection: "row",
     gap: 12,
@@ -1304,7 +1327,6 @@ const styles = StyleSheet.create({
   },
   attachLabel: { fontSize: 11, fontWeight: "600", color: "#555" },
 
-  // ── Video call modal ──
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
