@@ -16,10 +16,16 @@ import { paymentService } from '../../services/payment';
 import { AppStackParamList } from '../../types/App';
 import Toast from 'react-native-toast-message';
 
+
+import { StackNavigationProp } from "@react-navigation/stack";
+
+type NavigationProp = StackNavigationProp<AppStackParamList>;
+
+
 type PaymentScreenRouteProp = RouteProp<AppStackParamList, 'PaymentMethodScreen'>;
 
 const PaymentMethodScreen = () => {
-  const navigation = useNavigation();
+const navigation = useNavigation<NavigationProp>();
   const route = useRoute<PaymentScreenRouteProp>();
   const { userToken, user } = useAuth();
   
@@ -54,52 +60,58 @@ const PaymentMethodScreen = () => {
     }
   };
 
-  const handlePay = async () => {
-    if (!selectedMethod) {
-      Toast.show({
-        type: 'info',
-        text1: 'Select Payment Method',
-        text2: 'Please select a payment method to proceed.',
-      });
-      return;
+const handlePay = async () => {
+  if (!selectedMethod) {
+    Toast.show({
+      type: "info",
+      text1: "Select Payment Method",
+      text2: "Please select a payment method to proceed.",
+    });
+    return;
+  }
+
+  if (!orderId) {
+    Toast.show({
+      type: "error",
+      text1: "Invalid order",
+      text2: "Order information is missing.",
+    });
+    return;
+  }
+
+  setProcessing(true);
+
+  try {
+    const res = await paymentService.initiatePayment(userToken || "", {
+      orderId,
+      paymentMethod: "card", // or map selectedMethod → backend enum
+    });
+
+    const checkoutUrl = res?.data?.checkoutUrl;
+    if (!checkoutUrl) {
+      throw new Error("Checkout URL not returned");
     }
 
-    setProcessing(true);
-    try {
-      const res = await paymentService.initiatePayment(userToken || "", {
-        orderId,
-        amount,
-        paymentMethod: selectedMethod,
-        email: user?.email || "",
-        phone: user?.phone || "",
-      });
+    // ✅ Navigate to WebView
+ navigation.navigate("WebViewScreen", {
+  url: checkoutUrl,
+});
 
-      // Handle success - maybe open a webview or show success
-      // For this demo, we assume success and go to Home or Order Success screen
-      Toast.show({
-        type: 'success',
-        text1: 'Payment Initiated',
-        text2: 'Please complete the payment.',
-      });
-      
-      // In a real app, you might navigate to a WebView here with res.data.authorization_url
-      // For now, we'll just go back to Home
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeScreen' as never }],
-      });
 
-    } catch (error: any) {
-      console.error("Payment failed", error);
-      Toast.show({
-        type: 'error',
-        text1: 'Payment Failed',
-        text2: error.response?.data?.message || 'An error occurred.',
-      });
-    } finally {
-      setProcessing(false);
-    }
-  };
+  } catch (error: any) {
+    console.error("[PaymentMethodScreen] initiatePayment failed:", error);
+    Toast.show({
+      type: "error",
+      text1: "Payment Failed",
+      text2:
+        error.response?.data?.message ||
+        error.message ||
+        "Unable to initiate payment",
+    });
+  } finally {
+    setProcessing(false);
+  }
+};
 
   const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity

@@ -1,5 +1,4 @@
-// screens/cart/CheckoutScreen.tsx - FINAL FIXED VERSION with Selectors and DatePicker
-
+// screens/cart/CheckoutScreen.tsx
 import React, { useContext, useState, useEffect } from 'react';
 import {
     View,
@@ -20,10 +19,12 @@ import { paymentService } from '../../services/payment';
 import { Feather } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { CheckoutDetails } from '../../services/checkout';
-// --- Date Picker Imports ---
 import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { format } from 'date-fns'; 
+import { format } from 'date-fns';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CompleteProfileModal } from '../../components/profile/CompleteProfileModal';
+
+
 
 // --- Gender Options ---
 const GENDER_OPTIONS = [
@@ -33,8 +34,20 @@ const GENDER_OPTIONS = [
 ];
 
 /**
- * Custom Component for Date of Birth Selection (Calendar)
+ * Helper: returns which of phone / gender / dateOfBirth are missing on the user object.
+ * Mirrors the backend getMissingAppointmentFields logic so we can gate locally too.
  */
+function getMissingCheckoutFields(user: any): string[] {
+    const required = [
+        { field: 'phone',       label: 'Phone number' },
+        { field: 'gender',      label: 'Gender' },
+        { field: 'dateOfBirth', label: 'Date of birth' },
+    ];
+    return required.filter(({ field }) => !user?.[field]).map(({ label }) => label);
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
 interface DatePickerProps {
     label: string;
     value: string;
@@ -45,105 +58,90 @@ interface DatePickerProps {
 const DatePickerInput: React.FC<DatePickerProps> = ({ label, value, onDateChange, inputStyle }) => {
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
-    const showDatePicker = () => {
-        setDatePickerVisibility(true);
-    };
-
-    const hideDatePicker = () => {
-        setDatePickerVisibility(false);
-    };
-
     const handleConfirm = (date: Date) => {
-        const dateString = format(date, 'yyyy-MM-dd');
-        onDateChange(dateString);
-        hideDatePicker();
+        onDateChange(format(date, 'yyyy-MM-dd'));
+        setDatePickerVisibility(false);
     };
 
     return (
         <View style={{ marginBottom: 12 }}>
             <Text style={styles.label}>{label}</Text>
-            <TouchableOpacity onPress={showDatePicker} style={[inputStyle, styles.dateInput]}>
+            <TouchableOpacity onPress={() => setDatePickerVisibility(true)} style={[inputStyle, styles.dateInput]}>
                 <Text style={value ? styles.dateValue : styles.datePlaceholder}>
                     {value || "YYYY-MM-DD"}
                 </Text>
                 <Feather name="calendar" size={18} color="#999" />
             </TouchableOpacity>
-
             <DateTimePickerModal
                 isVisible={isDatePickerVisible}
                 mode="date"
                 onConfirm={handleConfirm}
-                onCancel={hideDatePicker}
+                onCancel={() => setDatePickerVisibility(false)}
                 date={value ? new Date(value) : new Date(1995, 0, 1)}
-                maximumDate={new Date()} 
+                maximumDate={new Date()}
             />
         </View>
     );
 };
 
-/**
- * Custom Component for Gender Selection
- */
 interface SelectorProps {
     label: string;
     value: string;
-    options: { label: string, value: string }[];
+    options: { label: string; value: string }[];
     onSelect: (value: string) => void;
 }
 
-const GenderSelector: React.FC<SelectorProps> = ({ label, value, options, onSelect }) => {
-    return (
-        <View style={{ marginBottom: 12 }}>
-            <Text style={styles.label}>{label}</Text>
-            <View style={styles.selectorContainer}>
-                {options.map((option) => (
-                    <TouchableOpacity
-                        key={option.value}
-                        style={[
-                            styles.selectorOption,
-                            value === option.value && styles.selectorSelected,
-                        ]}
-                        onPress={() => onSelect(option.value)}
-                    >
-                        <Text style={[
-                            styles.selectorText,
-                            value === option.value && styles.selectorSelectedText,
-                        ]}>
-                            {option.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
+const GenderSelector: React.FC<SelectorProps> = ({ label, value, options, onSelect }) => (
+    <View style={{ marginBottom: 12 }}>
+        <Text style={styles.label}>{label}</Text>
+        <View style={styles.selectorContainer}>
+            {options.map((option) => (
+                <TouchableOpacity
+                    key={option.value}
+                    style={[styles.selectorOption, value === option.value && styles.selectorSelected]}
+                    onPress={() => onSelect(option.value)}
+                >
+                    <Text style={[styles.selectorText, value === option.value && styles.selectorSelectedText]}>
+                        {option.label}
+                    </Text>
+                </TouchableOpacity>
+            ))}
         </View>
-    );
-};
+    </View>
+);
 
+// ── Main Screen ──────────────────────────────────────────────────────────────
 
 const CheckoutScreen = () => {
     const navigation = useNavigation<any>();
-    
-    const { cart, clearCartLocal } = useContext(CartContext); 
-    
-    const { 
-        user, 
-        userToken, 
-        isAnonymous, 
+    const { cart, clearCartLocal } = useContext(CartContext);
+    const {
+        user,
+        userToken,
+        isAnonymous,
         sessionId,
         handleConversion,
         refreshUser,
-        setToken, 
+        setToken,
     } = useAuth();
-    
+
     const { checkout, loading: checkoutLoading } = useCheckout({
         isAnonymous,
         handleConversion,
         userToken,
         sessionId,
         refreshUser,
-        setUserToken: setToken, 
+        setUserToken: setToken,
     });
 
     const [loading, setLoading] = useState(false);
+
+    // ── CompleteProfileModal state ───────────────────────────────────────────
+    // Only shown for logged-in (non-anonymous) users who haven't filled in
+    // phone / gender / dateOfBirth yet. Guest users fill these inline.
+    const [showProfileModal, setShowProfileModal] = useState(false);
+    const [missingFields, setMissingFields]       = useState<string[]>([]);
+
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -154,41 +152,34 @@ const CheckoutScreen = () => {
         city: '',
         state: '',
         lga: '',
-        gender: '',  
-        dateOfBirth: "",
+        gender: '',
+        dateOfBirth: '',
         sessionId: sessionId,
         createAccount: false,
     });
 
     useEffect(() => {
         if (!user) return;
-
         const prefs = user.preferences as any;
-
         setFormData(prev => ({
             ...prev,
-            name: user.name || prev.name || '',
-            email: user.email || prev.email || '',
-            phone: user.phone || prev.phone || '',
-            
+            name:        user.name        || prev.name        || '',
+            email:       user.email       || prev.email       || '',
+            phone:       user.phone       || prev.phone       || '',
             homeAddress: user.homeAddress || prefs?.homeAddress || prefs?.address || prev.homeAddress || '',
-            city: user.city || prefs?.city || prev.city || '',
-            state: user.state || prefs?.state || prev.state || '',
-            lga: user.lga || prefs?.lga || prev.lga || '',
-            
-            gender: user.gender || prev.gender || '',
+            city:        user.city        || prefs?.city        || prev.city        || '',
+            state:       user.state       || prefs?.state       || prev.state       || '',
+            lga:         user.lga         || prefs?.lga         || prev.lga         || '',
+            gender:      user.gender      || prev.gender      || '',
             dateOfBirth: user.dateOfBirth || prev.dateOfBirth || '',
-            
-            password: isAnonymous ? prev.password : '',
+            password:        isAnonymous ? prev.password        : '',
             confirmPassword: isAnonymous ? prev.confirmPassword : '',
         }));
-    }, [user, isAnonymous]); 
+    }, [user, isAnonymous]);
 
-    const totalAmount =
-        cart?.items?.reduce(
-            (sum, item) => sum + (Number(item.price ?? 0) * Number(item.quantity ?? 0)),
-            0
-        ) ?? 0;
+    const totalAmount = cart?.items?.reduce(
+        (sum, item) => sum + (Number(item.price ?? 0) * Number(item.quantity ?? 0)), 0
+    ) ?? 0;
     const totalAmountFixed = totalAmount.toFixed(2);
 
     const handleInputChange = (field: string, value: string | boolean) => {
@@ -196,7 +187,6 @@ const CheckoutScreen = () => {
     };
 
     const validateForm = () => {
-
         if (!cart?.items || cart.items.length === 0) {
             Toast.show({ type: 'error', text1: 'Cart Empty', text2: 'Please add items to your cart.' });
             return false;
@@ -218,94 +208,104 @@ const CheckoutScreen = () => {
             Toast.show({ type: 'error', text1: 'Password Error', text2: 'Password is required or passwords do not match.' });
             return false;
         }
-
         if (!formData.gender) {
             Toast.show({ type: 'error', text1: 'Missing Gender', text2: 'Gender is required.' });
             return false;
         }
-
         if (!formData.dateOfBirth) {
             Toast.show({ type: 'error', text1: 'Missing Date of Birth', text2: 'Please provide DOB.' });
             return false;
         }
-
         return true;
     };
 
-    const handlePlaceOrder = async () => {
-        if (!validateForm()) return;
-
+    // ── Core checkout logic (called directly OR after modal saves) ───────────
+    const runCheckout = async () => {
         setLoading(true);
-
         try {
             const checkoutDetails: CheckoutDetails = {
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                password: isAnonymous ? formData.password : undefined,
+                name:            formData.name,
+                email:           formData.email,
+                phone:           formData.phone,
+                password:        isAnonymous ? formData.password        : undefined,
                 confirmPassword: isAnonymous ? formData.confirmPassword : undefined,
-
-                gender: formData.gender?.toLowerCase(),
-                dateOfBirth: formData.dateOfBirth || undefined,
-
-                homeAddress: formData.homeAddress,
-                city: formData.city,
-                state: formData.state,
-                lga: formData.lga,
-
+                gender:          formData.gender?.toLowerCase(),
+                dateOfBirth:     formData.dateOfBirth || undefined,
+                homeAddress:     formData.homeAddress,
+                city:            formData.city,
+                state:           formData.state,
+                lga:             formData.lga,
                 preferences: {
                     homeAddress: formData.homeAddress,
-                    city: formData.city,
-                    state: formData.state,
-                    lga: formData.lga,
+                    city:        formData.city,
+                    state:       formData.state,
+                    lga:         formData.lga,
                 },
             };
 
-            console.log('[CheckoutScreen] Starting checkout...');
             const response = await checkout(cart?.items || [], checkoutDetails);
-            console.log('[CheckoutScreen] Checkout successful:', response);
+            clearCartLocal();
 
-            clearCartLocal(); 
+       const localOrder = response.localOrder;
 
-            const token = userToken;
+// ✅ Clear cart immediately — order is safely persisted
+clearCartLocal();
 
-            if (!token) {
-                Toast.show({ type: 'error', text1: 'Payment Error', text2: 'No valid user token available' });
-                return;
-            }
+// ✅ Proceed to payment method selection
+navigation.replace("PaymentMethodScreen" as never, {
+    orderId: localOrder._id,
+    amount: localOrder.total, // ✅ display-only
+} as never);
 
-            console.log('[CheckoutScreen] Initiating payment...');
-            const paymentData = await paymentService.initiatePayment(token, {
-                orderId: response.localOrder._id,
-                userId: response.localOrder.userId,
-                paymentMethod: 'card',
-                amount: response.localOrder.total,
-                partnerReferenceCode: `REF_${Date.now()}`,
-                customerEmail: formData.email!,
-            });
 
-            if (paymentData.data?.checkoutUrl) {
-                console.log('[CheckoutScreen] Navigating to payment...');
-                navigation.replace('WebViewScreen' as never, { url: paymentData.data.checkoutUrl });
-            } else {
-                Toast.show({ type: 'error', text1: 'Payment Failed', text2: 'No checkout URL returned.' });
-            }
         } catch (error: any) {
-            console.error('[CheckoutScreen] Checkout/Payment error:', error);
+            const data = error?.response?.data;
+
+            // ── Backend profile gate (422)
+            if (error?.response?.status === 422 && data?.code === 'PROFILE_INCOMPLETE') {
+                setMissingFields(data?.missingFields ?? []);
+                setShowProfileModal(true);
+                return; // don't show the generic error toast
+            }
+
             Toast.show({
                 type: 'error',
                 text1: 'Error',
-                text2: error.response?.data?.message || error.message || 'An error occurred.',
+                text2: data?.message || error?.message || 'An error occurred.',
             });
         } finally {
             setLoading(false);
         }
     };
 
+    const handlePlaceOrder = async () => {
+        if (!validateForm()) return;
+
+        // For logged-in users, do a local pre-flight check before hitting the
+        // network so the modal appears immediately rather than after an API round-trip.
+        if (!isAnonymous && user) {
+            const missing = getMissingCheckoutFields(user);
+            if (missing.length > 0) {
+                setMissingFields(missing);
+                setShowProfileModal(true);
+                return;
+            }
+        }
+
+        await runCheckout();
+    };
+
+    // Called after CompleteProfileModal saves — refresh user then retry
+    const handleProfileSaved = async () => {
+        setShowProfileModal(false);
+        await refreshUser(); // pull updated phone/gender/dob into the user object
+        await runCheckout(); // retry the order automatically
+    };
+
     return (
         <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView 
-            style={{ flex: 1, backgroundColor: '#F9F9F9' }} 
+        <KeyboardAvoidingView
+            style={{ flex: 1, backgroundColor: '#F9F9F9' }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             <View style={styles.container}>
@@ -330,7 +330,8 @@ const CheckoutScreen = () => {
                     {!isAnonymous && user?.email && (
                         <View style={[styles.section, styles.loggedInInfoSection]}>
                             <Text style={styles.loginInfoText}>
-                                <Text>Logged in as: </Text><Text style={{ fontWeight: '700' }}>{user.email}</Text>
+                                <Text>Logged in as: </Text>
+                                <Text style={{ fontWeight: '700' }}>{user.email}</Text>
                             </Text>
                         </View>
                     )}
@@ -355,49 +356,48 @@ const CheckoutScreen = () => {
                         <Text style={styles.sectionTitle}>Shipping Details</Text>
 
                         <Text style={styles.label}>Full Name</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            value={formData.name} 
-                            onChangeText={(t) => handleInputChange('name', t)} 
+                        <TextInput
+                            style={styles.input}
+                            value={formData.name}
+                            onChangeText={(t) => handleInputChange('name', t)}
                         />
 
                         <Text style={styles.label}>Email</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            keyboardType="email-address" 
-                            autoCapitalize="none" 
-                            value={formData.email} 
-                            onChangeText={(t) => handleInputChange('email', t)} 
+                        <TextInput
+                            style={styles.input}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            value={formData.email}
+                            onChangeText={(t) => handleInputChange('email', t)}
                         />
 
                         {isAnonymous && (
                             <>
                                 <Text style={styles.label}>Password</Text>
-                                <TextInput 
-                                    style={styles.input} 
-                                    secureTextEntry 
-                                    value={formData.password} 
-                                    onChangeText={(t) => handleInputChange('password', t)} 
+                                <TextInput
+                                    style={styles.input}
+                                    secureTextEntry
+                                    value={formData.password}
+                                    onChangeText={(t) => handleInputChange('password', t)}
                                 />
-
                                 <Text style={styles.label}>Confirm Password</Text>
-                                <TextInput 
-                                    style={styles.input} 
-                                    secureTextEntry 
-                                    value={formData.confirmPassword} 
-                                    onChangeText={(t) => handleInputChange('confirmPassword', t)} 
+                                <TextInput
+                                    style={styles.input}
+                                    secureTextEntry
+                                    value={formData.confirmPassword}
+                                    onChangeText={(t) => handleInputChange('confirmPassword', t)}
                                 />
                             </>
                         )}
 
                         <Text style={styles.label}>Phone Number</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            keyboardType="phone-pad" 
-                            value={formData.phone} 
-                            onChangeText={(t) => handleInputChange('phone', t)} 
+                        <TextInput
+                            style={styles.input}
+                            keyboardType="phone-pad"
+                            value={formData.phone}
+                            onChangeText={(t) => handleInputChange('phone', t)}
                         />
-                        
+
                         <GenderSelector
                             label="Gender"
                             value={formData.gender}
@@ -413,49 +413,49 @@ const CheckoutScreen = () => {
                         />
 
                         <Text style={styles.label}>Address</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            value={formData.homeAddress} 
-                            onChangeText={(t) => handleInputChange('homeAddress', t)} 
+                        <TextInput
+                            style={styles.input}
+                            value={formData.homeAddress}
+                            onChangeText={(t) => handleInputChange('homeAddress', t)}
                         />
 
                         <View style={styles.row}>
                             <View style={{ flex: 1, marginRight: 8 }}>
                                 <Text style={styles.label}>City</Text>
-                                <TextInput 
-                                    style={styles.input} 
-                                    value={formData.city} 
-                                    onChangeText={(t) => handleInputChange('city', t)} 
+                                <TextInput
+                                    style={styles.input}
+                                    value={formData.city}
+                                    onChangeText={(t) => handleInputChange('city', t)}
                                 />
                             </View>
                             <View style={{ flex: 1, marginLeft: 8 }}>
                                 <Text style={styles.label}>State</Text>
-                                <TextInput 
-                                    style={styles.input} 
-                                    value={formData.state} 
-                                    onChangeText={(t) => handleInputChange('state', t)} 
+                                <TextInput
+                                    style={styles.input}
+                                    value={formData.state}
+                                    onChangeText={(t) => handleInputChange('state', t)}
                                 />
                             </View>
                         </View>
 
                         <Text style={styles.label}>LGA</Text>
-                        <TextInput 
-                            style={[styles.input, { marginTop: 12 }]} 
-                            value={formData.lga} 
-                            onChangeText={(t) => handleInputChange('lga', t)} 
+                        <TextInput
+                            style={[styles.input, { marginTop: 12 }]}
+                            value={formData.lga}
+                            onChangeText={(t) => handleInputChange('lga', t)}
                         />
                     </View>
 
                     {isAnonymous && (
                         <View style={styles.section}>
-                            <TouchableOpacity 
-                                style={styles.checkboxContainer} 
+                            <TouchableOpacity
+                                style={styles.checkboxContainer}
                                 onPress={() => handleInputChange('createAccount', !formData.createAccount)}
                             >
-                                <Feather 
-                                    name={formData.createAccount ? "check-square" : "square"} 
-                                    size={20} 
-                                    color="#D81E5B" 
+                                <Feather
+                                    name={formData.createAccount ? "check-square" : "square"}
+                                    size={20}
+                                    color="#D81E5B"
                                 />
                                 <Text style={styles.checkboxLabel}>
                                     Create an account for faster checkout
@@ -466,9 +466,9 @@ const CheckoutScreen = () => {
                 </ScrollView>
 
                 <View style={styles.footer}>
-                    <TouchableOpacity 
-                        style={styles.placeOrderBtn} 
-                        onPress={handlePlaceOrder} 
+                    <TouchableOpacity
+                        style={styles.placeOrderBtn}
+                        onPress={handlePlaceOrder}
                         disabled={loading || checkoutLoading}
                     >
                         {(loading || checkoutLoading) ? (
@@ -482,52 +482,60 @@ const CheckoutScreen = () => {
                 </View>
             </View>
         </KeyboardAvoidingView>
+
+        {/* ── Complete Profile Modal (logged-in users only) ───────────────── */}
+        <CompleteProfileModal
+            visible={showProfileModal}
+            missingFields={missingFields}
+            onClose={() => setShowProfileModal(false)}
+            onSaved={handleProfileSaved}
+        />
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9F9F9' },
-    header: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingHorizontal: 20, 
-        paddingTop: 50, 
-        paddingBottom: 15, 
-        backgroundColor: '#FFF', 
-        borderBottomWidth: 1, 
-        borderBottomColor: '#EEE' 
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingTop: 50,
+        paddingBottom: 15,
+        backgroundColor: '#FFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#EEE',
     },
     headerTitle: { fontSize: 18, fontWeight: '700', color: '#222' },
     backBtn: { padding: 5 },
     content: { padding: 20, paddingBottom: 100 },
-    section: { 
-        backgroundColor: '#FFF', 
-        borderRadius: 12, 
-        padding: 15, 
-        marginBottom: 20, 
-        shadowColor: '#000', 
-        shadowOffset: { width: 0, height: 1 }, 
-        shadowOpacity: 0.05, 
-        shadowRadius: 3, 
-        elevation: 2 
+    section: {
+        backgroundColor: '#FFF',
+        borderRadius: 12,
+        padding: 15,
+        marginBottom: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 2,
     },
-    loginInfoSection: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        paddingVertical: 10, 
-        backgroundColor: '#E0F7FA', 
-        borderColor: '#00BCD4', 
-        borderWidth: 1 
+    loginInfoSection: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 10,
+        backgroundColor: '#E0F7FA',
+        borderColor: '#00BCD4',
+        borderWidth: 1,
     },
-    loggedInInfoSection: { 
-        paddingVertical: 10, 
-        backgroundColor: '#E6FFE6', 
-        borderColor: '#4CAF50', 
-        borderWidth: 1, 
-        justifyContent: 'center' 
+    loggedInInfoSection: {
+        paddingVertical: 10,
+        backgroundColor: '#E6FFE6',
+        borderColor: '#4CAF50',
+        borderWidth: 1,
+        justifyContent: 'center',
     },
     loginInfoText: { fontSize: 14, color: '#444' },
     loginInfoLink: { fontSize: 14, fontWeight: 'bold', color: '#D81E5B' },
@@ -539,31 +547,23 @@ const styles = StyleSheet.create({
     totalRow: { borderTopWidth: 1, borderTopColor: '#EEE', marginTop: 10, paddingTop: 10 },
     totalLabel: { fontSize: 16, fontWeight: '700', color: '#222' },
     totalValue: { fontSize: 16, fontWeight: '700', color: '#D81E5B' },
-    input: { 
-        borderWidth: 1, 
-        borderColor: '#DDD', 
-        borderRadius: 8, 
-        padding: 12, 
-        marginBottom: 12, 
-        fontSize: 14, 
-        backgroundColor: '#FAFAFA' 
+    input: {
+        borderWidth: 1,
+        borderColor: '#DDD',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 12,
+        fontSize: 14,
+        backgroundColor: '#FAFAFA',
     },
-
     dateInput: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        height: 48, 
+        height: 48,
     },
-    dateValue: {
-        fontSize: 14,
-        color: '#222',
-    },
-    datePlaceholder: {
-        fontSize: 14,
-        color: '#999',
-    },
-
+    dateValue:       { fontSize: 14, color: '#222' },
+    datePlaceholder: { fontSize: 14, color: '#999' },
     selectorContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -579,37 +579,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: '#FAFAFA',
     },
-    selectorSelected: {
-        borderColor: '#D81E5B',
-        backgroundColor: '#FFE6EF', 
-    },
-    selectorText: {
-        fontSize: 14,
-        color: '#555',
-    },
-    selectorSelectedText: {
-        fontWeight: '700',
-        color: '#D81E5B',
-    },
+    selectorSelected:     { borderColor: '#D81E5B', backgroundColor: '#FFE6EF' },
+    selectorText:         { fontSize: 14, color: '#555' },
+    selectorSelectedText: { fontWeight: '700', color: '#D81E5B' },
     row: { flexDirection: 'row' },
     checkboxContainer: { flexDirection: 'row', alignItems: 'center' },
-    checkboxLabel: { marginLeft: 10, fontSize: 14, color: '#444' },
-    footer: { 
-        position: 'absolute', 
-        bottom: 0, 
-        left: 0, 
-        right: 0, 
-        backgroundColor: '#FFF', 
-        padding: 20, 
-        borderTopWidth: 1, 
-        borderTopColor: '#EEE' ,
+    checkboxLabel:     { marginLeft: 10, fontSize: 14, color: '#444' },
+    footer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#FFF',
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
     },
-    placeOrderBtn: { 
-        backgroundColor: '#D81E5B', 
-        paddingVertical: 15, 
-        borderRadius: 12, 
-        alignItems: 'center', 
-        justifyContent: 'center', 
+    placeOrderBtn: {
+        backgroundColor: '#D81E5B',
+        paddingVertical: 15,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     placeOrderText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

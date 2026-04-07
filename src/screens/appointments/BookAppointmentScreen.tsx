@@ -20,11 +20,13 @@ import { RFValue } from "react-native-responsive-fontsize";
 import { AppStackParamList } from "../../types/App";
 import { useAuth } from "../../hooks/useAuth";
 import { IDoctor } from "../../types/backendType";
+import { CompleteProfileModal } from "../../components/profile/CompleteProfileModal";
+import { validateProfile  } from "../../services/Appointment";
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "BookAppointmentScreen">;
 
 // ── Placeholder rate ─────────────────────────────────────────────────────────
-export const CONSULTATION_RATE = 15000; // ₦15,000 — swap this later per-doctor
+export const CONSULTATION_RATE = 15000;
 export const CONSULTATION_RATE_LABEL = "₦15,000";
 
 export const BookAppointmentScreen: React.FC = () => {
@@ -34,12 +36,23 @@ export const BookAppointmentScreen: React.FC = () => {
 
   const doctor = route.params?.doctor as IDoctor;
 
-  const [selectedDate, setSelectedDate]   = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime]   = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate]     = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime]     = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [reason, setReason]               = useState("");
-  const [notes, setNotes]                 = useState("");
-  const [shareUserInfo, setShareUserInfo] = useState(true);
+  const [reason, setReason]                 = useState("");
+  const [notes, setNotes]                   = useState("");
+  const [shareUserInfo, setShareUserInfo]   = useState(true);
+
+  // ── CompleteProfileModal state ────────────────────────────────────────────
+  const [showProfileModal, setShowProfileModal]   = useState(false);
+  const [missingFields, setMissingFields]         = useState<string[]>([]);
+  // Store the pending payload so we can retry after profile is saved
+  const [pendingPayload, setPendingPayload]       = useState<{
+    scheduledAt: string;
+    reason: string;
+    notes: string;
+    shareUserInfo: boolean;
+  } | null>(null);
 
   // 14-day mini calendar
   const next14Days = useMemo(() => {
@@ -55,6 +68,53 @@ export const BookAppointmentScreen: React.FC = () => {
     }
     return arr;
   }, []);
+
+  // ── Core navigation to payment ────────────────────────────────────────────
+  const goToPayment = (scheduledAt: string, reason: string, notes: string, shareUserInfo: boolean) => {
+    navigation.navigate("PaymentScreen", {
+      doctor,
+      scheduledAt,
+      reason,
+      notes,
+      shareUserInfo,
+    });
+  };
+
+  // ── Attempt to proceed — may hit the profile gate ─────────────────────────
+  const attemptProceed = async (
+    scheduledAt: string,
+    reason: string,
+    notes: string,
+    shareUserInfo: boolean,
+  ) => {
+    try {
+      // Dry-run: call the appointment endpoint early so we can surface the
+      // PROFILE_INCOMPLETE error before the user even hits payment.
+      // If your PaymentScreen creates the appointment after payment, you can
+      // remove this call and just navigate — the gate will fire there instead.
+      // If you want to keep it as a pre-flight check, keep this call.
+      await validateProfile(); // lightweight GET or HEAD — see note below
+
+      goToPayment(scheduledAt, reason, notes, shareUserInfo);
+    } catch (err: any) {
+      const data = err?.response?.data;
+
+      if (err?.response?.status === 422 && data?.code === "PROFILE_INCOMPLETE") {
+        // Save payload so we can retry after the modal saves
+        setPendingPayload({ scheduledAt, reason, notes, shareUserInfo });
+        setMissingFields(data?.missingFields ?? []);
+        setShowProfileModal(true);
+        return;
+      }
+
+      // Any other error — surface it
+      Toast.show({
+        type: "error",
+        text1: "Something went wrong",
+        text2: data?.message ?? err?.message ?? "Please try again.",
+      });
+    }
+  };
 
   const handleProceed = () => {
     if (!selectedDate || !selectedTime) {
@@ -76,14 +136,22 @@ export const BookAppointmentScreen: React.FC = () => {
       return Toast.show({ type: "error", text1: "Please select a future date and time" });
     }
 
-    // Navigate to payment — pass everything needed to create the appointment after payment
-    navigation.navigate("PaymentScreen", {
-      doctor,
-      scheduledAt: scheduledAt.toISOString(),
-      reason,
-      notes,
-      shareUserInfo,
-    });
+    attemptProceed(scheduledAt.toISOString(), reason, notes, shareUserInfo);
+  };
+
+  // ── Called after CompleteProfileModal saves successfully ──────────────────
+  const handleProfileSaved = () => {
+    setShowProfileModal(false);
+    if (pendingPayload) {
+      // Retry the navigation now that the profile is complete
+      goToPayment(
+        pendingPayload.scheduledAt,
+        pendingPayload.reason,
+        pendingPayload.notes,
+        pendingPayload.shareUserInfo,
+      );
+      setPendingPayload(null);
+    }
   };
 
   return (
@@ -214,6 +282,17 @@ export const BookAppointmentScreen: React.FC = () => {
         </Text>
 
       </ScrollView>
+
+      {/* ── Complete Profile Modal ─────────────────────────────────────── */}
+      <CompleteProfileModal
+        visible={showProfileModal}
+        missingFields={missingFields}
+        onClose={() => {
+          setShowProfileModal(false);
+          setPendingPayload(null);
+        }}
+        onSaved={handleProfileSaved}
+      />
     </SafeAreaView>
   );
 };

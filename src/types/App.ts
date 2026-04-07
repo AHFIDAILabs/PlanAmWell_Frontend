@@ -74,6 +74,12 @@ export type AppStackParamList = {
     notes?: string;
     shareUserInfo: boolean;
   };
+
+
+  PaymentStatusScreen: {
+    orderId: string;
+    
+  }
   
   ConversationsListScreen: undefined;
 
