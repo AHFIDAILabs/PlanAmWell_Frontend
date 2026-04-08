@@ -15,6 +15,7 @@ export type AppStackParamList = {
   CheckoutScreen: undefined;
   PaymentMethodScreen: { orderId: string; amount: number };
   WebViewScreen: { url: string; orderId?: string; };
+  OrderDetailsScreen: { orderId: string };
 
   HomeScreen: undefined;
   ProfileScreen: undefined;
