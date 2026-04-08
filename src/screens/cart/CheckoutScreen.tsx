@@ -251,11 +251,26 @@ const CheckoutScreen = () => {
 // ✅ Clear cart immediately — order is safely persisted
 clearCartLocal();
 
-// ✅ Proceed to payment method selection
-navigation.replace("PaymentMethodScreen" as never, {
-    orderId: localOrder._id,
-    amount: localOrder.total, // ✅ display-only
-} as never);
+
+if (!userToken) {
+  throw new Error("User must be authenticated to initiate payment");
+}
+
+const res = await paymentService.initiatePayment(userToken, {
+  orderId: localOrder._id,
+  paymentMethod: "card", // informational only; partner decides
+});
+
+const checkoutUrl = res?.data?.checkoutUrl;
+if (!checkoutUrl) {
+  throw new Error("No checkout URL returned");
+}
+
+navigation.replace("WebViewScreen", {
+  url: checkoutUrl,
+  orderId: localOrder._id,
+});
+
 
 
         } catch (error: any) {
