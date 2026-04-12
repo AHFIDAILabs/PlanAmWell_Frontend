@@ -9,9 +9,10 @@ if (!SERVER_URL) {
 }
 
 export interface ICartResponse {
-  success: boolean;
-  localCart?: any;   // cart returned from your backend
-  partnerCart?: any;
+  success: boolean;
+  localCart?: any;  // from addToCart response
+  data?: any;       // from getCart response
+  partnerCart?: any;
 }
 
 

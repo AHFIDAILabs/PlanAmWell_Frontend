@@ -42,24 +42,27 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   }, [authSessionId, guestSessionId]); // Added dependencies for clarity
 
   // Manual refresh function - for pull-to-refresh or explicit user actions
-  const refreshCart = async () => {
-    const cartId = getCartId();
-    if (!cartId) return;
+const refreshCart = async () => {
+  const cartId = getCartId();
+  if (!cartId) return;
 
-    try {
-      const res: ICartResponse = await cartService.getCart(cartId, userToken ?? undefined);
-      
-      if (res.localCart !== undefined) {
-        setCart(res.localCart);
-      }
-    } catch (err: any) {
-      if (err.response?.status === 404) {
-        setCart(null);
-      } else {
-        console.error("Failed to fetch cart:", err);
-      }
-    }
-  };
+  try {
+    const res: ICartResponse = await cartService.getCart(cartId, userToken ?? undefined);
+    
+    // getCart returns { success, data: cart }
+    // addToCart returns { success, localCart: cart }
+    const cartData = res.data ?? res.localCart;
+    if (cartData !== undefined) {
+      setCart(cartData);
+    }
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      setCart(null);
+    } else {
+      console.error("Failed to fetch cart:", err);
+    }
+  }
+};
 
   const addProduct = async (product: IProduct) => {
     const cartId = getCartId();
