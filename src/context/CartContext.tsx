@@ -70,6 +70,21 @@ const addProduct = async (product: IProduct) => {
 
   setLoading(true);
   try {
+       const resolvedDrugId = product.drugId ?? product.partnerProductId;
+    
+    // ✅ Catch missing UUID before it hits the backend
+    if (!resolvedDrugId) {
+      console.error("[Cart] Product missing drugId and partnerProductId:", product);
+      throw new Error("Product is missing its partner UUID. Cannot add to cart.");
+    }
+
+    console.log("[Cart] Adding product:", {
+      _id: product._id,
+      drugId: product.drugId,
+      partnerProductId: product.partnerProductId,
+      resolvedDrugId,
+    });
+
     const item: ICartItem = {
       drugId: product.drugId ?? product.partnerProductId ?? "",
       quantity: 1,
