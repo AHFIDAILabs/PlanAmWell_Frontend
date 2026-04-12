@@ -85,6 +85,7 @@ export interface DoctorRegistrationData {
 export interface IProduct {
   _id?: string;              
   partnerId?: string;
+  drugId?: string;
   partnerProductId?: string;
   name: string;
   sku: string;

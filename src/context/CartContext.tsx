@@ -64,34 +64,31 @@ const refreshCart = async () => {
   }
 };
 
-  const addProduct = async (product: IProduct) => {
-    const cartId = getCartId();
-    if (!cartId) return;
+const addProduct = async (product: IProduct) => {
+  const cartId = getCartId();
+  if (!cartId) return;
 
-    setLoading(true);
-    try {
-      const item: ICartItem = {
-        drugId: product._id ?? product.partnerProductId ?? "",
-        quantity: 1,
-        price: product.price,
-        drugName: product.name,
-        imageUrl: product.imageUrl ?? "",
-        dosage: "",
-        specialInstructions: "",
-      };
+  setLoading(true);
+  try {
+    const item: ICartItem = {
+      drugId: product.drugId ?? product.partnerProductId ?? "",
+      quantity: 1,
+      price: product.price,
+      drugName: product.name,
+      imageUrl: product.imageUrl ?? "",
+      dosage: "",
+      specialInstructions: "",
+    };
 
-      const res: ICartResponse = await cartService.addToCart([item], cartId, userToken ?? undefined);
-      
-      if (res.localCart) {
-        setCart(res.localCart);
-      }
-    } catch (err) {
-      console.error("Add to cart failed:", err);
-      throw err; // Re-throw so UI can handle the error
-    } finally {
-      setLoading(false);
-    }
-  };
+    const res: ICartResponse = await cartService.addToCart([item], cartId, userToken ?? undefined);
+    if (res.localCart) setCart(res.localCart);
+  } catch (err) {
+    console.error("Add to cart failed:", err);
+    throw err;
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updateItem = async (drugId: string, quantity: number, dosage?: string, specialInstructions?: string) => {
     const cartId = getCartId();
