@@ -70,24 +70,24 @@ export const checkoutServices = {
     };
     
     // ✅ COMPREHENSIVE LOGGING
-    console.log("🛒 Checkout Service - Full Request Details:");
-    console.log("   Endpoint:", `${SERVER_URL}/api/v1/checkout`);
-    console.log("   Token Status:", token ? 'Authenticated' : 'Anonymous');
-    console.log("   Has SessionId:", !!sessionId);
-    console.log("\n📦 Payload being sent:");
-    console.log("   Items count:", cartItems.length);
-    console.log("   Name:", payload.name);
-    console.log("   Email:", payload.email);
-    console.log("   Phone:", payload.phone);
-    console.log("   Gender:", payload.gender);
-    console.log("   Date of Birth:", payload.dateOfBirth);
-    console.log("   Home Address:", payload.homeAddress);
-    console.log("   City:", payload.city);
-    console.log("   State:", payload.state);
-    console.log("   LGA:", payload.lga);
-    console.log("   Has Preferences:", !!payload.preferences);
-    console.log("   Preferences:", JSON.stringify(payload.preferences, null, 2));
-    console.log("\n🔑 Auth Header:", token ? `Bearer ${token.substring(0, 20)}...` : 'None');
+    // console.log("🛒 Checkout Service - Full Request Details:");
+    // console.log("   Endpoint:", `${SERVER_URL}/api/v1/checkout`);
+    // console.log("   Token Status:", token ? 'Authenticated' : 'Anonymous');
+    // console.log("   Has SessionId:", !!sessionId);
+    // console.log("\n📦 Payload being sent:");
+    // console.log("   Items count:", cartItems.length);
+    // console.log("   Name:", payload.name);
+    // console.log("   Email:", payload.email);
+    // console.log("   Phone:", payload.phone);
+    // console.log("   Gender:", payload.gender);
+    // console.log("   Date of Birth:", payload.dateOfBirth);
+    // console.log("   Home Address:", payload.homeAddress);
+    // console.log("   City:", payload.city);
+    // console.log("   State:", payload.state);
+    // console.log("   LGA:", payload.lga);
+    // console.log("   Has Preferences:", !!payload.preferences);
+    // console.log("   Preferences:", JSON.stringify(payload.preferences, null, 2));
+    // console.log("\n🔑 Auth Header:", token ? `Bearer ${token.substring(0, 20)}...` : 'None');
 
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 

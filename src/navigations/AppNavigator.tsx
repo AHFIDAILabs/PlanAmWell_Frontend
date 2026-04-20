@@ -33,6 +33,7 @@ import { NotificationsScreen } from "../screens/notification/notification";
 import { ChatRoomScreen } from "../screens/ChatRoomScreen";
 import { ConversationsListScreen } from "../screens/ConversationsListScreen";
 import IncomingCallScreen from "../screens/video/IncomingCallScreen";
+import ConfirmOrderScreen from "../screens/order/ConfirmOrderScreen";
 
 import { AppStackParamList } from "../types/App";
 import { IDoctor } from "../types/backendType";
@@ -97,6 +98,7 @@ export default function AppNavigator() {
       />
       <RootStack.Screen name="HelpSupportScreen" component={HelpSupportScreen} />
       <RootStack.Screen name="CheckoutScreen" component={CheckoutScreen} />
+      <RootStack.Screen name="ConfirmOrderScreen" component={ConfirmOrderScreen} />
       <RootStack.Screen
         name="PaymentMethodScreen"
         component={PaymentMethodScreen}
