@@ -26,13 +26,13 @@ export default function WebViewScreen({ route, navigation }: Props) {
     }
   };
 
-  const handleNavigationStateChange = (navState: any) => {
-    const { url: currentUrl } = navState;
-    if (currentUrl && currentUrl.includes("planamwell://order-complete")) {
-      const orderId = currentUrl.split("orderId=")[1];
-      navigation.replace("OrderDetailsScreen", { orderId });
-    }
-  };
+const handleNavigationStateChange = (navState: any) => {
+  const { url: currentUrl } = navState;
+  if (currentUrl && currentUrl.includes('/api/v1/payment/redirect')) {
+    const orderId = currentUrl.split('orderId=')[1];
+    navigation.replace('OrderDetailsScreen', { orderId });
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
