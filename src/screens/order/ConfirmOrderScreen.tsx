@@ -34,9 +34,9 @@ export default function ConfirmOrderScreen() {
         { orderId: localOrder._id },
         { headers: { Authorization: `Bearer ${userToken}` } },
       );
-
+ console.log("[ConfirmOrder] Response:", JSON.stringify(res.data));
       const { checkoutUrl, orderId } = res.data;
-
+console.log("[ConfirmOrder] orderId:", orderId, "checkoutUrl:", checkoutUrl);
       navigation.replace('WebViewScreen', {
         url: checkoutUrl,
         orderId,

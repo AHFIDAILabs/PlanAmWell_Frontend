@@ -21,8 +21,12 @@ export default function WebViewScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-const goToStatus = async () => {
-  if (!orderId) return;
+const goToStatus = () => {
+  console.log("[WebView] goToStatus called, orderId:", orderId);
+  if (!orderId) {
+    console.warn("[WebView] No orderId available");
+    return;
+  }
   navigation.replace('OrderDetailsScreen', { orderId });
 };
 
@@ -87,7 +91,10 @@ const handleNavigationStateChange = (navState: any) => {
           >
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.checkStatusBtn} onPress={goToStatus}>
+          <TouchableOpacity style={styles.checkStatusBtn} onPress={ ()=>{
+             console.log("[WebView] Button pressed, orderId:", orderId);
+             goToStatus
+             }}>
             <Text style={styles.checkStatusText}>Check Payment Status</Text>
           </TouchableOpacity>
         </View>
