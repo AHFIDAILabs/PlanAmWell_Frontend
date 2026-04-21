@@ -21,11 +21,10 @@ export default function WebViewScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const goToStatus = () => {
-    if (orderId) {
-      navigation.replace("OrderDetailsScreen", { orderId });
-    }
-  };
+const goToStatus = async () => {
+  if (!orderId) return;
+  navigation.replace('OrderDetailsScreen', { orderId });
+};
 
 
 
