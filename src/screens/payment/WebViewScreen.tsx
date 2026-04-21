@@ -12,6 +12,7 @@ import { WebView } from "react-native-webview";
 import { StackScreenProps } from "@react-navigation/stack";
 import { AppStackParamList } from "../../types/App";
 import { Ionicons } from "@expo/vector-icons";
+  import { Linking } from 'react-native';
 
 type Props = StackScreenProps<AppStackParamList, "WebViewScreen">;
 
@@ -25,6 +26,33 @@ export default function WebViewScreen({ route, navigation }: Props) {
       navigation.replace("OrderDetailsScreen", { orderId });
     }
   };
+
+
+
+// Add this to WebViewScreen alongside handleNavigationStateChange
+const handleShouldStartLoadWithRequest = (request: any) => {
+  const { url: requestUrl } = request;
+  
+  // Intercept our redirect page URL
+  if (requestUrl.includes('/api/v1/payment/redirect')) {
+    const orderId = requestUrl.split('orderId=')[1];
+    if (orderId) {
+      navigation.replace('OrderDetailsScreen', { orderId });
+    }
+    return false; // prevent WebView from loading it
+  }
+
+  // Intercept deep link just in case
+  if (requestUrl.startsWith('planamwell://')) {
+    const orderId = requestUrl.split('orderId=')[1];
+    if (orderId) {
+      navigation.replace('OrderDetailsScreen', { orderId });
+    }
+    return false;
+  }
+
+  return true; // allow everything else
+};
 
 const handleNavigationStateChange = (navState: any) => {
   const { url: currentUrl } = navState;
@@ -75,16 +103,17 @@ const handleNavigationStateChange = (navState: any) => {
           )}
 
           {/* ───────── WebView ───────── */}
-          <WebView
-            source={{ uri: url }}
-            onLoadEnd={() => setLoading(false)}
-            onError={() => {
-              setLoading(false);
-              setError(true);
-            }}
-            onNavigationStateChange={handleNavigationStateChange}
-            style={{ flex: 1 }}
-          />
+      <WebView
+  source={{ uri: url }}
+  onLoadEnd={() => setLoading(false)}
+  onError={() => {
+    setLoading(false);
+    setError(true);
+  }}
+  onNavigationStateChange={handleNavigationStateChange}
+  onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+  style={{ flex: 1 }}
+/>
 
           {/* ✅ Persistent CTA */}
           <View style={styles.footer}>
