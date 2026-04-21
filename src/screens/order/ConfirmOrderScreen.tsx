@@ -10,6 +10,7 @@ import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
 import axios from 'axios';
+import * as WebBrowser from 'expo-web-browser';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 type ConfirmOrderParams = {
@@ -26,31 +27,45 @@ export default function ConfirmOrderScreen() {
 
   const { localOrder } = params;
 
-  const handleConfirmOrder = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.post(
-        `${API_BASE_URL}/api/v1/checkout/confirm`,
-        { orderId: localOrder._id },
-        { headers: { Authorization: `Bearer ${userToken}` } },
-      );
- console.log("[ConfirmOrder] Response:", JSON.stringify(res.data));
-      const { checkoutUrl, orderId } = res.data;
-console.log("[ConfirmOrder] orderId:", orderId, "checkoutUrl:", checkoutUrl);
-      navigation.replace('WebViewScreen', {
-        url: checkoutUrl,
-        orderId,
-      });
-    } catch (err: any) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: err?.response?.data?.message || 'Failed to confirm order. Please try again.',
-      });
-    } finally {
-      setLoading(false);
+const handleConfirmOrder = async () => {
+  setLoading(true);
+  try {
+    const res = await axios.post(
+      `${API_BASE_URL}/api/v1/checkout/confirm`,
+      { orderId: localOrder._id },
+      { headers: { Authorization: `Bearer ${userToken}` } },
+    );
+
+    const { checkoutUrl, orderId } = res.data;
+    console.log("[ConfirmOrder] checkoutUrl:", checkoutUrl, "orderId:", orderId);
+
+    if (!checkoutUrl) {
+      throw new Error("No checkout URL returned");
     }
-  };
+
+    // ✅ Opens Paystack in in-app browser
+    // When user closes it (paid or not), result comes back here
+    const result = await WebBrowser.openBrowserAsync(checkoutUrl, {
+      dismissButtonStyle: 'close',        // iOS: shows X button
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+    });
+
+    console.log("[WebBrowser] closed, result:", result);
+
+    // ✅ Regardless of result (paid/cancelled/dismissed), go to OrderDetails
+    // OrderDetailsScreen will verify payment status on mount
+    navigation.replace('OrderDetailsScreen', { orderId });
+
+  } catch (err: any) {
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: err?.response?.data?.message || 'Failed to confirm order.',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const order = localOrder;
   const items = order?.items || [];
