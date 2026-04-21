@@ -93,7 +93,7 @@ const handleNavigationStateChange = (navState: any) => {
           </TouchableOpacity>
           <TouchableOpacity style={styles.checkStatusBtn} onPress={ ()=>{
              console.log("[WebView] Button pressed, orderId:", orderId);
-             goToStatus
+             goToStatus();
              }}>
             <Text style={styles.checkStatusText}>Check Payment Status</Text>
           </TouchableOpacity>
