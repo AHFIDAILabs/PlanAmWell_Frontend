@@ -9,71 +9,72 @@ export const linking: LinkingOptions<AppStackParamList> = {
     'https://planamwell.com',
   ],
 
-  config: {
-    screens: {
-      HomeScreen: 'home',
-      ProfileScreen: 'profile',
-
-      ProductsScreen: 'products',
-      ProductList: 'products/:category',
-
-      CheckoutScreen: 'checkout',
-      PaymentMethodScreen: {
-        path: 'payment/:orderId/:amount',
-        parse: { amount: Number },
+config: {
+  screens: {
+    HomeScreen: 'home',
+    ProfileScreen: 'profile',
+    ProductsScreen: 'products',
+    ProductList: 'products/:category',
+    CheckoutScreen: 'checkout',
+    ConfirmOrderScreen: 'confirm-order',
+    OrderDetailsScreen: {
+      path: 'order-complete',  
+      parse: {
+        orderId: String,
       },
-      OrdersScreen: 'orders',       // ✅ Added
-      SettingsScreen: 'settings',
-      NotificationsScreen: 'notifications',
-      HelpSupportScreen: 'help',
-      PrivacySettingsScreen: 'privacy',
-
-      AllDoctorScreen: 'doctors',
-      DoctorScreen: 'doctor/:doctorId',
-      DoctorProfileScreen: 'doctor-profile/:doctorId',
-      DoctorDashScreen: 'doctor-dash',
-      DoctorAvailability: 'doctor-availability',
-      DoctorAppointment: 'doctor-appointment',
-      BookAppointmentScreen: 'book/:doctorId',
-
-      ArticleDetailScreen: 'article/:slug',
-      AllArticleScreen: 'articles',
-
-      MyAppointments: 'appointments',   // ✅ Fixed key name
-      ConsultationHistory: 'consultations',
-
-      // ✅ Added — patient/doctor chat room
-      ChatRoomScreen: {
-        path: 'chat-room',
-        parse: {
-          appointmentId: String,
-          conversationId: String,
-        },
+    },
+    PaymentStatusScreen: {
+      path: 'payment-status',
+      parse: {
+        orderId: String,
       },
-      ConversationsListScreen: 'messages',    // ✅ Added
-
-      AmWellChatModal: 'chat',                // ✅ Kept — AI chatbot
-
-      VideoCallScreen: {
-        path: 'video/:appointmentId',
+    },
+    PaymentMethodScreen: {
+      path: 'payment/:orderId/:amount',
+      parse: { amount: Number },
+    },
+    SettingsScreen: 'settings',
+    NotificationsScreen: 'notifications',
+    HelpSupportScreen: 'help',
+    PrivacySettingsScreen: 'privacy',
+    AllDoctorScreen: 'doctors',
+    DoctorScreen: 'doctor/:doctorId',
+    DoctorProfileScreen: 'doctor-profile/:doctorId',
+    DoctorDashScreen: 'doctor-dash',
+    DoctorAvailability: 'doctor-availability',
+    DoctorAppointment: 'doctor-appointment',
+    BookAppointmentScreen: 'book/:doctorId',
+    ArticleDetailScreen: 'article/:slug',
+    AllArticleScreen: 'articles',
+    MyAppointments: 'appointments',
+    ConsultationHistory: 'consultations',
+    ChatRoomScreen: {
+      path: 'chat-room',
+      parse: {
+        appointmentId: String,
+        conversationId: String,
       },
-      IncomingCall: {
-        path: 'call/:appointmentId',
-      },
-
-      AllActivePartnerScreen: 'partners',
-
-      AuthStack: {
-        path: 'auth',
-        screens: {
-          Splash: 'splash',
-          Onboarding: 'onboarding',
-          Login: 'login',
-          Register: 'register',
-          ForgotPassword: 'forgot-password',
-          ResetPassword: 'reset/:token',
-        },
+    },
+    ConversationsListScreen: 'messages',
+    AmWellChatModal: 'chat',
+    VideoCallScreen: {
+      path: 'video/:appointmentId',
+    },
+    IncomingCall: {
+      path: 'call/:appointmentId',
+    },
+    AllActivePartnerScreen: 'partners',
+    AuthStack: {
+      path: 'auth',
+      screens: {
+        Splash: 'splash',
+        Onboarding: 'onboarding',
+        Login: 'login',
+        Register: 'register',
+        ForgotPassword: 'forgot-password',
+        ResetPassword: 'reset/:token',
       },
     },
   },
+},
 };
