@@ -287,82 +287,65 @@ const CheckoutScreen = () => {
 
   // ── Core checkout logic (called directly OR after modal saves) ───────────
 
-  const runCheckout = async () => {
-    setLoading(true);
-    try {
-      const checkoutDetails: CheckoutDetails = {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        password: isAnonymous ? formData.password : undefined,
-        confirmPassword: isAnonymous ? formData.confirmPassword : undefined,
-        gender: formData.gender?.toLowerCase(),
-        dateOfBirth: formData.dateOfBirth || undefined,
+const runCheckout = async () => {
+  setLoading(true);
+  try {
+    const checkoutDetails: CheckoutDetails = {
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone,
+      password: isAnonymous ? formData.password : undefined,
+      confirmPassword: isAnonymous ? formData.confirmPassword : undefined,
+      gender: formData.gender?.toLowerCase(),
+      dateOfBirth: formData.dateOfBirth || undefined,
+      homeAddress: formData.homeAddress,
+      city: formData.city,
+      state: formData.state,
+      lga: formData.lga,
+      preferences: {
         homeAddress: formData.homeAddress,
         city: formData.city,
         state: formData.state,
         lga: formData.lga,
-        preferences: {
-          homeAddress: formData.homeAddress,
-          city: formData.city,
-          state: formData.state,
-          lga: formData.lga,
-        },
-      };
+      },
+    };
 
-      const response = await checkout(cart?.items || [], checkoutDetails);
-      const localOrder = response.localOrder;
+    const response = await checkout(cart?.items || [], checkoutDetails);
+    const localOrder = response.localOrder;
+    clearCartLocal();
+    navigation.replace("ConfirmOrderScreen", { localOrder });
 
-      // Clear local cart — order is persisted on server
-      clearCartLocal();
+  } catch (error: any) {
+    const data = error?.response?.data;
 
-      // Navigate to confirm screen — no payment yet
-      navigation.replace("ConfirmOrderScreen", { localOrder });
-    } catch (error: any) {
-      const data = error?.response?.data;
-
-      if (
-        error?.response?.status === 422 &&
-        data?.code === "PROFILE_INCOMPLETE"
-      ) {
-        setMissingFields(data?.missingFields ?? []);
-        setShowProfileModal(true);
-        return;
-      }
-
+    // Server-side profile incomplete — show which fields are missing as a toast
+    // (no modal needed since the form is right there)
+    if (error?.response?.status === 422 && data?.code === "PROFILE_INCOMPLETE") {
       Toast.show({
         type: "error",
-        text1: "Error",
-        text2: data?.message || error?.message || "An error occurred.",
+        text1: "Profile Incomplete",
+        text2: `Please fill in: ${(data?.missingFields ?? []).join(", ")}`,
       });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePlaceOrder = async () => {
-    if (!validateForm()) return;
-
-    // For logged-in users, do a local pre-flight check before hitting the
-    // network so the modal appears immediately rather than after an API round-trip.
-    if (!isAnonymous && user) {
-      const missing = getMissingCheckoutFields(user);
-      if (missing.length > 0) {
-        setMissingFields(missing);
-        setShowProfileModal(true);
-        return;
-      }
+      return;
     }
 
-    await runCheckout();
-  };
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: data?.message || error?.message || "An error occurred.",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
-  // Called after CompleteProfileModal saves — refresh user then retry
-  const handleProfileSaved = async () => {
-    setShowProfileModal(false);
-    await refreshUser(); // pull updated phone/gender/dob into the user object
-    await runCheckout(); // retry the order automatically
-  };
+ const handlePlaceOrder = async () => {
+  if (!validateForm()) return;
+  // ✅ No modal needed — validateForm() already checks gender, dob, phone
+  // from formData. The backend receives them in the checkout payload
+  // and updates the user record there.
+  await runCheckout();
+};
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -559,13 +542,6 @@ const CheckoutScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ── Complete Profile Modal (logged-in users only) ───────────────── */}
-      <CompleteProfileModal
-        visible={showProfileModal}
-        missingFields={missingFields}
-        onClose={() => setShowProfileModal(false)}
-        onSaved={handleProfileSaved}
-      />
     </SafeAreaView>
   );
 };
