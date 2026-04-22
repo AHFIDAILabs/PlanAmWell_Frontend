@@ -1,4 +1,4 @@
-// screens/orders/ConfirmOrderScreen.tsx
+// screens/order/ConfirmOrderScreen.tsx
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
@@ -9,67 +9,62 @@ import { Feather } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
-import axios from 'axios';
 import * as WebBrowser from 'expo-web-browser';
+import axios from 'axios';
+import { AppStackParamList } from '../../types/App';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL;
-type ConfirmOrderParams = {
-  ConfirmOrderScreen: {
-    localOrder: any;
-  };
-};
+
+type ConfirmOrderRouteProp = RouteProp<AppStackParamList, 'ConfirmOrderScreen'>;
 
 export default function ConfirmOrderScreen() {
   const navigation = useNavigation<any>();
-  const { params } = useRoute<RouteProp<ConfirmOrderParams, 'ConfirmOrderScreen'>>();
+  const { params } = useRoute<ConfirmOrderRouteProp>();
   const { userToken } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const { localOrder } = params;
+  const items = localOrder?.items || [];
+  const shipping = localOrder?.shippingAddress || {};
 
-const handleConfirmOrder = async () => {
-  setLoading(true);
-  try {
-    const res = await axios.post(
-      `${API_BASE_URL}/api/v1/checkout/confirm`,
-      { orderId: localOrder._id },
-      { headers: { Authorization: `Bearer ${userToken}` } },
-    );
+  const handleConfirmOrder = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/api/v1/checkout/confirm`,
+        { orderId: localOrder._id },
+        { headers: { Authorization: `Bearer ${userToken}` } },
+      );
 
-    const { checkoutUrl, orderId } = res.data;
-    console.log("[ConfirmOrder] checkoutUrl:", checkoutUrl, "orderId:", orderId);
+      console.log("[ConfirmOrder] Response:", JSON.stringify(res.data));
 
-    if (!checkoutUrl) {
-      throw new Error("No checkout URL returned");
+      const { checkoutUrl, orderId } = res.data;
+
+      if (!checkoutUrl) {
+        throw new Error("No checkout URL returned");
+      }
+
+      // ✅ Open Paystack in in-app browser
+      await WebBrowser.openBrowserAsync(checkoutUrl, {
+        dismissButtonStyle: 'close',
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+      });
+
+      // ✅ Browser closed (paid, cancelled, or dismissed) — go to OrderDetails
+      // OrderDetailsScreen will auto-verify payment on mount
+      navigation.replace('OrderDetailsScreen', { orderId: orderId.toString() });
+
+    } catch (err: any) {
+      console.error("[ConfirmOrder] Error:", err?.response?.data || err?.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: err?.response?.data?.message || 'Failed to confirm order. Please try again.',
+      });
+    } finally {
+      setLoading(false);
     }
-
-    // ✅ Opens Paystack in in-app browser
-    // When user closes it (paid or not), result comes back here
-    const result = await WebBrowser.openBrowserAsync(checkoutUrl, {
-      dismissButtonStyle: 'close',        // iOS: shows X button
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
-    });
-
-    console.log("[WebBrowser] closed, result:", result);
-
-    // ✅ Regardless of result (paid/cancelled/dismissed), go to OrderDetails
-    // OrderDetailsScreen will verify payment status on mount
-    navigation.replace('OrderDetailsScreen', { orderId });
-
-  } catch (err: any) {
-    Toast.show({
-      type: 'error',
-      text1: 'Error',
-      text2: err?.response?.data?.message || 'Failed to confirm order.',
-    });
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const order = localOrder;
-  const items = order?.items || [];
-  const shipping = order?.shippingAddress || {};
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9F9F9' }}>
@@ -83,7 +78,6 @@ const handleConfirmOrder = async () => {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* Items */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Order Items</Text>
           {items.map((item: any, idx: number) => (
@@ -95,11 +89,10 @@ const handleConfirmOrder = async () => {
           <View style={styles.divider} />
           <View style={styles.itemRow}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>₦{Number(order?.total || 0).toLocaleString()}</Text>
+            <Text style={styles.totalValue}>₦{Number(localOrder?.total || 0).toLocaleString()}</Text>
           </View>
         </View>
 
-        {/* Delivery Address */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Delivery Address</Text>
           <Text style={styles.addressText}>{shipping.name}</Text>
@@ -108,11 +101,10 @@ const handleConfirmOrder = async () => {
           <Text style={styles.addressText}>{shipping.city}, {shipping.state}</Text>
         </View>
 
-        {/* Notice */}
         <View style={styles.noticeBox}>
           <Feather name="info" size={16} color="#D81E5B" />
           <Text style={styles.noticeText}>
-            You will be redirected to a secure payment page after confirming your order.
+            You will be redirected to a secure payment page. Return to the app after payment to view your order status.
           </Text>
         </View>
 
@@ -120,7 +112,7 @@ const handleConfirmOrder = async () => {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={styles.confirmBtn}
+          style={[styles.confirmBtn, loading && { opacity: 0.6 }]}
           onPress={handleConfirmOrder}
           disabled={loading}
         >
@@ -128,7 +120,7 @@ const handleConfirmOrder = async () => {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.confirmText}>
-              Confirm & Pay — ₦{Number(order?.total || 0).toLocaleString()}
+              Confirm & Pay — ₦{Number(localOrder?.total || 0).toLocaleString()}
             </Text>
           )}
         </TouchableOpacity>
