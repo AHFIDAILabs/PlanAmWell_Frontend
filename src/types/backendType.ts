@@ -193,7 +193,9 @@ export interface INotification {
     appointmentId?: string;
     conversationId?: string;
      patientId?: string;
-    type: "record_access_response" | "record_access_request" | "record_accessed"
+    type: "record_access_response" | "record_access_request" | "record_accessed" | "payment_pending"   | "payment_success"
+    | "payment_pending"
+    | "delivery_update";
     approved?: boolean;
     articleId?: string;
     status?: string;

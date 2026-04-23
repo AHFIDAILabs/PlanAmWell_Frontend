@@ -168,18 +168,7 @@ export const NotificationsScreen = () => {
     }
   };
 
-  const testConnection = () => {
-    const info = socketService.getConnectionInfo();
-    if (info.connected) {
-      socketService.ping();
-      Alert.alert('✅ Socket Connected', `Transport: ${info.transport}\nSocket ID: ${info.socketId}`);
-    } else {
-      Alert.alert('❌ Socket Disconnected', 'Try reconnecting?', [
-        { text: 'Reconnect', onPress: () => socketService.reconnect() },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
-  };
+  
 
   const updateAppointmentStatus = async (
     appt: IAppointment,
@@ -207,6 +196,24 @@ export const NotificationsScreen = () => {
     try {
       if (!notification.isRead) await markAsRead(notification._id);
 
+      // ── Order/payment notification ─────────────────────────────────────────
+if (notification.type === 'order') {
+  const orderId = notification.metadata?.orderId;
+  if (!orderId) return;
+
+  const metaType = notification.metadata?.type;
+
+  if (metaType === 'payment_pending') {
+    // Navigate to ConfirmOrder or OrderDetails depending on state
+    navigation.navigate('OrderDetailsScreen', { orderId });
+    return;
+  }
+
+  // payment_success, delivery_update — go to order details
+  navigation.navigate('OrderDetailsScreen', { orderId });
+  return;
+}
+
        // ── Chat message notification ──────────────────────────
   if (notification.type === 'new_message' || notification.type === 'chat') {
   const conversationId = notification.metadata?.conversationId;
@@ -228,6 +235,7 @@ export const NotificationsScreen = () => {
   });
   return;
 }
+
 
       if (notification.type === 'call_ended') {
         const appointmentId = notification.metadata?.appointmentId;
