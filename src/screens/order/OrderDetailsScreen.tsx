@@ -17,6 +17,35 @@ import { Ionicons } from "@expo/vector-icons";
 
 type RouteProps = RouteProp<AppStackParamList, "OrderDetailsScreen">;
 
+const DELIVERY_STEPS = ["pending", "shipped", "delivered"];
+
+function DeliveryTracker({ status }: { status: string }) {
+  const current = DELIVERY_STEPS.indexOf(status?.toLowerCase());
+  return (
+    <View style={styles.trackerContainer}>
+      {DELIVERY_STEPS.map((step, idx) => {
+        const isCompleted = idx <= current;
+        const isLast = idx === DELIVERY_STEPS.length - 1;
+        return (
+          <View key={step} style={styles.trackerStep}>
+            <View style={styles.trackerDotRow}>
+              <View style={[styles.trackerDot, isCompleted && styles.trackerDotActive]}>
+                {isCompleted && <Ionicons name="checkmark" size={12} color="#fff" />}
+              </View>
+              {!isLast && (
+                <View style={[styles.trackerLine, isCompleted && idx < current && styles.trackerLineActive]} />
+              )}
+            </View>
+            <Text style={[styles.trackerLabel, isCompleted && styles.trackerLabelActive]}>
+              {step.charAt(0).toUpperCase() + step.slice(1)}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function OrderDetailsScreen() {
   const { params } = useRoute<RouteProps>();
   const { userToken } = useAuth();
@@ -49,6 +78,7 @@ export default function OrderDetailsScreen() {
   }
 
   const isPaid = order.paymentStatus === "paid";
+  const deliveryStatus = order.deliveryStatus ?? "pending";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9F9F9" }}>
@@ -59,7 +89,7 @@ export default function OrderDetailsScreen() {
           #{order.orderNumber?.slice(0, 8)?.toUpperCase()}
         </Text>
 
-        {/* Status Banner */}
+        {/* Payment Banner */}
         <View style={[styles.banner, isPaid ? styles.bannerSuccess : styles.bannerPending]}>
           <Ionicons
             name={isPaid ? "checkmark-circle" : "time-outline"}
@@ -75,14 +105,20 @@ export default function OrderDetailsScreen() {
         {verifying && (
           <View style={styles.verifyingRow}>
             <ActivityIndicator size="small" color="#D81E5B" />
-            <Text style={styles.verifyingText}>Syncing payment status...</Text>
+            <Text style={styles.verifyingText}>Syncing status...</Text>
           </View>
         )}
 
-        {/* Statuses */}
+        {/* Payment + Delivery Status */}
         <View style={styles.card}>
           <StatusRow label="Payment" value={order.paymentStatus} />
-          <StatusRow label="Delivery" value={order.deliveryStatus ?? "pending"} />
+          <StatusRow label="Delivery" value={deliveryStatus} />
+        </View>
+
+        {/* Delivery Tracker */}
+        <View style={styles.card}>
+          <Text style={styles.heading}>Delivery Progress</Text>
+          <DeliveryTracker status={deliveryStatus} />
         </View>
 
         {/* Delivery Address */}
@@ -208,4 +244,54 @@ const styles = StyleSheet.create({
   },
   refreshBtnDisabled: { opacity: 0.6 },
   refreshText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  trackerContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  trackerStep: {
+    alignItems: "center",
+    flex: 1,
+  },
+  trackerDotRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    justifyContent: "center",
+  },
+  trackerDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#ddd",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  trackerDotActive: {
+    backgroundColor: "#D81E5B",
+  },
+  trackerLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#ddd",
+    position: "absolute",
+    left: "60%",
+    right: "-60%",
+    top: 11,
+    zIndex: -1,
+  },
+  trackerLineActive: {
+    backgroundColor: "#D81E5B",
+  },
+  trackerLabel: {
+    fontSize: 11,
+    color: "#999",
+    marginTop: 6,
+    textAlign: "center",
+  },
+  trackerLabelActive: {
+    color: "#D81E5B",
+    fontWeight: "700",
+  },
 });
