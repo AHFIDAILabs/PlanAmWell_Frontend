@@ -13,10 +13,15 @@ export const useOrderDetails = (orderId: string, token: string) => {
 
   const fetchOrder = useCallback(async () => {
     try {
-      const res = await axios.get(
-        `${SERVER_URL}/api/v1/orders/${orderId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+    const res = await axios.get(
+  `${SERVER_URL}/api/v1/orders/${orderId}`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Cache-Control': 'no-cache',
+    }
+  }
+);
       setOrder(res.data.data);
     } catch (err) {
       console.error("[useOrderDetails] Failed to fetch order", err);
@@ -27,10 +32,15 @@ export const useOrderDetails = (orderId: string, token: string) => {
 
   const refreshDelivery = useCallback(async () => {
     try {
-      await axios.get(
-        `${SERVER_URL}/api/v1/orders/${orderId}/delivery-status`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+   await axios.get(
+  `${SERVER_URL}/api/v1/orders/${orderId}/delivery-status`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Cache-Control': 'no-cache',
+    }
+  }
+);
     } catch (err: any) {
       console.warn("[useOrderDetails] Delivery refresh failed:", err?.response?.data || err?.message);
     }
