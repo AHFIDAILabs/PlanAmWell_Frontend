@@ -121,6 +121,8 @@ export interface ICart {
     totalPrice: number;
     partnerCartId?: string;
     isAbandoned?: boolean;
+    // In cart schema:
+status: { type: String, enum: ["active", "checked_out"], default: "active" };
     createdAt?: Date;
     // NOTE: sessionId is used in controller lookup but NOT stored on this model explicitly
 }
