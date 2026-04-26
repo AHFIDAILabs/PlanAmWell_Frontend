@@ -205,6 +205,8 @@ export interface INotification {
     scheduledAt?: string;
     time?: string;
     senderName?: string;
+  amount?: Number,   
+    orderNumber?: String,
   };
   createdAt: string;
 }
