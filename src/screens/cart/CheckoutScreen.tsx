@@ -23,6 +23,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { format } from "date-fns";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CompleteProfileModal } from "../../components/profile/CompleteProfileModal";
+import axios from "axios";
 
 // --- Gender Options ---
 const GENDER_OPTIONS = [
@@ -157,6 +158,8 @@ const CheckoutScreen = () => {
 
   const [loading, setLoading] = useState(false);
 const [shippingFee, setShippingFee] = useState<number>(0);
+const [deliveryFee, setDeliveryFee] = useState<number>(0);
+const [fetchingFee, setFetchingFee] = useState(false);
 
   // ── CompleteProfileModal state ───────────────────────────────────────────
   // Only shown for logged-in (non-anonymous) users who haven't filled in
@@ -203,6 +206,35 @@ const [shippingFee, setShippingFee] = useState<number>(0);
       confirmPassword: isAnonymous ? prev.confirmPassword : "",
     }));
   }, [user, isAnonymous]);
+
+
+  useEffect(() => {
+  const fetchDeliveryFee = async () => {
+    if (!formData.state || !formData.lga) {
+      setDeliveryFee(0);
+      return;
+    }
+    setFetchingFee(true);
+    try {
+      const res = await axios.get(
+        `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/checkout/delivery-fee`,
+        {
+          params: { state: formData.state, lga: formData.lga },
+          headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
+        }
+      );
+      setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
+    } catch {
+      setDeliveryFee(0);
+    } finally {
+      setFetchingFee(false);
+    }
+  };
+
+  // Debounce — wait 800ms after user stops typing
+  const timer = setTimeout(fetchDeliveryFee, 800);
+  return () => clearTimeout(timer);
+}, [formData.state, formData.lga]);
 
   const totalAmount =
     cart?.items?.reduce(
@@ -393,22 +425,29 @@ const runCheckout = async () => {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Order Summary</Text>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Items ({cart?.items?.length || 0})
-                </Text>
-                <Text style={styles.summaryValue}>₦{totalAmountFixed}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Delivery</Text>
-                  <Text style={styles.summaryValue}>
-    {shippingFee > 0 ? `₦${shippingFee.toLocaleString()}` : "Free"}
+            <View style={styles.summaryRow}>
+  <Text style={styles.summaryLabel}>Items ({cart?.items?.length || 0})</Text>
+  <Text style={styles.summaryValue}>₦{totalAmountFixed}</Text>
+</View>
+
+<View style={styles.summaryRow}>
+  <Text style={styles.summaryLabel}>Delivery</Text>
+  {fetchingFee ? (
+    <ActivityIndicator size="small" color="#D81E5B" />
+  ) : (
+    <Text style={styles.summaryValue}>
+      {deliveryFee > 0 ? `₦${deliveryFee.toLocaleString()}` : "Free"}
+    </Text>
+  )}
+</View>
+
+<View style={[styles.summaryRow, styles.totalRow]}>
+  <Text style={styles.totalLabel}>Total</Text>
+  <Text style={styles.totalValue}>
+    ₦{(totalAmount + deliveryFee).toLocaleString()}
   </Text>
-              </View>
-              <View style={[styles.summaryRow, styles.totalRow]}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>₦{totalAmountFixed}</Text>
-              </View>
+</View>
+
             </View>
 
             <View style={styles.section}>
@@ -537,9 +576,9 @@ const runCheckout = async () => {
               {loading || checkoutLoading ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.placeOrderText}>
-                  Place Order - ₦{totalAmountFixed}
-                </Text>
+             <Text style={styles.placeOrderText}>
+  Place Order — ₦{(totalAmount + deliveryFee).toLocaleString()}
+</Text>
               )}
             </TouchableOpacity>
           </View>

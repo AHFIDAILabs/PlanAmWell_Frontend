@@ -78,20 +78,28 @@ export default function ConfirmOrderScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Order Items</Text>
-          {items.map((item: any, idx: number) => (
-            <View key={idx} style={styles.itemRow}>
-              <Text style={styles.itemName}>{item.name} × {item.qty}</Text>
-              <Text style={styles.itemPrice}>₦{(item.price * item.qty).toLocaleString()}</Text>
-            </View>
-          ))}
-          <View style={styles.divider} />
-          <View style={styles.itemRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>₦{Number(localOrder?.total || 0).toLocaleString()}</Text>
-          </View>
-        </View>
+<View style={styles.divider} />
+<View style={styles.itemRow}>
+  <Text style={styles.subtotalLabel}>Subtotal</Text>
+  <Text style={styles.subtotalValue}>
+    ₦{Number(localOrder?.subtotal || 0).toLocaleString()}
+  </Text>
+</View>
+{Number(localOrder?.shippingFee) > 0 && (
+  <View style={styles.itemRow}>
+    <Text style={styles.subtotalLabel}>Delivery Fee</Text>
+    <Text style={styles.subtotalValue}>
+      ₦{Number(localOrder?.shippingFee).toLocaleString()}
+    </Text>
+  </View>
+)}
+<View style={[styles.itemRow, { marginTop: 4 }]}>
+  <Text style={styles.totalLabel}>Total</Text>
+  <Text style={styles.totalValue}>
+    ₦{Number(localOrder?.total || 0).toLocaleString()}
+  </Text>
+</View>
+
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Delivery Address</Text>
@@ -119,9 +127,9 @@ export default function ConfirmOrderScreen() {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.confirmText}>
-              Confirm & Pay — ₦{Number(localOrder?.total || 0).toLocaleString()}
-            </Text>
+          <Text style={styles.confirmText}>
+  Confirm & Pay — ₦{Number(localOrder?.total || 0).toLocaleString()}
+</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -188,4 +196,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  subtotalLabel: { fontSize: 14, color: '#666' },
+subtotalValue: { fontSize: 14, color: '#444', fontWeight: '500' },
 });
