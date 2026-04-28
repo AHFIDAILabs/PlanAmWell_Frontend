@@ -156,6 +156,7 @@ const CheckoutScreen = () => {
   });
 
   const [loading, setLoading] = useState(false);
+const [shippingFee, setShippingFee] = useState<number>(0);
 
   // ── CompleteProfileModal state ───────────────────────────────────────────
   // Only shown for logged-in (non-anonymous) users who haven't filled in
@@ -312,6 +313,7 @@ const runCheckout = async () => {
 
     const response = await checkout(cart?.items || [], checkoutDetails);
     const localOrder = response.localOrder;
+    setShippingFee(localOrder?.shippingFee || 0);
     clearCartLocal();
     navigation.replace("ConfirmOrderScreen", { localOrder });
 
@@ -399,7 +401,9 @@ const runCheckout = async () => {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Delivery</Text>
-                <Text style={styles.summaryValue}>Free</Text>
+                  <Text style={styles.summaryValue}>
+    {shippingFee > 0 ? `₦${shippingFee.toLocaleString()}` : "Free"}
+  </Text>
               </View>
               <View style={[styles.summaryRow, styles.totalRow]}>
                 <Text style={styles.totalLabel}>Total</Text>

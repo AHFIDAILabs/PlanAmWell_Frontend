@@ -185,28 +185,59 @@ export type NotificationOwnerType = "User" | "Doctor";
 export interface INotification {
   _id: string;
   userId: string;
-  userType: NotificationOwnerType; // 👈 add this
+  userType: NotificationOwnerType;
   type: "supplement" | "order" | "appointment" | "article" | "system" | "call_ended" | "new_message" | "chat";
   title: string;
   message: string;
   isRead: boolean;
   metadata?: {
+    // IDs
     orderId?: string;
     appointmentId?: string;
     conversationId?: string;
-     patientId?: string;
-    type: "record_access_response" | "record_access_request" | "record_accessed" | "payment_pending"   | "payment_success"
-    | "payment_pending"
-    | "delivery_update";
-    approved?: boolean;
+    patientId?: string;
+    recordId?: string;
+    accessRequestId?: string;
     articleId?: string;
-    status?: string;
+
+    // Metadata type discriminator
+    type?: 
+      | "record_access_response" 
+      | "record_access_request" 
+      | "record_accessed" 
+      | "payment_pending"
+      | "payment_success"
+      | "delivery_update"
+      | "video_call_request"
+      | "reminder";
+
+    // People
     doctorName?: string;
-    scheduledAt?: string;
-    time?: string;
+    patientName?: string;
+    otherPartyName?: string;
     senderName?: string;
-  amount?: Number,   
-    orderNumber?: String,
+    requesterName?: string;
+    doctorSpecialization?: string;
+
+    // Appointment
+    scheduledAt?: string;
+    status?: string;
+
+    // Orders / payments
+    amount?: number;
+    orderNumber?: string;
+
+    // Call
+    callDuration?: number;
+    minutesRemaining?: number;
+    autoEnded?: boolean;
+    autoJoin?: boolean;
+    fromNotification?: boolean;
+
+    // Misc
+    approved?: boolean;
+    expired?: boolean;
+    time?: string;
   };
   createdAt: string;
 }
