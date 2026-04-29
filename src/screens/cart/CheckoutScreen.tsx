@@ -22,8 +22,8 @@ import { CheckoutDetails } from "../../services/checkout";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { format } from "date-fns";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CompleteProfileModal } from "../../components/profile/CompleteProfileModal";
 import axios from "axios";
+import { LocationPicker } from "../../components/checkout/LocationPicker";
 
 // --- Gender Options ---
 const GENDER_OPTIONS = [
@@ -561,32 +561,17 @@ const runCheckout = async () => {
                 value={formData.homeAddress}
                 onChangeText={(t) => handleInputChange("homeAddress", t)}
               />
-
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.label}>City</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.city}
-                    onChangeText={(t) => handleInputChange("city", t)}
-                  />
-                </View>
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.label}>State</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.state}
-                    onChangeText={(t) => handleInputChange("state", t)}
-                  />
-                </View>
-              </View>
-
-              <Text style={styles.label}>LGA</Text>
-              <TextInput
-                style={[styles.input, { marginTop: 12 }]}
-                value={formData.lga}
-                onChangeText={(t) => handleInputChange("lga", t)}
-              />
+<LocationPicker
+  state={formData.state}
+  lga={formData.lga}
+  city={formData.city}
+  onStateChange={(val) => {
+    handleInputChange("state", val);
+    handleInputChange("lga", "");  // reset LGA when state changes
+  }}
+  onLgaChange={(val) => handleInputChange("lga", val)}
+  onCityChange={(val) => handleInputChange("city", val)}
+/>
             </View>
 
             {isAnonymous && (

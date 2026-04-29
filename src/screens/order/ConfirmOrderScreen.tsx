@@ -27,44 +27,51 @@ export default function ConfirmOrderScreen() {
   const items = localOrder?.items || [];
   const shipping = localOrder?.shippingAddress || {};
 
-  const handleConfirmOrder = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.post(
-        `${API_BASE_URL}/api/v1/checkout/confirm`,
-        { orderId: localOrder._id },
-        { headers: { Authorization: `Bearer ${userToken}` } },
-      );
+  const [orderTotals, setOrderTotals] = useState({
+  subtotal: Number(localOrder?.subtotal || 0),
+  shippingFee: Number(localOrder?.shippingFee || 0),
+  total: Number(localOrder?.total || 0),
+});
 
-      console.log("[ConfirmOrder] Response:", JSON.stringify(res.data));
+ const handleConfirmOrder = async () => {
+  setLoading(true);
+  try {
+    const res = await axios.post(
+      `${API_BASE_URL}/api/v1/checkout/confirm`,
+      { orderId: localOrder._id },
+      { headers: { Authorization: `Bearer ${userToken}` } },
+    );
 
-      const { checkoutUrl, orderId } = res.data;
+    const { checkoutUrl, orderId, shippingFee, total } = res.data;
 
-      if (!checkoutUrl) {
-        throw new Error("No checkout URL returned");
-      }
-
-      // ✅ Open Paystack in in-app browser
-      await WebBrowser.openBrowserAsync(checkoutUrl, {
-        dismissButtonStyle: 'close',
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-      });
-
-      // ✅ Browser closed (paid, cancelled, or dismissed) — go to OrderDetails
-      // OrderDetailsScreen will auto-verify payment on mount
-      navigation.replace('OrderDetailsScreen', { orderId: orderId.toString() });
-
-    } catch (err: any) {
-      console.error("[ConfirmOrder] Error:", err?.response?.data || err?.message);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: err?.response?.data?.message || 'Failed to confirm order. Please try again.',
-      });
-    } finally {
-      setLoading(false);
+    // Update totals with what the partner confirmed
+    if (shippingFee !== undefined || total !== undefined) {
+      setOrderTotals((prev) => ({
+        subtotal: prev.subtotal,
+        shippingFee: shippingFee ?? prev.shippingFee,
+        total: total ?? prev.total,
+      }));
     }
-  };
+
+    if (!checkoutUrl) throw new Error("No checkout URL returned");
+
+    await WebBrowser.openBrowserAsync(checkoutUrl, {
+      dismissButtonStyle: 'close',
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+    });
+
+    navigation.replace('OrderDetailsScreen', { orderId: orderId.toString() });
+
+  } catch (err: any) {
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: err?.response?.data?.message || 'Failed to confirm order.',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9F9F9' }}>
@@ -82,21 +89,21 @@ export default function ConfirmOrderScreen() {
 <View style={styles.itemRow}>
   <Text style={styles.subtotalLabel}>Subtotal</Text>
   <Text style={styles.subtotalValue}>
-    ₦{Number(localOrder?.subtotal || 0).toLocaleString()}
+    ₦{orderTotals.subtotal.toLocaleString()}
   </Text>
 </View>
-{Number(localOrder?.shippingFee) > 0 && (
+{orderTotals.shippingFee > 0 && (
   <View style={styles.itemRow}>
     <Text style={styles.subtotalLabel}>Delivery Fee</Text>
     <Text style={styles.subtotalValue}>
-      ₦{Number(localOrder?.shippingFee).toLocaleString()}
+      ₦{orderTotals.shippingFee.toLocaleString()}
     </Text>
   </View>
 )}
 <View style={[styles.itemRow, { marginTop: 4 }]}>
   <Text style={styles.totalLabel}>Total</Text>
   <Text style={styles.totalValue}>
-    ₦{Number(localOrder?.total || 0).toLocaleString()}
+    ₦{orderTotals.total.toLocaleString()}
   </Text>
 </View>
 
@@ -128,7 +135,7 @@ export default function ConfirmOrderScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
           <Text style={styles.confirmText}>
-  Confirm & Pay — ₦{Number(localOrder?.total || 0).toLocaleString()}
+  Confirm & Pay — ₦{Number(orderTotals.total || 0).toLocaleString()}
 </Text>
           )}
         </TouchableOpacity>
