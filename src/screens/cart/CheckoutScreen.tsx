@@ -219,7 +219,7 @@ const [fetchingFee, setFetchingFee] = useState(false);
       const res = await axios.get(
         `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/checkout/delivery-fee`,
         {
-          params: { state: formData.state, lga: formData.lga },
+          params: { state: formData.state, lga: formData.lga, _t: Date.now(), },
           headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
         }
       );
