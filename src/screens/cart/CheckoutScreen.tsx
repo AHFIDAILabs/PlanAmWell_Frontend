@@ -384,7 +384,19 @@ const runCheckout = async () => {
     const localOrder = response.localOrder;
     setShippingFee(localOrder?.shippingFee || 0);
     clearCartLocal();
-    navigation.replace("ConfirmOrderScreen", { localOrder });
+
+    // Merge the locally-resolved delivery fee into localOrder so ConfirmOrderScreen
+    // shows the same total the user saw on this screen.
+    const subtotal = Number(localOrder?.subtotal || 0) || totalAmount;
+    const feeToUse = Number(localOrder?.shippingFee || 0) || deliveryFee;
+    navigation.replace("ConfirmOrderScreen", {
+      localOrder: {
+        ...localOrder,
+        subtotal,
+        shippingFee: feeToUse,
+        total: subtotal + feeToUse,
+      },
+    });
 
   } catch (error: any) {
     const data = error?.response?.data;
