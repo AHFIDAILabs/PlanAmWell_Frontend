@@ -183,6 +183,7 @@ const [fetchingFee, setFetchingFee] = useState(false);
     createAccount: false,
   });
 
+
   useEffect(() => {
     if (!user) return;
     const prefs = user.preferences as any;
@@ -216,13 +217,16 @@ const [fetchingFee, setFetchingFee] = useState(false);
     }
     setFetchingFee(true);
     try {
-      const res = await axios.get(
-        `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/checkout/delivery-fee`,
-        {
-          params: { state: formData.state, lga: formData.lga, _t: Date.now(), },
-          headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
-        }
-      );
+    // In CheckoutScreen.tsx fetchDeliveryFee:
+const res = await axios.get(
+  `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/checkout/delivery-fee`,
+  {
+    params: { state: formData.state, lga: formData.lga, _t: Date.now() },
+    headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
+  }
+);
+console.log("[CheckoutScreen] Delivery fee response:", JSON.stringify(res.data));
+setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
       setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
     } catch {
       setDeliveryFee(0);
@@ -235,6 +239,39 @@ const [fetchingFee, setFetchingFee] = useState(false);
   const timer = setTimeout(fetchDeliveryFee, 800);
   return () => clearTimeout(timer);
 }, [formData.state, formData.lga]);
+
+
+
+// useEffect to trigger for the existing state/lga for delivery fee 
+useEffect(() => {
+  // Re-fetch fee when user profile pre-fills state/lga
+  if (!user) return;
+  const prefs = user.preferences as any;
+  const state = user.state || prefs?.state || "";
+  const lga = user.lga || prefs?.lga || "";
+  if (!state || !lga) return;
+
+  const fetchFee = async () => {
+    setFetchingFee(true);
+    try {
+      const res = await axios.get(
+        `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/checkout/delivery-fee`,
+        {
+          params: { state, lga, _t: Date.now() },
+          headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
+        }
+      );
+      console.log("[CheckoutScreen] Pre-fill fee response:", JSON.stringify(res.data));
+      setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
+    } catch {
+      setDeliveryFee(0);
+    } finally {
+      setFetchingFee(false);
+    }
+  };
+
+  fetchFee();
+}, [user]); // ← fires when user loads, using their saved state/lga
 
   const totalAmount =
     cart?.items?.reduce(
