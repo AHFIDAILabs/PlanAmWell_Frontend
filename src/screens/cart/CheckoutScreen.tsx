@@ -434,9 +434,15 @@ const runCheckout = async () => {
   <Text style={styles.summaryLabel}>Delivery</Text>
   {fetchingFee ? (
     <ActivityIndicator size="small" color="#D81E5B" />
+  ) : deliveryFee > 0 ? (
+    <Text style={styles.summaryValue}>₦{deliveryFee.toLocaleString()}</Text>
+  ) : formData.state && formData.lga ? (
+    <Text style={[styles.summaryValue, { color: '#999', fontSize: 12 }]}>
+      Calculated at confirmation
+    </Text>
   ) : (
-    <Text style={styles.summaryValue}>
-      {deliveryFee > 0 ? `₦${deliveryFee.toLocaleString()}` : "Free"}
+    <Text style={[styles.summaryValue, { color: '#999', fontSize: 12 }]}>
+      Enter state & LGA
     </Text>
   )}
 </View>
