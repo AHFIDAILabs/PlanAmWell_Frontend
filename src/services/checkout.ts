@@ -29,6 +29,7 @@ export interface CheckoutDetails {
   city?: string;
   state?: string;
   lga?: string;
+  deliveryFee?: number;
   preferences?: {
     homeAddress?: string;
     city?: string;
@@ -66,6 +67,7 @@ export const checkoutServices = {
       city: details?.city,
       state: details?.state,
       lga: details?.lga,
+      deliveryFee: details?.deliveryFee ?? 0,
       preferences: details?.preferences,
     };
     

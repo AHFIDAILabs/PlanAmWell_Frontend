@@ -15,7 +15,6 @@ import { useNavigation } from "@react-navigation/native";
 import { CartContext } from "../../context/CartContext";
 import { useAuth } from "../../hooks/useAuth";
 import { useCheckout } from "../../hooks/useCheckout";
-import { paymentService } from "../../services/payment";
 import { Feather } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import { CheckoutDetails } from "../../services/checkout";
@@ -31,21 +30,6 @@ const GENDER_OPTIONS = [
   { label: "Female", value: "female" },
   { label: "Other", value: "other" },
 ];
-
-/**
- * Helper: returns which of phone / gender / dateOfBirth are missing on the user object.
- * Mirrors the backend getMissingAppointmentFields logic so we can gate locally too.
- */
-function getMissingCheckoutFields(user: any): string[] {
-  const required = [
-    { field: "phone", label: "Phone number" },
-    { field: "gender", label: "Gender" },
-    { field: "dateOfBirth", label: "Date of birth" },
-  ];
-  return required
-    .filter(({ field }) => !user?.[field])
-    .map(({ label }) => label);
-}
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -157,15 +141,8 @@ const CheckoutScreen = () => {
   });
 
   const [loading, setLoading] = useState(false);
-const [shippingFee, setShippingFee] = useState<number>(0);
-const [deliveryFee, setDeliveryFee] = useState<number>(0);
-const [fetchingFee, setFetchingFee] = useState(false);
-
-  // ── CompleteProfileModal state ───────────────────────────────────────────
-  // Only shown for logged-in (non-anonymous) users who haven't filled in
-  // phone / gender / dateOfBirth yet. Guest users fill these inline.
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [deliveryFee, setDeliveryFee] = useState<number>(0);
+  const [fetchingFee, setFetchingFee] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -372,6 +349,7 @@ const runCheckout = async () => {
       city: formData.city,
       state: formData.state,
       lga: formData.lga,
+      deliveryFee,
       preferences: {
         homeAddress: formData.homeAddress,
         city: formData.city,
@@ -382,7 +360,6 @@ const runCheckout = async () => {
 
     const response = await checkout(cart?.items || [], checkoutDetails);
     const localOrder = response.localOrder;
-    setShippingFee(localOrder?.shippingFee || 0);
     clearCartLocal();
 
     // Merge the locally-resolved delivery fee into localOrder so ConfirmOrderScreen
