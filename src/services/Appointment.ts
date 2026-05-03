@@ -459,7 +459,7 @@ export const getAppointmentById = async (appointmentId: string) => {
 
 export const validateProfile = async (): Promise<void> => {
     const token = await getAuthToken(); // however your project exposes the token
-    await axios.get(`${API_URL}/appointments/profile-check`, {
+    await axios.get(`${API_URL}/profile-check`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   };
