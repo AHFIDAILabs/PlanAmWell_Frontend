@@ -61,6 +61,7 @@ export interface IDoctor {
     ratings?: number;
     reviews?: Array<{ userId: string; rating: number; comment: string }>;
     status: "submitted" | "reviewing" | "approved" | "rejected";
+    profileComplete?: boolean;
 }
 
 export type AuthEntity = IUser | IDoctor;

@@ -100,4 +100,7 @@ export type AppStackParamList = {
     appointmentId: string;
   };
   MyMedicalRecordScreen: undefined;
+
+  DoctorPendingScreen: undefined;
+  DoctorOnboardingScreen: undefined;
 };

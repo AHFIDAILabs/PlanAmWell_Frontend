@@ -42,6 +42,8 @@ import { PaymentScreen } from "../screens/payment/PaymentScreen";
 import MedicalRecordEditorScreen from "../screens/doctor/MedicalRecordEditorScreen";
 import PatientRecordScreen from "../screens/doctor/PatientRecordScreen";
 import { MyMedicalRecordScreen } from "../screens/patient/MyMedicalRecordScreen";
+import DoctorPendingScreen from "../screens/doctor/DoctorPendingScreen";
+import DoctorOnboardingScreen from "../screens/doctor/DoctorOnboardingScreen";
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
@@ -60,6 +62,18 @@ const isDoctor = (user: any): user is IDoctor =>
 const isApprovedDoctor = (user: any) =>
   isDoctor(user) && user.status === "approved";
 
+// Doctor is pending review (not yet approved or rejected)
+const isDoctorPending = (user: any) =>
+  isDoctor(user) && (user.status === "submitted" || user.status === "reviewing");
+
+// Doctor application was rejected
+const isDoctorRejected = (user: any) =>
+  isDoctor(user) && user.status === "rejected";
+
+// Approved but hasn't completed onboarding
+const needsOnboarding = (user: any) =>
+  isApprovedDoctor(user) && !user.profileComplete;
+
 export default function AppNavigator() {
   const { loading, isAuthenticated, isAnonymous, hasSeenOnboarding, user } =
     useAuth();
@@ -70,7 +84,11 @@ export default function AppNavigator() {
     if (!hasSeenOnboarding) return "AuthStack";
     if (isAuthenticated && isAnonymous) return "HomeScreen";
     if (isAuthenticated && !isAnonymous && user) {
-      if (isApprovedDoctor(user)) return "DoctorDashScreen";
+      if (isDoctor(user)) {
+        if (isDoctorPending(user) || isDoctorRejected(user)) return "DoctorPendingScreen";
+        if (needsOnboarding(user)) return "DoctorOnboardingScreen";
+        if (isApprovedDoctor(user)) return "DoctorDashScreen";
+      }
       return "HomeScreen";
     }
     return "AuthStack";
@@ -148,6 +166,10 @@ export default function AppNavigator() {
         name="AllActivePartnerScreen"
         component={AllActivePartnerScreen}
       />
+
+      {/* Doctor Onboarding */}
+      <RootStack.Screen name="DoctorPendingScreen" component={DoctorPendingScreen} />
+      <RootStack.Screen name="DoctorOnboardingScreen" component={DoctorOnboardingScreen} />
 
       {/* Modals */}
       <RootStack.Screen

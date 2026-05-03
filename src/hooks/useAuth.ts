@@ -464,11 +464,28 @@ useEffect(() => {
     [user]
   );
 
-  const isDoctorApproved = useCallback((): boolean => 
+  const isDoctorApproved = useCallback((): boolean =>
     isDoctor() && 'status' in user! && user!.status === 'approved',
     [user, isDoctor]
   );
-  
+
+  const isDoctorPending = useCallback((): boolean =>
+    isDoctor() &&
+    'status' in user! &&
+    (user!.status === 'submitted' || user!.status === 'reviewing'),
+    [user, isDoctor]
+  );
+
+  const isDoctorRejected = useCallback((): boolean =>
+    isDoctor() && 'status' in user! && user!.status === 'rejected',
+    [user, isDoctor]
+  );
+
+  const isProfileComplete = useCallback((): boolean =>
+    isDoctorApproved() && !!(user as any)?.profileComplete,
+    [user, isDoctorApproved]
+  );
+
   const getUserRole = useCallback(() => {
     if (!user) return null;
     if ('specialization' in user && 'licenseNumber' in user) return 'Doctor';
@@ -501,6 +518,9 @@ useEffect(() => {
     resetOnboarding,
     isDoctor,
     isDoctorApproved,
+    isDoctorPending,
+    isDoctorRejected,
+    isProfileComplete,
     getUserRole,
     getInitialScreen,
     refreshUser,

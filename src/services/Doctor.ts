@@ -480,3 +480,21 @@ export const getDoctorImageUri = (doctor: IDoctor): string => {
     // Fallback to UI Avatars
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctor.firstName} ${doctor.lastName}`)}&background=D81E5B&color=fff`;
 };
+
+// Mark doctor onboarding as complete
+export const completeDoctorProfileService = async (): Promise<boolean> => {
+  try {
+    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    if (!token) throw new Error('Authentication required');
+
+    const response = await axios.post(
+      `${API_URL}/complete-profile`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data?.success === true;
+  } catch (error: any) {
+    console.error('[DoctorService] ❌ completeDoctorProfile error:', error.response?.data || error.message);
+    throw error;
+  }
+};
