@@ -1,4 +1,4 @@
-import {IDoctor} from "./backendType"
+import { IDoctor, IClinic } from "./backendType"
 
 import { NavigatorScreenParams } from '@react-navigation/native';
 import { AuthStackParamList } from '../types/Auth';
@@ -106,4 +106,7 @@ export type AppStackParamList = {
 
   PrivacyPolicyScreen: undefined;
   TermsOfServiceScreen: undefined;
+
+  FindAClinicScreen: undefined;
+  ClinicDetailScreen: { clinic: IClinic };
 };

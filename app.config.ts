@@ -25,6 +25,13 @@ plugins: [
       color: '#D81E5B',
     },
   ],
+  [
+    'expo-location',
+    {
+      locationAlwaysAndWhenInUsePermission: 'Allow PlanAmWell to use your location to find clinics near you.',
+      locationWhenInUsePermission: 'Allow PlanAmWell to use your location to find clinics near you.',
+    },
+  ],
   './src/plugins/withAgora',
   [
     'expo-build-properties',
@@ -46,6 +53,7 @@ plugins: [
     infoPlist: {
       NSCameraUsageDescription: 'Access camera for video calls',
       NSMicrophoneUsageDescription: 'Access microphone for video calls',
+      NSLocationWhenInUseUsageDescription: 'Allow PlanAmWell to use your location to find clinics near you.',
       // ✅ Required for universal links
       CFBundleURLTypes: [
         {
@@ -70,6 +78,8 @@ plugins: [
       'ACCESS_NETWORK_STATE',
       'BLUETOOTH',
       'ACCESS_WIFI_STATE',
+      'ACCESS_FINE_LOCATION',
+      'ACCESS_COARSE_LOCATION',
     ],
     jsEngine: 'hermes',
     adaptiveIcon: {

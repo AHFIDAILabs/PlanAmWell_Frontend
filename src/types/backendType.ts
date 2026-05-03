@@ -526,3 +526,30 @@ export interface IAccessRequest {
   expiresAt: string;
   notifiedPatient: boolean;
 }
+
+export interface IClinic {
+  _id: string;
+  name: string;
+  slug?: string;
+  type?: "public" | "private" | "NGO";
+  address?: string;
+  city?: string;
+  state?: string;
+  lga?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  image?: string;
+  services?: string[];
+  specialties?: string[];
+  openingHours?: string;
+  isActive?: boolean;
+  rating?: number;
+  totalRatings?: number;
+  amenity?: string;
+  emergency?: boolean;
+  coordinates?: { latitude: number; longitude: number };
+  source?: "openstreetmap" | "database";
+  createdAt?: string;
+  updatedAt?: string;
+}

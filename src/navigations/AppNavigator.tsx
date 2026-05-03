@@ -46,6 +46,8 @@ import DoctorPendingScreen from "../screens/doctor/DoctorPendingScreen";
 import DoctorOnboardingScreen from "../screens/doctor/DoctorOnboardingScreen";
 import PrivacyPolicyScreen from "../screens/legal/PrivacyPolicyScreen";
 import TermsOfServiceScreen from "../screens/legal/TermsOfServiceScreen";
+import FindAClinicScreen from "../screens/clinic/FindAClinicScreen";
+import ClinicDetailScreen from "../screens/clinic/ClinicDetailScreen";
 
 const RootStack = createStackNavigator<AppStackParamList>();
 
@@ -176,6 +178,10 @@ export default function AppNavigator() {
       {/* Legal */}
       <RootStack.Screen name="PrivacyPolicyScreen" component={PrivacyPolicyScreen} />
       <RootStack.Screen name="TermsOfServiceScreen" component={TermsOfServiceScreen} />
+
+      {/* Clinics */}
+      <RootStack.Screen name="FindAClinicScreen" component={FindAClinicScreen} />
+      <RootStack.Screen name="ClinicDetailScreen" component={ClinicDetailScreen} />
 
       {/* Modals */}
       <RootStack.Screen

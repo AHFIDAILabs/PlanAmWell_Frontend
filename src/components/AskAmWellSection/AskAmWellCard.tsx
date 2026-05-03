@@ -42,7 +42,10 @@ export default function AskAmWellCard() {
         </View>
 
         {/* 2. Find A Clinic Button (Two-Tone Style) */}
-        <TouchableOpacity style={styles.findClinicButton}>
+        <TouchableOpacity
+          style={styles.findClinicButton}
+          onPress={() => navigation.navigate("FindAClinicScreen")}
+        >
           <Text style={styles.findClinicText}>Find A Clinic</Text>
         </TouchableOpacity>
 
