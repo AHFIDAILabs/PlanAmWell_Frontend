@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Switch,
   Image,
+  Alert,
+  Linking,
 } from 'react-native';
 import {
   User,
@@ -35,7 +37,21 @@ const SettingsScreen: React.FC = () => {
   const [education, setEducation] = useState(true);
 
   const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
-  const { user } = useAuth();
+  const { user, handleLogout } = useAuth();
+
+  const confirmLogout = () => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          await handleLogout();
+          navigation.reset({ index: 0, routes: [{ name: "AuthStack" as never }] });
+        },
+      },
+    ]);
+  };
 
   const getImageUri = (): string => {
     const placeholder = 'https://via.placeholder.com/150';
@@ -171,18 +187,21 @@ const SettingsScreen: React.FC = () => {
             icon={<HelpCircle size={20} color={themeStyles.text} />}
             title="Help Center"
             textColor={themeStyles.text}
+            onPress={() => navigation.navigate("HelpSupportScreen")}
           />
 
           <MenuItem
             icon={<Phone size={20} color={themeStyles.text} />}
             title="Contact Us"
             textColor={themeStyles.text}
+            onPress={() => Linking.openURL("mailto:support@planamwell.com")}
           />
 
           <MenuItem
             icon={<FileText size={20} color={themeStyles.text} />}
             title="Privacy Policy"
             textColor={themeStyles.text}
+            onPress={() => navigation.navigate("PrivacyPolicyScreen")}
           />
         </View>
 
@@ -196,7 +215,7 @@ const SettingsScreen: React.FC = () => {
         </View>
 
         {/* LOGOUT */}
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity style={styles.logoutButton} onPress={confirmLogout}>
           <LogOut size={18} color="#D81E5B" />
           <Text style={[styles.logoutText]}>Log Out</Text>
         </TouchableOpacity>

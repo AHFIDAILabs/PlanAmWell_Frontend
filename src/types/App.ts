@@ -103,4 +103,7 @@ export type AppStackParamList = {
 
   DoctorPendingScreen: undefined;
   DoctorOnboardingScreen: undefined;
+
+  PrivacyPolicyScreen: undefined;
+  TermsOfServiceScreen: undefined;
 };
