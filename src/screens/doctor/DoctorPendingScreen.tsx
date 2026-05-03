@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,13 +6,17 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { useAuth } from "../../hooks/useAuth";
 import { IDoctor } from "../../types/backendType";
+import { AppStackParamList } from "../../types/App";
+
+type Nav = StackNavigationProp<AppStackParamList>;
 
 type DoctorStatus = "submitted" | "reviewing" | "approved" | "rejected";
 
@@ -78,12 +82,25 @@ const STATUS_CONFIG: Record<
 };
 
 export default function DoctorPendingScreen() {
+  const navigation = useNavigation<Nav>();
   const { user, refreshUser, handleLogout, isDoctor } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
 
   const doctor = isDoctor() ? (user as IDoctor) : null;
   const status: DoctorStatus = (doctor?.status as DoctorStatus) ?? "submitted";
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.submitted;
+
+  // Auto-navigate when status changes after a refresh
+  useEffect(() => {
+    if (!doctor) return;
+    if (doctor.status === "approved") {
+      if (doctor.profileComplete) {
+        navigation.replace("DoctorDashScreen");
+      } else {
+        navigation.replace("DoctorOnboardingScreen");
+      }
+    }
+  }, [doctor?.status, doctor?.profileComplete]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -100,7 +117,7 @@ export default function DoctorPendingScreen() {
         }
       >
         {/* Top gradient band */}
-        <LinearGradient colors={["#D81E5B", "#FF6B95"]} style={styles.topBand}>
+        <LinearGradient colors={["#D81E5B", "#FF6B95"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.topBand}>
           <Text style={styles.appName}>PlanAmWell</Text>
           <Text style={styles.doctorPortal}>Doctor Portal</Text>
         </LinearGradient>

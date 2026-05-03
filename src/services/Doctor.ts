@@ -214,25 +214,26 @@ export const updateDoctorProfile = async (
         });
         
         // Append image if provided
-        if (imageUri && imageUri.startsWith('file://')) {
-            const filename = imageUri.split('/').pop();
-            const match = /\.(\w+)$/.exec(filename || '');
-            const type = match ? `image/${match[1]}` : `image/jpeg`;
-            
+        if (imageUri) {
+            const filename = imageUri.split('/').pop() || 'doctor_image.jpg';
+            const ext = (/\.(\w+)$/.exec(filename)?.[1] ?? 'jpg').toLowerCase();
+            const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+
             formData.append('doctorImage', {
                 uri: imageUri,
-                name: filename || 'doctor_image.jpg',
+                name: filename,
                 type,
             } as any);
         }
-        
+
+        // Do NOT set Content-Type manually — React Native must set it with the
+        // multipart boundary, otherwise the server cannot parse the body.
         const response: AxiosResponse<SingleDoctorResponse> = await axios.put(
             `${API_URL}/${doctorId}`,
             formData,
             {
                 headers: {
                     Authorization: `Bearer ${authToken}`,
-                    'Content-Type': 'multipart/form-data',
                 },
             }
         );

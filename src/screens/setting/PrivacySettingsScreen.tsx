@@ -18,6 +18,8 @@ import BottomBar from "../../components/common/BottomBar";
 import { useAuth } from "../../hooks/useAuth";
 import Toast from "react-native-toast-message";
 import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { AppStackParamList } from "../../types/App";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { TOKEN_KEY } from "../../services/Auth";
@@ -33,7 +35,7 @@ const PrivacySettingsScreen: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
 
   const { handleLogout } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
 
   const openDeleteModal = () => {
     setPassword("");
