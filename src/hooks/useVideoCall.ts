@@ -9,17 +9,12 @@ const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 const API_URL = `${SERVER_URL}/api/v1/video`;
 
 export interface VideoTokenResponse {
-  token: string;
   channelName: string;
-  uid: number;
-  appId: string;
-  expiresAt: string;
-  appointment?: {
-    id: string;
-    scheduledAt: string;
-    doctorName: string;
-    patientName: string;
-  };
+  callStatus: string;
+  participantCount: number;
+  isInitiator: boolean;
+  doctorName: string;
+  patientName: string;
 }
 
 export type CallIssueType = "audio" | "video" | "network" | "other";
@@ -143,9 +138,6 @@ export const useVideoCall = () => {
     );
   }, []);
 
-  /** 
-   * Fetch Agora RTC Token with enhanced error handling
-   */
   const getVideoToken = useCallback(
     async (appointmentId: string, retries = 2): Promise<VideoTokenResponse> => {
       try {
@@ -178,9 +170,7 @@ export const useVideoCall = () => {
         const data: VideoTokenResponse = response.data.data;
         setCallData(data);
         
-        console.log('✅ Video token received successfully');
-        console.log(`   Channel: ${data.channelName}`);
-        console.log(`   UID: ${data.uid}`);
+        console.log(`✅ Call session ready — channel: ${data.channelName}, initiator: ${data.isInitiator}`);
         
         return data;
 
