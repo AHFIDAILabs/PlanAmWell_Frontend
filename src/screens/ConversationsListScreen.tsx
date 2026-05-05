@@ -122,40 +122,50 @@ export const ConversationsListScreen: React.FC = () => {
   // RENDER CONVERSATION
   // ===========================
   const renderConversation = ({ item }: { item: IConversation }) => {
-    const otherParticipant =
-      userRole === "Doctor" ? item.participants.userId : item.participants.doctorId;
+    // Guard: skip conversations with missing participant data (populate may return null
+    // for deleted users/doctors). Returning null prevents a TypeError crashing the list.
+    const rawParticipant =
+      userRole === "Doctor" ? item.participants?.userId : item.participants?.doctorId;
+    if (!rawParticipant || typeof rawParticipant !== "object") return null;
+    const otherParticipant = rawParticipant as any;
 
     const otherParticipantName =
       userRole === "Doctor"
         ? otherParticipant.name || "Patient"
-        : `Dr. ${(otherParticipant as any).firstName || ""} ${(otherParticipant as any).lastName || ""}`;
+        : `Dr. ${otherParticipant.firstName || ""} ${otherParticipant.lastName || ""}`.trim() || "Doctor";
 
     const otherParticipantImage =
       userRole === "Doctor"
-        ? (otherParticipant as any)?.userImage?.imageUrl ||
-          (otherParticipant as any)?.userImage?.secure_url ||
-          `https://ui-avatars.com/api/?name=${otherParticipant.name || "User"}`
-        : getDoctorImageUri(otherParticipant as any);
+        ? otherParticipant.userImage?.imageUrl ||
+          otherParticipant.userImage?.secure_url ||
+          `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant.name || "User")}`
+        : getDoctorImageUri(otherParticipant);
 
     const unreadCount =
       userRole === "Doctor"
-        ? item.unreadCount.doctor
-        : item.unreadCount.user;
+        ? (item.unreadCount?.doctor ?? 0)
+        : (item.unreadCount?.user ?? 0);
 
+    const lastContent = item.lastMessage?.content ?? "";
     const lastMessagePreview = item.lastMessage
-      ? item.lastMessage.content.length > 50
-        ? item.lastMessage.content.substring(0, 50) + "..."
-        : item.lastMessage.content
+      ? lastContent.length > 50 ? lastContent.substring(0, 50) + "..." : lastContent
       : "No messages yet";
 
-    const lastMessageTime = item.lastMessage
+    const lastMessageTime = item.lastMessage?.createdAt
       ? formatMessageTime(new Date(item.lastMessage.createdAt))
       : "";
 
     const appointment =
-      typeof item.appointmentId === "object"
-        ? item.appointmentId
+      item.appointmentId && typeof item.appointmentId === "object"
+        ? item.appointmentId as any
         : null;
+
+    const appointmentDate = appointment?.scheduledAt
+      ? new Date(appointment.scheduledAt)
+      : null;
+    const validAppointmentDate = appointmentDate && !isNaN(appointmentDate.getTime())
+      ? appointmentDate
+      : null;
 
     return (
       <TouchableOpacity
@@ -206,12 +216,12 @@ export const ConversationsListScreen: React.FC = () => {
             )}
           </View>
 
-          {appointment && (
+          {validAppointmentDate && (
             <View style={styles.appointmentInfo}>
               <Ionicons name="calendar-outline" size={12} color="#999" />
               <Text style={styles.appointmentText}>
-                {new Date(appointment.scheduledAt).toLocaleDateString()} at{" "}
-                {new Date(appointment.scheduledAt).toLocaleTimeString([], {
+                {validAppointmentDate.toLocaleDateString()} at{" "}
+                {validAppointmentDate.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
