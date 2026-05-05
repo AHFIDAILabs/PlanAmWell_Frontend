@@ -92,6 +92,9 @@ export const ChatRoomScreen: React.FC = () => {
   // the `conversation` state settles — avoids stale closure mismatches
   const conversationIdRef = useRef<string | null>(null);
 
+  // Holds the patient's user ID for use inside socket handlers (stale closure safe)
+  const patientIdRef = useRef<string | null>(null);
+
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentUserId = user?._id;
@@ -144,6 +147,7 @@ export const ChatRoomScreen: React.FC = () => {
       if (conv) {
         setConversation(conv);
         conversationIdRef.current = conv._id; // ← keep ref in sync immediately
+        patientIdRef.current = String((conv.participants?.userId as any)?._id || '');
 
         // Replace messages wholesale on a full reload — de-dupe by _id
         setMessages(dedupeMessages([...conv.messages]));
@@ -242,7 +246,7 @@ export const ChatRoomScreen: React.FC = () => {
       if (data.conversationId !== conversationIdRef.current) return;
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.senderId === currentUserId
+          String(msg.senderId) === String(currentUserId)
             ? { ...msg, status: "read" as const }
             : msg
         )
@@ -265,8 +269,7 @@ export const ChatRoomScreen: React.FC = () => {
           navigation.navigate("VideoCallScreen", {
             appointmentId,
             name: otherParticipantName,
-            // Read from conversation state at call time — not captured stale
-            patientId: (conversationIdRef as any)._patientId,
+            patientId: patientIdRef.current || '',
             role: isDoctor ? "doctor" : "user",
             autoJoin: true,
           });
@@ -363,7 +366,7 @@ export const ChatRoomScreen: React.FC = () => {
     if (!conversation?.activeVideoRequest) return;
     const request = conversation.activeVideoRequest;
     if (request.status !== "pending") return;
-    if (request.requestedBy === currentUserId) {
+    if (String(request.requestedBy) === String(currentUserId)) {
       setOutgoingVideoRequest(request);
     } else {
       setIncomingVideoRequest(request);
@@ -684,7 +687,7 @@ export const ChatRoomScreen: React.FC = () => {
 
   // ─── Render message ───────────────────────────────────────────────────────────
   const renderMessage = ({ item }: { item: IMessage }) => {
-    const isOwn = item.senderId === currentUserId;
+    const isOwn = String(item.senderId) === String(currentUserId);
     const isSystem = item.messageType === "system";
     const isImage = item.messageType === "image" && !!item.mediaUrl;
     const isDoc =

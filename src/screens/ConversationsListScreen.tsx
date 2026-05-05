@@ -193,7 +193,7 @@ export const ConversationsListScreen: React.FC = () => {
               ]}
               numberOfLines={1}
             >
-              {item.lastMessage?.senderId === currentUserId && "You: "}
+              {String(item.lastMessage?.senderId) === String(currentUserId) && "You: "}
               {lastMessagePreview}
             </Text>
 

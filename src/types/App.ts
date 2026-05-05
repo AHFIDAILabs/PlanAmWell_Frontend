@@ -47,9 +47,14 @@ export type AppStackParamList = {
 
   VideoCallScreen: {
     appointmentId: string;
-    name: string;
-    patientId: string;
-    role: 'doctor' | 'user';
+    name?: string;
+    patientId?: string;
+    role?: string;
+    autoJoin?: boolean;
+    fromAppointmentList?: boolean;
+    fromNotification?: boolean;
+    userImage?: string;
+    doctorImage?: string;
   };
 
   AllActivePartnerScreen: undefined;

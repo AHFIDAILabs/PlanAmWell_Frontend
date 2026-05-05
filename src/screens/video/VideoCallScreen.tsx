@@ -59,8 +59,6 @@ export default function VideoCallScreen({ route, navigation }: any) {
     appointmentId,
     name = 'Participant',
     role: rawRole = 'User',
-    autoJoin = false,
-    fromAppointmentList = false,
   } = route.params as RouteParams;
 
   // Normalise role to match backend ('Doctor' | 'User')
@@ -331,7 +329,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
   // ── Auto-start ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (autoJoin || fromAppointmentList) initCall();
+    initCall();
     return () => { cleanup(); };
   }, []);
 
