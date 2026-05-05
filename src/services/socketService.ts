@@ -9,6 +9,8 @@ class SocketService {
   private maxReconnectAttempts = 5;
   private isConnecting = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  // Persisted app-level listeners — survive socket reconnects
+  private appListeners = new Map<string, ((data: any) => void)[]>();
 
   /* ----------------------------------------
    * Wake up Render server (free tier)
@@ -94,6 +96,7 @@ class SocketService {
       });
 
       this.setupListeners();
+      this.reregisterAppListeners();
       this.isConnecting = false;
 
       console.log('🔌 Socket.IO connection initiated');
@@ -200,18 +203,46 @@ class SocketService {
    * Notification helpers
    * --------------------------------------*/
   onNotification(event: string, callback: (data: any) => void) {
-    if (!this.socket) {
-      console.warn('⚠️ Socket not initialized');
-      return;
+    // Store so it survives socket reconnects
+    if (!this.appListeners.has(event)) {
+      this.appListeners.set(event, []);
     }
-    this.socket.on(event, callback);
-    console.log(`👂 Listening for event "${event}"`);
+    const list = this.appListeners.get(event)!;
+    if (!list.includes(callback)) {
+      list.push(callback);
+    }
+
+    if (this.socket) {
+      this.socket.on(event, callback);
+      console.log(`👂 Listening for event "${event}"`);
+    } else {
+      console.warn(`⚠️ Socket not initialized — "${event}" listener queued`);
+    }
   }
 
   offNotification(event: string, callback: (data: any) => void) {
+    // Remove from persistence map
+    const list = this.appListeners.get(event);
+    if (list) {
+      const idx = list.indexOf(callback);
+      if (idx !== -1) list.splice(idx, 1);
+      if (list.length === 0) this.appListeners.delete(event);
+    }
+
+    if (this.socket) {
+      this.socket.off(event, callback);
+      console.log(`🛑 Stopped listening for event "${event}"`);
+    }
+  }
+
+  private reregisterAppListeners() {
     if (!this.socket) return;
-    this.socket.off(event, callback);
-    console.log(`🛑 Stopped listening for event "${event}"`);
+    this.appListeners.forEach((callbacks, event) => {
+      callbacks.forEach((cb) => this.socket!.on(event, cb));
+    });
+    if (this.appListeners.size > 0) {
+      console.log(`🔄 Re-registered ${this.appListeners.size} app event type(s) after reconnect`);
+    }
   }
 
   markNotificationRead(notificationId: string) {
@@ -242,6 +273,7 @@ class SocketService {
       this.socket = null;
       this.reconnectAttempts = 0;
       console.log('✅ Socket disconnected');
+      // appListeners intentionally preserved — reregisterAppListeners() re-adds them on next connect
     }
   }
 
