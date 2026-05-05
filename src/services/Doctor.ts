@@ -188,61 +188,49 @@ export const updateDoctorProfile = async (
 ): Promise<IDoctor | null> => {
     try {
         console.log(`[DoctorService] Updating doctor profile: ${doctorId}`);
-        
-        // Get token
+
         let authToken: string | null = token || null;
         if (!authToken) {
             authToken = await SecureStore.getItemAsync(TOKEN_KEY);
         }
-        
         if (!authToken) {
             throw new Error('Authentication required');
         }
-        
-        const formData = new FormData();
-        
-        // Append update data fields
-        Object.keys(updateData).forEach(key => {
-            const value = (updateData as any)[key];
-            if (value !== undefined && value !== null) {
-                if (typeof value === 'object' && !(value instanceof File)) {
-                    formData.append(key, JSON.stringify(value));
-                } else {
-                    formData.append(key, value.toString());
-                }
-            }
-        });
-        
-        // Append image if provided
+
+        let body: any;
+        let headers: Record<string, string> = { Authorization: `Bearer ${authToken}` };
+
         if (imageUri) {
+            // Use FormData only when uploading an image file
+            const formData = new FormData();
+            Object.keys(updateData).forEach(key => {
+                const value = (updateData as any)[key];
+                if (value !== undefined && value !== null) {
+                    formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value.toString());
+                }
+            });
             const filename = imageUri.split('/').pop() || 'doctor_image.jpg';
             const ext = (/\.(\w+)$/.exec(filename)?.[1] ?? 'jpg').toLowerCase();
-            const type = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-
-            formData.append('doctorImage', {
-                uri: imageUri,
-                name: filename,
-                type,
-            } as any);
+            formData.append('doctorImage', { uri: imageUri, name: filename, type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` } as any);
+            body = formData;
+            // Let React Native set the multipart boundary automatically — do NOT set Content-Type manually
+        } else {
+            // Plain JSON for text-only updates (avoids multipart boundary issues)
+            body = updateData;
+            headers['Content-Type'] = 'application/json';
         }
 
-        // Do NOT set Content-Type manually — React Native must set it with the
-        // multipart boundary, otherwise the server cannot parse the body.
         const response: AxiosResponse<SingleDoctorResponse> = await axios.put(
             `${API_URL}/${doctorId}`,
-            formData,
-            {
-                headers: {
-                    Authorization: `Bearer ${authToken}`,
-                },
-            }
+            body,
+            { headers }
         );
-        
+
         if (response.data.success) {
             console.log('[DoctorService] ✅ Doctor profile updated');
             return response.data.data;
         }
-        
+
         return null;
     } catch (error: any) {
         console.error(`[DoctorService] ❌ Error updating doctor:`, error.response?.data || error.message);

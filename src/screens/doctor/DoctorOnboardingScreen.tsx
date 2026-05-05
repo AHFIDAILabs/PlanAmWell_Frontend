@@ -167,10 +167,15 @@ export default function DoctorOnboardingScreen() {
       return;
     }
 
+    if (!doctor?._id) {
+      Toast.show({ type: "error", text1: "Session error. Please log out and log in again." });
+      return;
+    }
+
     setSavingProfile(true);
     try {
       await updateDoctorProfile(
-        doctor!._id.toString(),
+        doctor._id.toString(),
         {
           bio: bio.trim(),
           yearsOfExperience: Number(yearsOfExperience),
