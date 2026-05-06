@@ -10,6 +10,7 @@ import {
   Vibration,
   Platform,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { StackScreenProps } from '@react-navigation/stack';
 import { AppStackParamList } from '../../types/App';
+import { respondToVideoCall } from '../../services/Chat';
+import { useVideoCall } from '../../hooks/useVideoCall';
+import Toast  from 'react-native-toast-message';
 
 // ✅ Fixed: Use proper StackScreenProps type
 type IncomingCallScreenProps = StackScreenProps<AppStackParamList, 'IncomingCall'>;
@@ -28,11 +32,16 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
     callerImage,
     callerType,
     channelName,
+    conversationId,
+    videoRequestId,
   } = route.params;
 
+  const { declineCall } = useVideoCall();
+
   const [pulseAnim] = useState(new Animated.Value(1));
+  const [responding, setResponding] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
-  const vibrationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const vibrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     // Start ringtone and vibration
@@ -128,20 +137,44 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
   const handleAccept = async () => {
     await cleanup();
 
-    // Navigate to video call screen
-    navigation.replace('VideoCallScreen', {
-      appointmentId,
-      name: callerName,
-      patientId: '', // You may need to pass this from route params
-      role: callerType === 'Doctor' ? 'user' : 'doctor',
-    });
+    setResponding(true);
+    try {
+      // If there's a video request, confirm acceptance with backend
+      if (conversationId && videoRequestId) {
+        try {
+          await respondToVideoCall(conversationId, videoRequestId, true);
+          Toast.show({ type: "success", text1: "Call Accepted" });
+        } catch (error) {
+          console.warn('⚠️ Failed to respond to video request:', error);
+          // Continue anyway - let them join the call
+        }
+      }
+
+      // Navigate to video call screen
+      navigation.replace('VideoCallScreen', {
+        appointmentId,
+        name: callerName,
+        role: callerType === 'Doctor' ? 'user' : 'doctor',
+      });
+    } finally {
+      setResponding(false);
+    }
   };
 
   const handleDecline = async () => {
     await cleanup();
 
-    // TODO: Send decline notification to backend
-    // await declineCall(appointmentId);
+    try {
+      if (conversationId && videoRequestId) {
+        // Chat-based request: notify the requester via the video-call-response event
+        await respondToVideoCall(conversationId, videoRequestId, false);
+      } else {
+        // Appointment-based call: reset callStatus and emit call-declined to initiator
+        await declineCall(appointmentId);
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to send decline notification:', error);
+    }
 
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -217,17 +250,22 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
 
           {/* Accept Button */}
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[styles.actionButton, responding && styles.actionButtonDisabled]}
             onPress={handleAccept}
             activeOpacity={0.7}
+            disabled={responding}
           >
             <LinearGradient
               colors={['#10b981', '#059669']}
               style={styles.actionButtonGradient}
             >
-              <Ionicons name="videocam" size={32} color="#fff" />
+              {responding ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="videocam" size={32} color="#fff" />
+              )}
             </LinearGradient>
-            <Text style={styles.actionLabel}>Accept</Text>
+            <Text style={styles.actionLabel}>{responding ? 'Joining...' : 'Accept'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -336,6 +374,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: 12,
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
   },
   infoContainer: {
     flexDirection: 'row',

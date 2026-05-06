@@ -65,6 +65,8 @@ export type AppStackParamList = {
     callerImage?: string;
     callerType: 'Doctor' | 'Patient';
     channelName: string;
+    conversationId?: string;
+    videoRequestId?: string;
   };
 
   ChatRoomScreen: {

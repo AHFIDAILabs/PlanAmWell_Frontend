@@ -348,6 +348,8 @@ export type NotificationData =
       callerImage?: string;
       callerType: string;
       channelName: string;
+      conversationId?: string;
+      videoRequestId?: string;
     }
   | {
       type: 'appointment';

@@ -88,6 +88,8 @@ handleNotificationReceived(
         callerImage: data.callerImage,
         callerType: data.callerType,
         channelName: data.channelName,
+        conversationId: data.conversationId,
+        videoRequestId: data.videoRequestId,
       });
     }
 
@@ -113,6 +115,8 @@ handleNotificationReceived(
         callerImage: data.callerImage,
         callerType: data.callerType,
         channelName: data.channelName,
+        conversationId: data.conversationId,
+        videoRequestId: data.videoRequestId,
       });
     }
 
@@ -136,6 +140,8 @@ handleNotificationReceived(
         callerImage: data.callerImage,
         callerType: data.callerType,
         channelName: data.channelName,
+        conversationId: data.conversationId,
+        videoRequestId: data.videoRequestId,
       });
     }, 1000);
   }

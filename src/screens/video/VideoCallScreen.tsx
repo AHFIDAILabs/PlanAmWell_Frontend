@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -74,6 +74,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const pcRef             = useRef<RTCPeerConnection | null>(null);
   const localStreamRef    = useRef<MediaStream | null>(null);
   const hasCleanedUpRef   = useRef(false);
+  const selfEndedRef      = useRef(false);
   const offerSentRef      = useRef(false);
   const iceCandidateQueue = useRef<any[]>([]);
   const readyIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -312,6 +313,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
     const socket = socketService.getSocket();
     const handleCallEnded = (data: { appointmentId: string; callDuration: number }) => {
       if (data.appointmentId !== appointmentId) return;
+      if (selfEndedRef.current) return; // we triggered this ourselves — already navigating back
       Alert.alert(
         'Call Ended',
         `The call was ended by the ${role === 'Doctor' ? 'patient' : 'doctor'}.`,
@@ -319,10 +321,24 @@ export default function VideoCallScreen({ route, navigation }: any) {
         { cancelable: false },
       );
     };
-    socket?.on('call-ended', handleCallEnded);
+
+    const handleCallDeclined = (data: { appointmentId: string }) => {
+      if (data.appointmentId !== appointmentId) return;
+      selfEndedRef.current = true; // suppress any follow-up call-ended event
+      Alert.alert(
+        'Call Declined',
+        `${name} declined the call.`,
+        [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
+        { cancelable: false },
+      );
+    };
+
+    socket?.on('call-ended',    handleCallEnded);
+    socket?.on('call-declined', handleCallDeclined);
 
     return () => {
-      socket?.off('call-ended', handleCallEnded);
+      socket?.off('call-ended',    handleCallEnded);
+      socket?.off('call-declined', handleCallDeclined);
       socketService.leaveAppointment(appointmentId);
     };
   }, [appointmentId]);
@@ -365,7 +381,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
       {
         text: 'End Call',
         style: 'destructive',
-        onPress: async () => { await cleanup(); navigation.goBack(); },
+        onPress: async () => {
+          selfEndedRef.current = true;
+          await cleanup();
+          navigation.goBack();
+        },
       },
     ]);
   };

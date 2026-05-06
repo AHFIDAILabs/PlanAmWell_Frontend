@@ -298,7 +298,25 @@ export const useVideoCall = () => {
     []
   );
 
-  /** 
+  /**
+   * Decline an incoming ringing call (appointment-based, no video request)
+   */
+  const declineCall = useCallback(async (appointmentId: string) => {
+    try {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (!token) return;
+      await axios.post(
+        `${API_URL}/decline`,
+        { appointmentId },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 8000 }
+      );
+      console.log('📵 Decline sent for appointment:', appointmentId);
+    } catch (err: any) {
+      console.warn('⚠️ Failed to send call decline:', err.message);
+    }
+  }, []);
+
+  /**
    * Get call status
    */
 /** 
@@ -436,16 +454,17 @@ const getCallStatus = useCallback(
     callStartTime.current = null;
   }, []);
 
-  return { 
-    loading, 
-    callActive, 
-    callData, 
+  return {
+    loading,
+    callActive,
+    callData,
     error,
-    getVideoToken, 
+    getVideoToken,
     startCall,
-    startCallWithErrorHandling, 
-    endCall, 
-    getCallStatus, 
+    startCallWithErrorHandling,
+    endCall,
+    declineCall,
+    getCallStatus,
     reportCallIssue,
     clearError,
     reset,
