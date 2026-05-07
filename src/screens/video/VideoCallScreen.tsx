@@ -177,6 +177,27 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
       await applyAudioMode(true);
 
+      // ── Ensure Socket.IO is connected ──────────────────────────────────────
+      const socket = socketService.getSocket();
+      if (!socket?.connected) {
+        // Try to reconnect if socket exists but is disconnected
+        if (socket) {
+          console.log('🔄 Socket exists but disconnected, attempting reconnect...');
+          await socketService.reconnect();
+        } else {
+          console.log('🔌 Socket not initialized, connecting...');
+          await socketService.connect();
+        }
+
+        // Wait briefly for connection to establish
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const reconnectedSocket = socketService.getSocket();
+        if (!reconnectedSocket?.connected) {
+          throw new Error('Unable to establish real-time connection. Please check your internet connection.');
+        }
+      }
+
       // Backend: register participant, get isInitiator flag
       const data: VideoTokenResponse = await startCall(appointmentId);
       isInitiatorRef.current = data.isInitiator;
@@ -198,8 +219,8 @@ export default function VideoCallScreen({ route, navigation }: any) {
       });
 
       // ── Socket signaling listeners ────────────────────────────────────────
-      const socket = socketService.getSocket();
-      if (!socket) throw new Error('Socket not connected');
+      const updatedSocket = socketService.getSocket();
+      if (!updatedSocket?.connected) throw new Error('Socket connection lost during initialization');
 
       const handlePeerReady = async () => {
         // Only the initiator responds to peer-ready by creating an offer
@@ -208,7 +229,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
         try {
           const offer = await pc.createOffer({});
           await pc.setLocalDescription(offer);
-          socket.emit('webrtc-offer', { appointmentId, offer });
+          updatedSocket.emit('webrtc-offer', { appointmentId, offer });
         } catch (e) {
           console.error('❌ createOffer failed:', e);
         }
@@ -224,7 +245,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
           iceCandidateQueue.current = [];
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          socket.emit('webrtc-answer', { appointmentId, answer });
+          updatedSocket.emit('webrtc-answer', { appointmentId, answer });
         } catch (e) {
           console.error('❌ handleOffer failed:', e);
         }
@@ -251,13 +272,13 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      socket.on('webrtc-ready',         handlePeerReady);
-      socket.on('webrtc-offer',         handleOffer);
-      socket.on('webrtc-answer',        handleAnswer);
-      socket.on('webrtc-ice-candidate', handleIceCandidate);
+      updatedSocket.on('webrtc-ready',         handlePeerReady);
+      updatedSocket.on('webrtc-offer',         handleOffer);
+      updatedSocket.on('webrtc-answer',        handleAnswer);
+      updatedSocket.on('webrtc-ice-candidate', handleIceCandidate);
 
       // Announce readiness; retry every 5 s until the peer connection is up
-      const emitReady = () => socket.emit('webrtc-ready', { appointmentId });
+      const emitReady = () => updatedSocket.emit('webrtc-ready', { appointmentId });
       emitReady();
       readyIntervalRef.current = setInterval(() => {
         if (pcRef.current?.connectionState === 'connected') {
@@ -308,9 +329,22 @@ export default function VideoCallScreen({ route, navigation }: any) {
   // ── Socket room + call-ended ─────────────────────────────────────────────
   useEffect(() => {
     if (!appointmentId) return;
-    socketService.joinAppointment(appointmentId);
 
-    const socket = socketService.getSocket();
+    // Ensure socket is connected before joining appointment room
+    const ensureConnectedAndJoin = async () => {
+      const sock = socketService.getSocket();
+      if (!sock?.connected) {
+        console.log('⚠️ Socket not ready, retrying...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        socketService.joinAppointment(appointmentId);
+      } else {
+        socketService.joinAppointment(appointmentId);
+      }
+    };
+
+    ensureConnectedAndJoin();
+
+    const callSocket = socketService.getSocket();
     const handleCallEnded = (data: { appointmentId: string; callDuration: number }) => {
       if (data.appointmentId !== appointmentId) return;
       if (selfEndedRef.current) return; // we triggered this ourselves — already navigating back
@@ -333,12 +367,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
       );
     };
 
-    socket?.on('call-ended',    handleCallEnded);
-    socket?.on('call-declined', handleCallDeclined);
+    callSocket?.on('call-ended',    handleCallEnded);
+    callSocket?.on('call-declined', handleCallDeclined);
 
     return () => {
-      socket?.off('call-ended',    handleCallEnded);
-      socket?.off('call-declined', handleCallDeclined);
+      callSocket?.off('call-ended',    handleCallEnded);
+      callSocket?.off('call-declined', handleCallDeclined);
       socketService.leaveAppointment(appointmentId);
     };
   }, [appointmentId]);

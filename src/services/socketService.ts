@@ -35,76 +35,107 @@ class SocketService {
   /* ----------------------------------------
    * Connect to Socket.IO
    * --------------------------------------*/
-  async connect() {
-    try {
-      if (this.isConnecting) {
-        console.log('⏳ Socket connection already in progress');
-        return;
-      }
+  async connect(maxWaitTime = 20000): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        if (this.isConnecting) {
+          console.log('⏳ Socket connection already in progress');
+          return resolve(this.socket?.connected || false);
+        }
 
-      if (this.socket?.connected) {
-        console.log('✅ Socket already connected');
-        return;
-      }
+        if (this.socket?.connected) {
+          console.log('✅ Socket already connected');
+          return resolve(true);
+        }
 
-      this.isConnecting = true;
+        this.isConnecting = true;
 
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+        // Setup timeout
+        const timeoutHandle = setTimeout(() => {
+          console.error('❌ Socket connection timeout after', maxWaitTime, 'ms');
+          this.isConnecting = false;
+          resolve(false);
+        }, maxWaitTime);
 
-      if (!token) {
-        console.log('❌ No token found, cannot connect to Socket.IO');
+        const cleanupTimeout = () => clearTimeout(timeoutHandle);
+
+        SecureStore.getItemAsync(TOKEN_KEY).then((token) => {
+          if (!token) {
+            console.log('❌ No token found, cannot connect to Socket.IO');
+            cleanupTimeout();
+            this.isConnecting = false;
+            return resolve(false);
+          }
+
+          const serverUrl =
+            process.env.EXPO_PUBLIC_SERVER_URL || 'http://localhost:4000';
+
+          console.log('🔌 Connecting to Socket.IO server:', serverUrl);
+          console.log('   Platform:', Platform.OS);
+          console.log('   Token preview:', token.substring(0, 20) + '...');
+
+          // Cleanup existing socket
+          if (this.socket) {
+            this.socket.removeAllListeners();
+            this.socket.disconnect();
+            this.socket = null;
+          }
+
+          // Wake server first
+          this.wakeUpServer();
+
+          setTimeout(() => {
+            // Create socket
+            this.socket = io(serverUrl, {
+              auth: { token },
+              transports: ['websocket'],
+              upgrade: false,
+              reconnection: true,
+              reconnectionAttempts: this.maxReconnectAttempts,
+              reconnectionDelay: 3000,
+              reconnectionDelayMax: 10000,
+              timeout: 20000,
+              autoConnect: true,
+              forceNew: true,
+              path: '/socket.io/',
+              withCredentials: false,
+              extraHeaders: {
+                'X-Client-Type': 'react-native',
+                'X-Platform': Platform.OS,
+              },
+            });
+
+            // Setup connection success handler
+            const onConnect = () => {
+              console.log('✅ Socket.IO connected');
+              cleanupTimeout();
+              this.setupListeners();
+              this.reregisterAppListeners();
+              this.isConnecting = false;
+              this.socket?.off('connect', onConnect);
+              resolve(true);
+            };
+
+            this.socket.on('connect', onConnect);
+
+            // Setup connection error handler
+            const onConnectError = (error: any) => {
+              console.error('❌ Socket connection error:', error.message);
+              cleanupTimeout();
+              this.isConnecting = false;
+              this.socket?.off('connect_error', onConnectError);
+              resolve(false);
+            };
+
+            this.socket.on('connect_error', onConnectError);
+          }, 2000);
+        });
+      } catch (error: any) {
+        console.error('❌ Socket connection error:', error);
         this.isConnecting = false;
-        return;
+        resolve(false);
       }
-
-      const serverUrl =
-        process.env.EXPO_PUBLIC_SERVER_URL || 'http://localhost:4000';
-
-      console.log('🔌 Connecting to Socket.IO server:', serverUrl);
-      console.log('   Platform:', Platform.OS);
-      console.log('   Token preview:', token.substring(0, 20) + '...');
-
-      // Cleanup existing socket
-      if (this.socket) {
-        this.socket.removeAllListeners();
-        this.socket.disconnect();
-        this.socket = null;
-      }
-
-      // Wake server first
-      await this.wakeUpServer();
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Create socket
-      this.socket = io(serverUrl, {
-        auth: { token },
-        transports: ['websocket'],
-        upgrade: false,
-        reconnection: true,
-        reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 3000,
-        reconnectionDelayMax: 10000,
-        timeout: 20000,
-        autoConnect: true,
-        forceNew: true,
-        path: '/socket.io/',
-        withCredentials: false,
-        extraHeaders: {
-          'X-Client-Type': 'react-native',
-          'X-Platform': Platform.OS,
-        },
-      });
-
-      this.setupListeners();
-      this.reregisterAppListeners();
-      this.isConnecting = false;
-
-      console.log('🔌 Socket.IO connection initiated');
-    } catch (error: any) {
-      console.error('❌ Socket connection error:', error);
-      this.isConnecting = false;
-      this.scheduleReconnect();
-    }
+    });
   }
 
   /* ----------------------------------------
@@ -183,13 +214,25 @@ class SocketService {
    * Appointment room handling (CRITICAL FIX)
    * --------------------------------------*/
   joinAppointment(appointmentId: string) {
-    if (!this.socket?.connected) {
-      console.warn('⚠️ Socket not connected');
+    if (!this.socket) {
+      console.error('❌ Socket not initialized — cannot join appointment room');
       return;
     }
 
-    this.socket.emit('join-appointment', { appointmentId });
-    console.log(`📡 Joined appointment room: ${appointmentId}`);
+    if (!this.socket.connected) {
+      console.error('❌ Socket not connected — cannot join appointment room', {
+        connected: this.socket.connected,
+        disconnected: this.socket.disconnected,
+      });
+      return;
+    }
+
+    try {
+      this.socket.emit('join-appointment', { appointmentId });
+      console.log(`📡 Joined appointment room: ${appointmentId}`);
+    } catch (err) {
+      console.error(`❌ Failed to join appointment room:`, err);
+    }
   }
 
   leaveAppointment(appointmentId: string) {
@@ -296,7 +339,7 @@ class SocketService {
   async reconnect() {
     console.log('🔄 Manual reconnection requested');
     this.disconnect();
-    await this.connect();
+    await this.connect(15000); // Wait up to 15 seconds for reconnection
   }
 
   getSocket(): Socket | null {
