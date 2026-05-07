@@ -71,15 +71,18 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const { startCall, endCall } = useVideoCall();
 
   // ── Refs ─────────────────────────────────────────────────────────────────
-  const pcRef             = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef    = useRef<MediaStream | null>(null);
-  const hasCleanedUpRef   = useRef(false);
-  const selfEndedRef      = useRef(false);
-  const offerSentRef      = useRef(false);
-  const iceCandidateQueue = useRef<any[]>([]);
-  const readyIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const durationTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isInitiatorRef    = useRef(false);
+  const pcRef                  = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef         = useRef<MediaStream | null>(null);
+  const hasCleanedUpRef        = useRef(false);
+  const selfEndedRef           = useRef(false);
+  const offerSentRef           = useRef(false);
+  const iceCandidateQueue      = useRef<any[]>([]);
+  const readyIntervalRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const durationTimerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isInitiatorRef         = useRef(false);
+  // Stored so cleanup() can remove the exact listener references.
+  const callEndedHandlerRef    = useRef<((d: any) => void) | null>(null);
+  const callDeclinedHandlerRef = useRef<((d: any) => void) | null>(null);
 
   // ── State ────────────────────────────────────────────────────────────────
   const [localStream,  setLocalStream]  = useState<MediaStream | null>(null);
@@ -178,31 +181,63 @@ export default function VideoCallScreen({ route, navigation }: any) {
       await applyAudioMode(true);
 
       // ── Ensure Socket.IO is connected ──────────────────────────────────────
-      const socket = socketService.getSocket();
-      if (!socket?.connected) {
-        // Try to reconnect if socket exists but is disconnected
-        if (socket) {
-          console.log('🔄 Socket exists but disconnected, attempting reconnect...');
-          await socketService.reconnect();
-        } else {
-          console.log('🔌 Socket not initialized, connecting...');
-          await socketService.connect();
-        }
+      // socketService.connect() now polls when a connection is already in progress,
+      // and disconnect() resets isConnecting, so reconnect() is safe to call here.
+      let sock = socketService.getSocket();
+      if (!sock?.connected) {
+        console.log(sock ? '🔄 Socket disconnected — reconnecting...' : '🔌 No socket — connecting...');
+        const ok = sock
+          ? await socketService.reconnect().then(() => socketService.getSocket()?.connected ?? false)
+          : await socketService.connect();
 
-        // Wait briefly for connection to establish
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        const reconnectedSocket = socketService.getSocket();
-        if (!reconnectedSocket?.connected) {
-          throw new Error('Unable to establish real-time connection. Please check your internet connection.');
+        if (!ok) {
+          // One extra check after reconnect() (reconnect is void, above captures connected state)
+          sock = socketService.getSocket();
+          if (!sock?.connected) {
+            throw new Error('Unable to establish real-time connection. Please check your internet connection.');
+          }
         }
       }
 
-      // Backend: register participant, get isInitiator flag
+      // At this point the socket is guaranteed connected.
+      const activeSocket = socketService.getSocket()!;
+
+      // ── Join appointment room ─────────────────────────────────────────────
+      // Must happen on the live socket BEFORE emitting webrtc-ready so that
+      // both peers are in the same room when signalling events are relayed.
+      socketService.joinAppointment(appointmentId);
+
+      // ── Call-lifecycle listeners (on the confirmed live socket) ────────────
+      const handleCallEnded = (data: { appointmentId: string; callDuration: number }) => {
+        if (data.appointmentId !== appointmentId) return;
+        if (selfEndedRef.current) return;
+        Alert.alert(
+          'Call Ended',
+          `The call was ended by the ${role === 'Doctor' ? 'patient' : 'doctor'}.`,
+          [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
+          { cancelable: false },
+        );
+      };
+      const handleCallDeclined = (data: { appointmentId: string }) => {
+        if (data.appointmentId !== appointmentId) return;
+        selfEndedRef.current = true;
+        Alert.alert(
+          'Call Declined',
+          `${name} declined the call.`,
+          [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
+          { cancelable: false },
+        );
+      };
+      callEndedHandlerRef.current    = handleCallEnded;
+      callDeclinedHandlerRef.current = handleCallDeclined;
+      activeSocket.on('call-ended',    handleCallEnded);
+      activeSocket.on('call-declined', handleCallDeclined);
+
+      // ── Backend: register participant, get isInitiator flag ───────────────
       const data: VideoTokenResponse = await startCall(appointmentId);
       isInitiatorRef.current = data.isInitiator;
 
-      // Capture local media
+      // ── Capture local media ───────────────────────────────────────────────
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: { facingMode: 'user', width: 640, height: 480 },
@@ -211,17 +246,14 @@ export default function VideoCallScreen({ route, navigation }: any) {
       localStreamRef.current = stream;
       setLocalStream(stream);
 
-      // Build peer connection and attach tracks
+      // ── Build peer connection and attach tracks ───────────────────────────
       const pc = createPeerConnection(appointmentId);
       pcRef.current = pc;
       stream.getTracks().forEach((track: MediaStreamTrack) => {
         pc.addTrack(track, stream);
       });
 
-      // ── Socket signaling listeners ────────────────────────────────────────
-      const updatedSocket = socketService.getSocket();
-      if (!updatedSocket?.connected) throw new Error('Socket connection lost during initialization');
-
+      // ── WebRTC signaling listeners ────────────────────────────────────────
       const handlePeerReady = async () => {
         // Only the initiator responds to peer-ready by creating an offer
         if (!isInitiatorRef.current || offerSentRef.current) return;
@@ -229,7 +261,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
         try {
           const offer = await pc.createOffer({});
           await pc.setLocalDescription(offer);
-          updatedSocket.emit('webrtc-offer', { appointmentId, offer });
+          activeSocket.emit('webrtc-offer', { appointmentId, offer });
         } catch (e) {
           console.error('❌ createOffer failed:', e);
         }
@@ -245,7 +277,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
           iceCandidateQueue.current = [];
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          updatedSocket.emit('webrtc-answer', { appointmentId, answer });
+          activeSocket.emit('webrtc-answer', { appointmentId, answer });
         } catch (e) {
           console.error('❌ handleOffer failed:', e);
         }
@@ -272,13 +304,13 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      updatedSocket.on('webrtc-ready',         handlePeerReady);
-      updatedSocket.on('webrtc-offer',         handleOffer);
-      updatedSocket.on('webrtc-answer',        handleAnswer);
-      updatedSocket.on('webrtc-ice-candidate', handleIceCandidate);
+      activeSocket.on('webrtc-ready',         handlePeerReady);
+      activeSocket.on('webrtc-offer',         handleOffer);
+      activeSocket.on('webrtc-answer',        handleAnswer);
+      activeSocket.on('webrtc-ice-candidate', handleIceCandidate);
 
       // Announce readiness; retry every 5 s until the peer connection is up
-      const emitReady = () => updatedSocket.emit('webrtc-ready', { appointmentId });
+      const emitReady = () => activeSocket.emit('webrtc-ready', { appointmentId });
       emitReady();
       readyIntervalRef.current = setInterval(() => {
         if (pcRef.current?.connectionState === 'connected') {
@@ -311,11 +343,18 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
     const socket = socketService.getSocket();
     if (socket) {
+      // Remove call-lifecycle listeners by exact reference so we don't
+      // accidentally strip other components' handlers for the same event.
+      if (callEndedHandlerRef.current)    socket.off('call-ended',    callEndedHandlerRef.current);
+      if (callDeclinedHandlerRef.current) socket.off('call-declined', callDeclinedHandlerRef.current);
       socket.off('webrtc-ready');
       socket.off('webrtc-offer');
       socket.off('webrtc-answer');
       socket.off('webrtc-ice-candidate');
     }
+
+    // Leave the appointment socket room
+    socketService.leaveAppointment(appointmentId);
 
     localStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
     localStreamRef.current = null;
@@ -326,61 +365,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
     try { await endCall(appointmentId); } catch {}
   };
 
-  // ── Socket room + call-ended ─────────────────────────────────────────────
-  useEffect(() => {
-    if (!appointmentId) return;
-
-    // Ensure socket is connected before joining appointment room
-    const ensureConnectedAndJoin = async () => {
-      const sock = socketService.getSocket();
-      if (!sock?.connected) {
-        console.log('⚠️ Socket not ready, retrying...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        socketService.joinAppointment(appointmentId);
-      } else {
-        socketService.joinAppointment(appointmentId);
-      }
-    };
-
-    ensureConnectedAndJoin();
-
-    const callSocket = socketService.getSocket();
-    const handleCallEnded = (data: { appointmentId: string; callDuration: number }) => {
-      if (data.appointmentId !== appointmentId) return;
-      if (selfEndedRef.current) return; // we triggered this ourselves — already navigating back
-      Alert.alert(
-        'Call Ended',
-        `The call was ended by the ${role === 'Doctor' ? 'patient' : 'doctor'}.`,
-        [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
-        { cancelable: false },
-      );
-    };
-
-    const handleCallDeclined = (data: { appointmentId: string }) => {
-      if (data.appointmentId !== appointmentId) return;
-      selfEndedRef.current = true; // suppress any follow-up call-ended event
-      Alert.alert(
-        'Call Declined',
-        `${name} declined the call.`,
-        [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
-        { cancelable: false },
-      );
-    };
-
-    callSocket?.on('call-ended',    handleCallEnded);
-    callSocket?.on('call-declined', handleCallDeclined);
-
-    return () => {
-      callSocket?.off('call-ended',    handleCallEnded);
-      callSocket?.off('call-declined', handleCallDeclined);
-      socketService.leaveAppointment(appointmentId);
-    };
-  }, [appointmentId]);
-
-  // ── Auto-start ───────────────────────────────────────────────────────────
+  // ── Auto-start (single effect — room join + listeners happen inside initCall) ──
   useEffect(() => {
     initCall();
     return () => { cleanup(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Controls ─────────────────────────────────────────────────────────────

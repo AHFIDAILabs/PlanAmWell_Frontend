@@ -39,8 +39,16 @@ class SocketService {
     return new Promise((resolve) => {
       try {
         if (this.isConnecting) {
-          console.log('⏳ Socket connection already in progress');
-          return resolve(this.socket?.connected || false);
+          // Poll until the in-progress connection finishes rather than failing immediately.
+          console.log('⏳ Socket connection in progress — waiting for it to settle...');
+          const deadline = Date.now() + maxWaitTime;
+          const poll = setInterval(() => {
+            if (!this.isConnecting || Date.now() >= deadline) {
+              clearInterval(poll);
+              resolve(this.socket?.connected || false);
+            }
+          }, 200);
+          return;
         }
 
         if (this.socket?.connected) {
@@ -304,6 +312,8 @@ class SocketService {
    * --------------------------------------*/
   disconnect() {
     console.log('🔌 Disconnecting socket');
+    // Reset flag so the next connect() call isn't blocked by a stale isConnecting = true.
+    this.isConnecting = false;
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
