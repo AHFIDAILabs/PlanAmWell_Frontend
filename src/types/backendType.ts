@@ -309,7 +309,6 @@ expiresAt?: Date;
   | "call-ended"
   | "confirmed-upcoming"
   | "about-to-start";
-
   // ✅ FIXED: Added "ringing" and "idle" to callStatus
   callStatus?: "idle" | "ringing" | "in-progress" | "ended";
   

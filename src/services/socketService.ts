@@ -8,7 +8,7 @@ class SocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private isConnecting = false;
-  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   // Persisted app-level listeners — survive socket reconnects
   private appListeners = new Map<string, ((data: any) => void)[]>();
 
