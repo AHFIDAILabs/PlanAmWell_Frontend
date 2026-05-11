@@ -26,34 +26,36 @@ import {
 import { useVideoCall, VideoTokenResponse } from '../../hooks/useVideoCall';
 import socketService from '../../services/socketService';
 
-// ── Free ICE servers (Google STUN + Open Relay TURN) ─────────────────────────
+// ── ICE servers (Google STUN + open TURN) ────────────────────────────────────
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
+      urls:       'turn:openrelay.metered.ca:80',
+      username:   'openrelayproject',
       credential: 'openrelayproject',
     },
     {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
+      urls:       'turn:openrelay.metered.ca:443',
+      username:   'openrelayproject',
       credential: 'openrelayproject',
     },
   ],
 };
 
+// ── Route params ─────────────────────────────────────────────────────────────
 interface RouteParams {
-  appointmentId: string;
-  name?: string;
-  role?: string;           // 'Doctor' | 'User' | 'doctor' | 'user'
-  autoJoin?: boolean;
+  appointmentId:       string;
+  name?:               string;
+  role?:               string;    // raw string from navigation — normalised below
+  autoJoin?:           boolean;
   fromAppointmentList?: boolean;
-  userImage?: string;
-  doctorImage?: string;
+  userImage?:          string;
+  doctorImage?:        string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 export default function VideoCallScreen({ route, navigation }: any) {
   const {
     appointmentId,
@@ -61,38 +63,52 @@ export default function VideoCallScreen({ route, navigation }: any) {
     role: rawRole = 'User',
   } = route.params as RouteParams;
 
-  // Normalise role to match backend ('Doctor' | 'User')
+  // Normalise to 'Doctor' | 'User' to match backend expectations.
   const normalised = rawRole.toLowerCase();
   const role: 'Doctor' | 'User' = normalised === 'doctor' ? 'Doctor' : 'User';
 
-  const userImage   = (route.params?.userImage)   || 'https://placehold.co/200x200';
-  const doctorImage = (route.params?.doctorImage) || 'https://placehold.co/200x200';
+  const userImage   = route.params?.userImage   || 'https://placehold.co/200x200';
+  const doctorImage = route.params?.doctorImage || 'https://placehold.co/200x200';
 
   const { startCall, endCall } = useVideoCall();
 
-  // ── Refs ─────────────────────────────────────────────────────────────────
-  const pcRef                  = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef         = useRef<MediaStream | null>(null);
-  const hasCleanedUpRef        = useRef(false);
-  const selfEndedRef           = useRef(false);
-  const offerSentRef           = useRef(false);
-  const iceCandidateQueue      = useRef<any[]>([]);
-  const readyIntervalRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const durationTimerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isInitiatorRef         = useRef(false);
-  // Stored so cleanup() can remove the exact listener references.
+  // ── Refs (survive re-renders, never cause re-renders) ────────────────────
+  const pcRef               = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef      = useRef<MediaStream | null>(null);
+
+  // Lifecycle guards
+  const isMountedRef        = useRef(true);   // false after unmount
+  const initStartedRef      = useRef(false);  // prevents double-init in StrictMode
+  const hasCleanedUpRef     = useRef(false);  // prevents double-cleanup
+  const selfEndedRef        = useRef(false);  // true when WE ended the call
+
+  // WebRTC state
+  const isInitiatorRef      = useRef(false);
+  const offerSentRef        = useRef(false);
+  const iceCandidateQueue   = useRef<any[]>([]);
+
+  // Timer refs
+  const readyIntervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const durationTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Exact handler refs for precise socket.off() — avoids stripping other listeners
   const callEndedHandlerRef    = useRef<((d: any) => void) | null>(null);
   const callDeclinedHandlerRef = useRef<((d: any) => void) | null>(null);
 
   // ── State ────────────────────────────────────────────────────────────────
-  const [localStream,  setLocalStream]  = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [isConnected,  setIsConnected]  = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isMuted,      setIsMuted]      = useState(false);
-  const [isVideoOff,   setIsVideoOff]   = useState(false);
-  const [isSpeakerOn,  setIsSpeakerOn]  = useState(true);
-  const [callDuration, setCallDuration] = useState(0);
+  const [localStream,   setLocalStream]   = useState<MediaStream | null>(null);
+  const [remoteStream,  setRemoteStream]  = useState<MediaStream | null>(null);
+  const [isConnected,   setIsConnected]   = useState(false);
+  const [isConnecting,  setIsConnecting]  = useState(true);   // loading until init done
+  const [isMuted,       setIsMuted]       = useState(false);
+  const [isVideoOff,    setIsVideoOff]    = useState(false);
+  const [isSpeakerOn,   setIsSpeakerOn]  = useState(true);
+  const [callDuration,  setCallDuration]  = useState(0);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const safeSetState = (setter: React.Dispatch<React.SetStateAction<any>>, value: any) => {
+    if (isMountedRef.current) setter(value);
+  };
 
   const formatDuration = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -103,17 +119,17 @@ export default function VideoCallScreen({ route, navigation }: any) {
   // ── Permissions ──────────────────────────────────────────────────────────
   const requestPermissions = async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
-    const granted = await PermissionsAndroid.requestMultiple([
+    const result = await PermissionsAndroid.requestMultiple([
       PermissionsAndroid.PERMISSIONS.CAMERA,
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
     ]);
     return (
-      granted['android.permission.CAMERA']      === PermissionsAndroid.RESULTS.GRANTED &&
-      granted['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED
+      result['android.permission.CAMERA']       === PermissionsAndroid.RESULTS.GRANTED &&
+      result['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED
     );
   };
 
-  // ── Audio session via expo-av ─────────────────────────────────────────────
+  // ── Audio session ────────────────────────────────────────────────────────
   const applyAudioMode = async (speakerOn: boolean) => {
     try {
       await Audio.setAudioModeAsync({
@@ -128,12 +144,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
     }
   };
 
-  // ── Build peer connection ─────────────────────────────────────────────────
-  // react-native-webrtc v124 registers on* attributes via defineEventAttribute
-  // at runtime but the TypeScript declarations don't expose them on the class
-  // directly, so we cast to any for the three event handler assignments.
+  // ── Build RTCPeerConnection ───────────────────────────────────────────────
+  // react-native-webrtc v124 wires on* handlers via defineEventAttribute at
+  // runtime, so we cast to `any` for the three assignments below.
   const createPeerConnection = (apptId: string): RTCPeerConnection => {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc    = new RTCPeerConnection(ICE_SERVERS);
     const pcAny = pc as any;
 
     pcAny.onicecandidate = ({ candidate }: { candidate: any }) => {
@@ -147,130 +162,212 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
     pcAny.ontrack = ({ streams }: { streams?: MediaStream[] }) => {
       const stream = streams?.[0];
-      if (stream) {
-        setRemoteStream(stream);
-        setIsConnected(true);
+      if (stream && isMountedRef.current) {
+        safeSetState(setRemoteStream, stream);
+        safeSetState(setIsConnected, true);
         if (!durationTimerRef.current) {
           durationTimerRef.current = setInterval(() => {
-            setCallDuration(prev => prev + 1);
+            if (isMountedRef.current) setCallDuration(prev => prev + 1);
           }, 1000);
         }
       }
     };
 
     pcAny.onconnectionstatechange = () => {
-      console.log(`🔌 WebRTC connection state: ${pc.connectionState}`);
+      console.log(`🔌 WebRTC state: ${pc.connectionState}`);
     };
 
     return pc;
   };
 
-  // ── Initialise call ───────────────────────────────────────────────────────
+  // ── Cleanup ───────────────────────────────────────────────────────────────
+  // Must be idempotent — called from both useEffect return and handleEndCall.
+  const cleanup = async () => {
+    if (hasCleanedUpRef.current) return;
+    hasCleanedUpRef.current = true;
+
+    // Clear timers
+    if (readyIntervalRef.current)  { clearInterval(readyIntervalRef.current);  readyIntervalRef.current  = null; }
+    if (durationTimerRef.current)  { clearInterval(durationTimerRef.current);  durationTimerRef.current  = null; }
+
+    // Remove socket listeners by exact reference so we don't affect other screens
+    const socket = socketService.getSocket();
+    if (socket) {
+      if (callEndedHandlerRef.current)    socket.off('call-ended',           callEndedHandlerRef.current);
+      if (callDeclinedHandlerRef.current) socket.off('call-declined',        callDeclinedHandlerRef.current);
+      socket.off('webrtc-ready');
+      socket.off('webrtc-offer');
+      socket.off('webrtc-answer');
+      socket.off('webrtc-ice-candidate');
+    }
+
+    socketService.leaveAppointment(appointmentId);
+
+    // Stop local media tracks
+    localStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    localStreamRef.current = null;
+
+    // Close peer connection
+    try { pcRef.current?.close(); } catch {}
+    pcRef.current = null;
+
+    // Notify backend (best-effort)
+    try { await endCall(appointmentId); } catch {}
+  };
+
+  // ── Main initialisation ───────────────────────────────────────────────────
   const initCall = async () => {
-    if (isConnecting) return;
-    setIsConnecting(true);
+    // StrictMode double-invoke guard
+    if (initStartedRef.current) return;
+    initStartedRef.current = true;
 
     try {
+      // 1. Permissions
       const permitted = await requestPermissions();
       if (!permitted) {
-        Alert.alert('Permissions Required', 'Camera & microphone access is needed.');
+        Alert.alert('Permissions Required', 'Camera and microphone access are needed for video calls.');
         navigation.goBack();
         return;
       }
 
       await applyAudioMode(true);
 
-      // ── Ensure Socket.IO is connected ──────────────────────────────────────
-      // socketService.connect() now polls when a connection is already in progress,
-      // and disconnect() resets isConnecting, so reconnect() is safe to call here.
+      // 2. Ensure Socket.IO is live
+      //    socketService.connect() polls instead of returning false when a
+      //    connection attempt is already in flight (fixed in previous session).
       let sock = socketService.getSocket();
       if (!sock?.connected) {
-        console.log(sock ? '🔄 Socket disconnected — reconnecting...' : '🔌 No socket — connecting...');
-        const ok = sock
+        console.log(sock ? '🔄 Socket disconnected — reconnecting…' : '🔌 No socket — connecting…');
+
+        const connected: boolean = sock
           ? await socketService.reconnect().then(() => socketService.getSocket()?.connected ?? false)
           : await socketService.connect();
 
-        if (!ok) {
-          // One extra check after reconnect() (reconnect is void, above captures connected state)
+        if (!connected) {
+          // One final check after the async operations settle
           sock = socketService.getSocket();
           if (!sock?.connected) {
-            throw new Error('Unable to establish real-time connection. Please check your internet connection.');
+            throw new Error(
+              'Unable to establish a real-time connection. ' +
+              'Please check your internet and try again.'
+            );
           }
         }
       }
 
-      // At this point the socket is guaranteed connected.
+      if (!isMountedRef.current) return;  // navigated away during connect
+
+      // 3. Capture the live socket instance — must happen AFTER connect so we
+      //    register listeners on the correct (possibly new) socket object.
       const activeSocket = socketService.getSocket()!;
 
-      // ── Join appointment room ─────────────────────────────────────────────
-      // Must happen on the live socket BEFORE emitting webrtc-ready so that
-      // both peers are in the same room when signalling events are relayed.
+      // 4. Join the appointment signalling room BEFORE the backend HTTP call.
+      //    This ensures we are in the room and ready to relay webrtc-* events
+      //    before the backend sends push notifications / emits call-ringing.
       socketService.joinAppointment(appointmentId);
 
-      // ── Call-lifecycle listeners (on the confirmed live socket) ────────────
-      const handleCallEnded = (data: { appointmentId: string; callDuration: number }) => {
+      // 5. Register call-lifecycle listeners on the live socket.
+      //    Store refs so cleanup() removes these exact functions.
+      const handleCallEnded = (data: { appointmentId: string; callDuration?: number }) => {
         if (data.appointmentId !== appointmentId) return;
         if (selfEndedRef.current) return;
         Alert.alert(
           'Call Ended',
           `The call was ended by the ${role === 'Doctor' ? 'patient' : 'doctor'}.`,
-          [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
+          [{
+            text: 'OK',
+            onPress: async () => {
+              await cleanup();
+              if (isMountedRef.current) navigation.goBack();
+            },
+          }],
           { cancelable: false },
         );
       };
+
       const handleCallDeclined = (data: { appointmentId: string }) => {
         if (data.appointmentId !== appointmentId) return;
         selfEndedRef.current = true;
         Alert.alert(
           'Call Declined',
           `${name} declined the call.`,
-          [{ text: 'OK', onPress: async () => { await cleanup(); navigation.goBack(); } }],
+          [{
+            text: 'OK',
+            onPress: async () => {
+              await cleanup();
+              if (isMountedRef.current) navigation.goBack();
+            },
+          }],
           { cancelable: false },
         );
       };
+
       callEndedHandlerRef.current    = handleCallEnded;
       callDeclinedHandlerRef.current = handleCallDeclined;
       activeSocket.on('call-ended',    handleCallEnded);
       activeSocket.on('call-declined', handleCallDeclined);
 
-      // ── Backend: register participant, get isInitiator flag ───────────────
+      // 6. Register with the backend — get channel name and initiator flag.
+      //    startCall throws a human-readable string on any non-network error.
       const data: VideoTokenResponse = await startCall(appointmentId);
-      isInitiatorRef.current = data.isInitiator;
 
-      // ── Capture local media ───────────────────────────────────────────────
+      if (!isMountedRef.current) return;
+
+      isInitiatorRef.current = data.isInitiator;
+      console.log(`📞 Call session: channel=${data.channelName}, isInitiator=${data.isInitiator}, callStatus=${data.callStatus}`);
+
+      // 7. Capture local camera + mic
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: { facingMode: 'user', width: 640, height: 480 },
       }) as MediaStream;
 
-      localStreamRef.current = stream;
-      setLocalStream(stream);
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        return;
+      }
 
-      // ── Build peer connection and attach tracks ───────────────────────────
+      localStreamRef.current = stream;
+      safeSetState(setLocalStream, stream);
+
+      // 8. Create RTCPeerConnection and attach local tracks
       const pc = createPeerConnection(appointmentId);
       pcRef.current = pc;
       stream.getTracks().forEach((track: MediaStreamTrack) => {
         pc.addTrack(track, stream);
       });
 
-      // ── WebRTC signaling listeners ────────────────────────────────────────
+      // 9. WebRTC signalling handlers
+      //
+      //    Flow (Socket.IO relays all events to the *other* side of the room):
+      //      Receiver emits webrtc-ready  → server relays to initiator
+      //      Initiator receives it        → creates and sends webrtc-offer
+      //      Receiver receives offer      → creates and sends webrtc-answer
+      //      Both exchange webrtc-ice-candidate until connected
+      //
+      //    Both sides emit webrtc-ready immediately and retry every 5 s until
+      //    pc.connectionState === 'connected', so timing order doesn't matter.
+
       const handlePeerReady = async () => {
-        // Only the initiator responds to peer-ready by creating an offer
+        // Only the initiator responds to webrtc-ready by creating an offer.
         if (!isInitiatorRef.current || offerSentRef.current) return;
         offerSentRef.current = true;
         try {
           const offer = await pc.createOffer({});
           await pc.setLocalDescription(offer);
           activeSocket.emit('webrtc-offer', { appointmentId, offer });
+          console.log('📤 webrtc-offer sent');
         } catch (e) {
           console.error('❌ createOffer failed:', e);
+          offerSentRef.current = false;   // allow retry
         }
       };
 
       const handleOffer = async ({ offer }: { appointmentId: string; offer: any }) => {
-        if (isInitiatorRef.current) return; // receiver only
+        if (isInitiatorRef.current) return;   // initiator never handles incoming offers
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          // Drain the ICE candidate queue that accumulated before remote desc was set
           for (const c of iceCandidateQueue.current) {
             await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
           }
@@ -278,13 +375,14 @@ export default function VideoCallScreen({ route, navigation }: any) {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           activeSocket.emit('webrtc-answer', { appointmentId, answer });
+          console.log('📤 webrtc-answer sent');
         } catch (e) {
           console.error('❌ handleOffer failed:', e);
         }
       };
 
       const handleAnswer = async ({ answer }: { appointmentId: string; answer: any }) => {
-        if (!isInitiatorRef.current) return; // initiator only
+        if (!isInitiatorRef.current) return;  // receiver never handles answers
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
           for (const c of iceCandidateQueue.current) {
@@ -297,6 +395,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
       };
 
       const handleIceCandidate = async ({ candidate }: { appointmentId: string; candidate: any }) => {
+        if (!candidate) return;
         if (pc.remoteDescription) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
         } else {
@@ -309,8 +408,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
       activeSocket.on('webrtc-answer',        handleAnswer);
       activeSocket.on('webrtc-ice-candidate', handleIceCandidate);
 
-      // Announce readiness; retry every 5 s until the peer connection is up
-      const emitReady = () => activeSocket.emit('webrtc-ready', { appointmentId });
+      // 10. Announce readiness; retry every 5 s until WebRTC is connected.
+      const emitReady = () => {
+        if (!isMountedRef.current) return;
+        activeSocket.emit('webrtc-ready', { appointmentId });
+      };
       emitReady();
       readyIntervalRef.current = setInterval(() => {
         if (pcRef.current?.connectionState === 'connected') {
@@ -323,53 +425,28 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
     } catch (error: any) {
       console.error('❌ initCall failed:', error);
-      Alert.alert(
-        'Connection Failed',
-        error?.message || 'Unable to start call.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
-      );
+      if (isMountedRef.current) {
+        Alert.alert(
+          'Connection Failed',
+          error?.message || 'Unable to start call. Please try again.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }],
+        );
+      }
     } finally {
-      setIsConnecting(false);
+      safeSetState(setIsConnecting, false);
     }
   };
 
-  // ── Cleanup ──────────────────────────────────────────────────────────────
-  const cleanup = async () => {
-    if (hasCleanedUpRef.current) return;
-    hasCleanedUpRef.current = true;
-
-    if (readyIntervalRef.current)  clearInterval(readyIntervalRef.current);
-    if (durationTimerRef.current)  clearInterval(durationTimerRef.current);
-
-    const socket = socketService.getSocket();
-    if (socket) {
-      // Remove call-lifecycle listeners by exact reference so we don't
-      // accidentally strip other components' handlers for the same event.
-      if (callEndedHandlerRef.current)    socket.off('call-ended',    callEndedHandlerRef.current);
-      if (callDeclinedHandlerRef.current) socket.off('call-declined', callDeclinedHandlerRef.current);
-      socket.off('webrtc-ready');
-      socket.off('webrtc-offer');
-      socket.off('webrtc-answer');
-      socket.off('webrtc-ice-candidate');
-    }
-
-    // Leave the appointment socket room
-    socketService.leaveAppointment(appointmentId);
-
-    localStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-    localStreamRef.current = null;
-
-    try { pcRef.current?.close(); } catch {}
-    pcRef.current = null;
-
-    try { await endCall(appointmentId); } catch {}
-  };
-
-  // ── Auto-start (single effect — room join + listeners happen inside initCall) ──
+  // ── Single effect — mounts once, cleans up on unmount ───────────────────
   useEffect(() => {
+    isMountedRef.current = true;
     initCall();
-    return () => { cleanup(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      isMountedRef.current = false;
+      cleanup();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Controls ─────────────────────────────────────────────────────────────
@@ -402,7 +479,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
     Alert.alert('End Call', 'Are you sure you want to end the call?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'End Call',
+        text:  'End Call',
         style: 'destructive',
         onPress: async () => {
           selfEndedRef.current = true;
@@ -413,19 +490,20 @@ export default function VideoCallScreen({ route, navigation }: any) {
     ]);
   };
 
-  // ── Connecting overlay ───────────────────────────────────────────────────
+  // ── Loading overlay ──────────────────────────────────────────────────────
   if (isConnecting) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" />
         <ActivityIndicator size="large" color="#10B981" />
-        <Text style={styles.loadingText}>Connecting to call...</Text>
+        <Text style={styles.loadingText}>Connecting to call…</Text>
       </SafeAreaView>
     );
   }
 
   const peerConnected = !!remoteStream;
 
+  // ── Main UI ──────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -466,7 +544,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {/* Local PiP */}
+        {/* Local picture-in-picture */}
         {!isVideoOff && localStream ? (
           <View style={styles.localVideoContainer}>
             <RTCView
@@ -539,18 +617,19 @@ export default function VideoCallScreen({ route, navigation }: any) {
   );
 }
 
+// ── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container:        { flex: 1, backgroundColor: '#000' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a1a' },
   loadingText:      { color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 20 },
 
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection:    'row',
+    justifyContent:   'space-between',
+    alignItems:       'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical:  16,
+    backgroundColor:  'rgba(0,0,0,0.7)',
   },
   headerLeft:      { flex: 1 },
   participantName: { color: '#fff', fontSize: 18, fontWeight: '600', marginBottom: 4 },
@@ -558,50 +637,51 @@ const styles = StyleSheet.create({
   statusDot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981', marginRight: 6 },
   statusText:      { color: '#10B981', fontSize: 13, fontWeight: '500' },
   timerContainer:  {
-    backgroundColor: 'rgba(16,185,129,0.2)',
+    backgroundColor:  'rgba(16,185,129,0.2)',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical:   8,
+    borderRadius:      20,
   },
   timerText: { color: '#10B981', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
 
-  videoContainer:  { flex: 1, backgroundColor: '#000' },
-  remoteVideo:     { width: '100%', height: '100%' },
+  videoContainer:   { flex: 1, backgroundColor: '#000' },
+  remoteVideo:      { width: '100%', height: '100%' },
   waitingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  waitingText:     { color: '#fff', fontSize: 18, fontWeight: '500', marginTop: 12 },
+  waitingText:      { color: '#fff', fontSize: 18, fontWeight: '500', marginTop: 12 },
 
   localVideoContainer: {
-    position: 'absolute',
+    position:    'absolute',
     top: 20, right: 16,
     width: 100, height: 140,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius:    12,
+    overflow:        'hidden',
+    borderWidth:     2,
+    borderColor:     'rgba(255,255,255,0.3)',
     backgroundColor: '#000',
   },
   localVideo:        { width: '100%', height: '100%' },
   localLabel: {
-    position: 'absolute',
+    position:         'absolute',
     bottom: 6, left: 6, right: 6,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 6,
-    alignItems: 'center',
+    backgroundColor:  'rgba(0,0,0,0.7)',
+    paddingHorizontal: 8,
+    paddingVertical:   4,
+    borderRadius:      6,
+    alignItems:        'center',
   },
   localLabelText:    { color: '#fff', fontSize: 11, fontWeight: '600' },
   videoOffContainer: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#2a2a2a' },
 
-  controlsContainer: { paddingHorizontal: 20, paddingVertical: 20, backgroundColor: 'rgba(0,0,0,0.7)' },
-  controls:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  controlButton:     { alignItems: 'center', justifyContent: 'center', width: 60, paddingVertical: 8 },
+  controlsContainer:  { paddingHorizontal: 20, paddingVertical: 20, backgroundColor: 'rgba(0,0,0,0.7)' },
+  controls:           { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  controlButton:      { alignItems: 'center', justifyContent: 'center', width: 60, paddingVertical: 8 },
   controlButtonActive: { backgroundColor: 'rgba(239,68,68,0.2)', borderRadius: 12 },
-  controlLabel:      { color: '#fff', fontSize: 11, marginTop: 4, fontWeight: '500' },
+  controlLabel:       { color: '#fff', fontSize: 11, marginTop: 4, fontWeight: '500' },
   endCallButton: {
     width: 64, height: 64,
-    borderRadius: 32,
+    borderRadius:    32,
     backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent:  'center',
+    alignItems:      'center',
   },
 });

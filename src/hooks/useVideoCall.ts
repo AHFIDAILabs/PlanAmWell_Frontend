@@ -1,472 +1,167 @@
-// hooks/useVideoCall.ts - ENHANCED VERSION WITH ERROR HANDLING & RETRY LOGIC
-import { useState, useCallback, useRef } from "react";
-import axios, { AxiosError } from "axios";
+// hooks/useVideoCall.ts
+import { useCallback, useRef } from "react";
+import axios from "axios";
 import * as SecureStore from "expo-secure-store";
-import { Alert } from "react-native";
 import { TOKEN_KEY } from "../services/Auth";
 
-const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
-const API_URL = `${SERVER_URL}/api/v1/video`;
+const API_URL = `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/video`;
+
+// ── Public types ─────────────────────────────────────────────────────────────
 
 export interface VideoTokenResponse {
-  channelName: string;
-  callStatus: string;
-  participantCount: number;
-  isInitiator: boolean;
-  doctorName: string;
-  patientName: string;
+  channelName:      string;
+  callStatus:       string;
+  isInitiator:      boolean;
+  doctorName:       string;
+  patientName:      string;
+  participantCount?: number;
 }
 
 export type CallIssueType = "audio" | "video" | "network" | "other";
 
-interface VideoCallError {
-  type: 'network' | 'auth' | 'timing' | 'permission' | 'unknown';
-  message: string;
-  canRetry: boolean;
-  originalError?: any;
-}
+// ── Internal helpers ─────────────────────────────────────────────────────────
+
+const getAuthHeader = async (): Promise<{ Authorization: string }> => {
+  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  if (!token) throw new Error("Authentication token not found. Please log in again.");
+  return { Authorization: `Bearer ${token}` };
+};
+
+const extractErrorMessage = (err: any): string => {
+  if (axios.isAxiosError(err)) {
+    const msg = err.response?.data?.message;
+    if (msg) return msg;
+    if (!err.response) return "Cannot reach server. Check your internet connection.";
+    if (err.response.status === 401 || err.response.status === 403)
+      return "Session expired. Please log in again.";
+    if (err.response.status === 400)
+      return err.response.data?.message || "Invalid request.";
+  }
+  return err?.message || "An unexpected error occurred.";
+};
+
+// ── Hook ─────────────────────────────────────────────────────────────────────
 
 export const useVideoCall = () => {
-  const [loading, setLoading] = useState(false);
-  const [callActive, setCallActive] = useState(false);
-  const [callData, setCallData] = useState<VideoTokenResponse | null>(null);
-  const [error, setError] = useState<VideoCallError | null>(null);
   const callStartTime = useRef<number | null>(null);
-  const isRetrying = useRef(false);
 
   /**
-   * Parse error and determine if it's retryable
-   */
-  const parseError = useCallback((error: any): VideoCallError => {
-    // Network errors
-    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-      return {
-        type: 'network',
-        message: 'Connection timeout. Please check your internet connection.',
-        canRetry: true,
-        originalError: error,
-      };
-    }
-
-    // Axios errors with response
-    if (axios.isAxiosError(error) && error.response) {
-      const status = error.response.status;
-      const responseMessage = error.response.data?.message || '';
-
-      // Timing errors (too early or too late)
-      if (status === 400 && responseMessage.includes('15 minutes')) {
-        return {
-          type: 'timing',
-          message: responseMessage,
-          canRetry: false,
-          originalError: error,
-        };
-      }
-
-      // Auth errors
-      if (status === 401 || status === 403) {
-        return {
-          type: 'auth',
-          message: 'Authentication failed. Please log in again.',
-          canRetry: false,
-          originalError: error,
-        };
-      }
-
-      // Other 400 errors
-      if (status === 400) {
-        return {
-          type: 'permission',
-          message: responseMessage || 'Cannot join this call.',
-          canRetry: false,
-          originalError: error,
-        };
-      }
-
-      // Server errors (5xx)
-      if (status >= 500) {
-        return {
-          type: 'network',
-          message: 'Server error. Please try again.',
-          canRetry: true,
-          originalError: error,
-        };
-      }
-    }
-
-    // Network errors without response
-    if (axios.isAxiosError(error) && !error.response) {
-      return {
-        type: 'network',
-        message: 'Cannot reach server. Please check your internet connection.',
-        canRetry: true,
-        originalError: error,
-      };
-    }
-
-    // Unknown errors
-    return {
-      type: 'unknown',
-      message: error.message || 'An unexpected error occurred.',
-      canRetry: true,
-      originalError: error,
-    };
-  }, []);
-
-  /**
-   * Show user-friendly error alert
-   */
-  const showErrorAlert = useCallback((parsedError: VideoCallError, onRetry?: () => void) => {
-    const buttons: any[] = [];
-
-    if (parsedError.canRetry && onRetry) {
-      buttons.push({
-        text: 'Retry',
-        onPress: onRetry,
-      });
-    }
-
-    buttons.push({
-      text: parsedError.canRetry ? 'Cancel' : 'OK',
-      style: 'cancel',
-    });
-
-    Alert.alert(
-      parsedError.type === 'timing' ? 'Too Early' : 'Connection Error',
-      parsedError.message,
-      buttons
-    );
-  }, []);
-
-  const getVideoToken = useCallback(
-    async (appointmentId: string, retries = 2): Promise<VideoTokenResponse> => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
-        if (!token) {
-          throw new Error("Authentication token not found. Please log in again.");
-        }
-
-        console.log(`🎥 Fetching video token for appointment: ${appointmentId}`);
-
-        const response = await axios.post(
-          `${API_URL}/token`,
-          { appointmentId },
-          { 
-            headers: { 
-              Authorization: `Bearer ${token}`, 
-              "Content-Type": "application/json" 
-            }, 
-            timeout: 15000 
-          }
-        );
-
-        if (!response.data?.success || !response.data?.data) {
-          throw new Error("Invalid response from video service");
-        }
-
-        const data: VideoTokenResponse = response.data.data;
-        setCallData(data);
-        
-        console.log(`✅ Call session ready — channel: ${data.channelName}, initiator: ${data.isInitiator}`);
-        
-        return data;
-
-      } catch (error: any) {
-        console.error("❌ Failed to get video token:", error);
-
-        const parsedError = parseError(error);
-        setError(parsedError);
-
-        // Retry logic for retryable errors
-        if (parsedError.canRetry && retries > 0 && !isRetrying.current) {
-          console.warn(`🔄 Retrying video token fetch... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 1500)); // Wait before retry
-          return getVideoToken(appointmentId, retries - 1);
-        }
-
-        throw parsedError;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [parseError]
-  );
-
-  /** 
-   * Start Call with comprehensive error handling
+   * Register with the backend and get call session data.
+   * Called by BOTH the initiator (before ringing) and the receiver (on accept).
+   * Throws a human-readable string on failure — caller must handle it.
    */
   const startCall = useCallback(
     async (appointmentId: string): Promise<VideoTokenResponse> => {
-      try {
-        console.log('🚀 Starting video call...');
-        
-        const tokenData = await getVideoToken(appointmentId);
-        
-        callStartTime.current = Date.now();
-        setCallActive(true);
-        
-        console.log('✅ Call started successfully');
-        
-        return tokenData;
-      } catch (error: any) {
-        console.error('❌ Failed to start call:', error);
-        
-        // If it's already a parsed error, just rethrow
-        if (error.type) {
-          throw error;
-        }
-        
-        // Otherwise parse it
-        const parsedError = parseError(error);
-        setError(parsedError);
-        throw parsedError;
+      console.log(`🎥 startCall → appointment ${appointmentId}`);
+      const headers = await getAuthHeader();
+
+      const response = await axios.post(
+        `${API_URL}/token`,
+        { appointmentId },
+        { headers: { ...headers, "Content-Type": "application/json" }, timeout: 15000 }
+      );
+
+      if (!response.data?.success || !response.data?.data) {
+        throw new Error("Invalid response from video service");
       }
-    },
-    [getVideoToken, parseError]
-  );
 
-  /** 
-   * Start call with user-friendly error handling and retry prompt
-   */
-  const startCallWithErrorHandling = useCallback(
-    async (appointmentId: string): Promise<VideoTokenResponse | null> => {
-      try {
-        return await startCall(appointmentId);
-      } catch (error: any) {
-        const parsedError = error.type ? error : parseError(error);
-        
-        // Show error alert with retry option
-        showErrorAlert(parsedError, () => {
-          isRetrying.current = true;
-          startCallWithErrorHandling(appointmentId).finally(() => {
-            isRetrying.current = false;
-          });
-        });
-        
-        return null;
-      }
-    },
-    [startCall, parseError, showErrorAlert]
-  );
+      const data: VideoTokenResponse = response.data.data;
+      callStartTime.current = Date.now();
 
-  /** 
-   * End call and notify backend
-   */
-  const endCall = useCallback(
-    async (appointmentId: string, notes?: string) => {
-      try {
-        console.log('🔴 Ending video call...');
-        
-        setCallActive(false);
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
-        
-        if (!token) {
-          console.warn('No auth token found, skipping backend notification');
-          return;
-        }
-
-        const duration = callStartTime.current 
-          ? Math.floor((Date.now() - callStartTime.current) / 1000) 
-          : 0;
-
-        await axios.post(
-          `${API_URL}/end-call`,
-          { appointmentId, callDuration: duration, notes },
-          { 
-            headers: { 
-              Authorization: `Bearer ${token}`, 
-              "Content-Type": "application/json" 
-            }, 
-            timeout: 10000 
-          }
-        );
-        
-        console.log(`✅ Call ended successfully (duration: ${duration}s)`);
-        
-        callStartTime.current = null;
-        setCallData(null);
-        setError(null);
-        
-      } catch (err: any) {
-        console.warn("⚠️ Failed to notify backend about call end:", err.message);
-        // Don't throw - ending call should always succeed on client side
-      }
+      console.log(`✅ Call session ready — channel: ${data.channelName}, initiator: ${data.isInitiator}`);
+      return data;
     },
     []
   );
 
   /**
-   * Decline an incoming ringing call (appointment-based, no video request)
+   * Notify the backend that the call has ended.
+   * Never throws — ending should always succeed on the client side.
    */
-  const declineCall = useCallback(async (appointmentId: string) => {
+  const endCall = useCallback(async (appointmentId: string): Promise<void> => {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
-      if (!token) return;
+      console.log(`🔴 endCall → appointment ${appointmentId}`);
+      const headers = await getAuthHeader();
+
+      const duration = callStartTime.current
+        ? Math.floor((Date.now() - callStartTime.current) / 1000)
+        : 0;
+
       await axios.post(
-        `${API_URL}/decline`,
-        { appointmentId },
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 8000 }
+        `${API_URL}/end-call`,
+        { appointmentId, callDuration: duration },
+        { headers: { ...headers, "Content-Type": "application/json" }, timeout: 10000 }
       );
-      console.log('📵 Decline sent for appointment:', appointmentId);
+
+      callStartTime.current = null;
+      console.log(`✅ endCall confirmed (duration: ${duration}s)`);
     } catch (err: any) {
-      console.warn('⚠️ Failed to send call decline:', err.message);
+      console.warn("⚠️ endCall notification failed (non-fatal):", err.message);
     }
   }, []);
 
   /**
-   * Get call status
+   * Decline a ringing appointment-based call.
+   * Never throws.
    */
-/** 
- * Get call status - FIXED to handle correct response structure
- */
-// hooks/useVideoCall.ts - FIXED getCallStatus Method
-
-const getCallStatus = useCallback(
-  async (appointmentId: string) => {
+  const declineCall = useCallback(async (appointmentId: string): Promise<void> => {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
-      if (!token) {
-        console.error('❌ No auth token found');
-        throw new Error("Authentication required");
-      }
-
-      console.log('📞 Fetching call status for:', appointmentId);
-
-      const response = await axios.get(
-        `${API_URL}/call-status/${appointmentId}`, 
-        { 
-          headers: { Authorization: `Bearer ${token}` }, 
-          timeout: 10000 
-        }
+      const headers = await getAuthHeader();
+      await axios.post(
+        `${API_URL}/decline`,
+        { appointmentId },
+        { headers: { ...headers, "Content-Type": "application/json" }, timeout: 8000 }
       );
-
-      console.log('✅ Raw backend response:', JSON.stringify(response.data, null, 2));
-
-      // ✅ CRITICAL FIX: Extract from nested data.data structure
-      const backendData = response.data;
-      
-      if (!backendData || typeof backendData !== 'object') {
-        throw new Error('Invalid response format');
-      }
-
-      // ✅ Handle both possible response structures
-      const callData = backendData.data || backendData;
-
-      const normalizedResponse = {
-        success: backendData.success !== false, // Default to true unless explicitly false
-        data: {
-          isActive: callData.isActive === true,  // Explicit boolean check
-          callStatus: callData.callStatus || 'idle',
-          channelName: callData.channelName || null,
-          participantCount: callData.participantCount || 0,
-          startedBy: callData.startedBy || null,
-          startedAt: callData.startedAt || null,
-          endedAt: callData.endedAt || null,
-        },
-        message: backendData.message || 'Call status fetched successfully'
-      };
-
-      console.log('✅ Normalized response:', JSON.stringify(normalizedResponse, null, 2));
-
-      return normalizedResponse;
-
-    } catch (error: any) {
-      console.error('❌ getCallStatus error:', error);
-      
-      // Log detailed error info
-      if (axios.isAxiosError(error)) {
-        console.error('   Status:', error.response?.status);
-        console.error('   Data:', error.response?.data);
-        console.error('   Message:', error.message);
-      }
-
-      // ✅ Return safe default instead of throwing
-      const safeDefault = {
-        success: false,
-        data: {
-          isActive: false,
-          callStatus: 'idle',
-          channelName: null,
-          participantCount: 0,
-          startedBy: null,
-          startedAt: null,
-          endedAt: null,
-        },
-        message: error.response?.data?.message || error.message || 'Failed to fetch call status'
-      };
-
-      console.log('⚠️ Returning safe default:', safeDefault);
-
-      return safeDefault;
+      console.log(`📵 declineCall sent for appointment ${appointmentId}`);
+    } catch (err: any) {
+      console.warn("⚠️ declineCall failed (non-fatal):", err.message);
     }
-  }, 
-  []
-);
+  }, []);
 
-  /** 
-   * Report call issues
+  /**
+   * Fetch current call status.
+   * Returns a safe default on error — never throws.
+   */
+  const getCallStatus = useCallback(async (appointmentId: string) => {
+    try {
+      const headers = await getAuthHeader();
+      const response = await axios.get(
+        `${API_URL}/call-status/${appointmentId}`,
+        { headers, timeout: 10000 }
+      );
+      return response.data;
+    } catch (err: any) {
+      console.warn("⚠️ getCallStatus failed:", err.message);
+      return { success: false, data: { callStatus: "idle", isActive: false } };
+    }
+  }, []);
+
+  /**
+   * Report a technical issue. Best-effort, never throws.
    */
   const reportCallIssue = useCallback(
     async (appointmentId: string, issueType: CallIssueType, description?: string) => {
       try {
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
-        if (!token) throw new Error("Authentication required");
-
+        const headers = await getAuthHeader();
         await axios.post(
           `${API_URL}/report-issue`,
           { appointmentId, issueType, description },
-          { 
-            headers: { 
-              Authorization: `Bearer ${token}`, 
-              "Content-Type": "application/json" 
-            }, 
-            timeout: 10000 
-          }
+          { headers: { ...headers, "Content-Type": "application/json" }, timeout: 10000 }
         );
-        
-        console.log("⚠️ Call issue reported:", issueType, description);
       } catch (err: any) {
-        console.warn("Failed to report call issue:", err.message);
-        // Don't throw - reporting is best-effort
+        console.warn("⚠️ reportCallIssue failed (non-fatal):", err.message);
       }
     },
     []
   );
 
-  /**
-   * Clear error state
-   */
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
-  /**
-   * Reset all state
-   */
-  const reset = useCallback(() => {
-    setLoading(false);
-    setCallActive(false);
-    setCallData(null);
-    setError(null);
-    callStartTime.current = null;
-  }, []);
-
   return {
-    loading,
-    callActive,
-    callData,
-    error,
-    getVideoToken,
     startCall,
-    startCallWithErrorHandling,
     endCall,
     declineCall,
     getCallStatus,
     reportCallIssue,
-    clearError,
-    reset,
+    // Convenience alias used in some places:
+    extractErrorMessage,
   };
 };
