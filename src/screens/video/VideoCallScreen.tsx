@@ -26,8 +26,10 @@ import {
 import { useVideoCall, VideoTokenResponse } from '../../hooks/useVideoCall';
 import socketService from '../../services/socketService';
 
-// ── ICE servers (Google STUN + open TURN) ────────────────────────────────────
-const ICE_SERVERS = {
+// ── Fallback ICE servers used only when the backend fetch fails ──────────────
+// The app always tries GET /api/v1/video/ice-servers first so TURN credentials
+// can be rotated on the server without rebuilding the APK.
+const FALLBACK_ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -70,11 +72,15 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const userImage   = route.params?.userImage   || 'https://placehold.co/200x200';
   const doctorImage = route.params?.doctorImage || 'https://placehold.co/200x200';
 
-  const { startCall, endCall } = useVideoCall();
+  const { startCall, endCall, getIceServers } = useVideoCall();
 
   // ── Refs (survive re-renders, never cause re-renders) ────────────────────
   const pcRef               = useRef<RTCPeerConnection | null>(null);
   const localStreamRef      = useRef<MediaStream | null>(null);
+  // Manually-managed remote stream — react-native-webrtc sometimes delivers
+  // ontrack with an empty streams[] array, so we build the stream from the
+  // raw track as a fallback.
+  const remoteStreamRef     = useRef<MediaStream | null>(null);
 
   // Lifecycle guards
   const isMountedRef        = useRef(true);   // false after unmount
@@ -147,8 +153,8 @@ export default function VideoCallScreen({ route, navigation }: any) {
   // ── Build RTCPeerConnection ───────────────────────────────────────────────
   // react-native-webrtc v124 wires on* handlers via defineEventAttribute at
   // runtime, so we cast to `any` for the three assignments below.
-  const createPeerConnection = (apptId: string): RTCPeerConnection => {
-    const pc    = new RTCPeerConnection(ICE_SERVERS);
+  const createPeerConnection = (apptId: string, iceConfig: { iceServers: any[] }): RTCPeerConnection => {
+    const pc    = new RTCPeerConnection(iceConfig);
     const pcAny = pc as any;
 
     pcAny.onicecandidate = ({ candidate }: { candidate: any }) => {
@@ -160,9 +166,25 @@ export default function VideoCallScreen({ route, navigation }: any) {
       }
     };
 
-    pcAny.ontrack = ({ streams }: { streams?: MediaStream[] }) => {
-      const stream = streams?.[0];
-      if (stream && isMountedRef.current) {
+    pcAny.ontrack = (event: any) => {
+      if (!isMountedRef.current) return;
+
+      // react-native-webrtc sometimes delivers ontrack with streams = []
+      // even when the sender called addTrack(track, stream). Handle both paths.
+      let stream: MediaStream | null = event.streams?.[0] ?? null;
+
+      if (!stream && event.track) {
+        // Fallback: manually accumulate tracks into our own MediaStream
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
+        }
+        remoteStreamRef.current.addTrack(event.track);
+        stream = remoteStreamRef.current;
+      }
+
+      console.log(`📺 ontrack: kind=${event.track?.kind}, streams=${event.streams?.length}, built=${!event.streams?.[0]}`);
+
+      if (stream) {
         safeSetState(setRemoteStream, stream);
         safeSetState(setIsConnected, true);
         if (!durationTimerRef.current) {
@@ -174,7 +196,14 @@ export default function VideoCallScreen({ route, navigation }: any) {
     };
 
     pcAny.onconnectionstatechange = () => {
-      console.log(`🔌 WebRTC state: ${pc.connectionState}`);
+      const state = pc.connectionState;
+      console.log(`🔌 WebRTC state: ${state}`);
+      // Reset the offer flag on failure so the 5-second retry can create a
+      // fresh offer (ICE restart) instead of being silently blocked forever.
+      if (state === 'failed' || state === 'disconnected') {
+        offerSentRef.current = false;
+        iceCandidateQueue.current = [];
+      }
     };
 
     return pc;
@@ -205,7 +234,8 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
     // Stop local media tracks
     localStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-    localStreamRef.current = null;
+    localStreamRef.current  = null;
+    remoteStreamRef.current = null;
 
     // Close peer connection
     try { pcRef.current?.close(); } catch {}
@@ -330,8 +360,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
       localStreamRef.current = stream;
       safeSetState(setLocalStream, stream);
 
-      // 8. Create RTCPeerConnection and attach local tracks
-      const pc = createPeerConnection(appointmentId);
+      // 8. Fetch ICE servers (falls back to openrelay if backend unreachable),
+      //    then create the RTCPeerConnection and attach local tracks.
+      const iceServers = await getIceServers();
+      const iceConfig  = iceServers.length > 0 ? { iceServers } : FALLBACK_ICE_SERVERS;
+      const pc = createPeerConnection(appointmentId, iceConfig);
       pcRef.current = pc;
       stream.getTracks().forEach((track: MediaStreamTrack) => {
         pc.addTrack(track, stream);
@@ -348,26 +381,31 @@ export default function VideoCallScreen({ route, navigation }: any) {
       //    Both sides emit webrtc-ready immediately and retry every 5 s until
       //    pc.connectionState === 'connected', so timing order doesn't matter.
 
+      // ── Initiator: respond to peer-ready by creating an offer ──────────────
       const handlePeerReady = async () => {
-        // Only the initiator responds to webrtc-ready by creating an offer.
         if (!isInitiatorRef.current || offerSentRef.current) return;
         offerSentRef.current = true;
         try {
-          const offer = await pc.createOffer({});
+          // iceRestart: true lets this double as an ICE-restart offer when
+          // onconnectionstatechange resets offerSentRef after a failure.
+          const offer = await (pc as any).createOffer({ iceRestart: true });
           await pc.setLocalDescription(offer);
           activeSocket.emit('webrtc-offer', { appointmentId, offer });
           console.log('📤 webrtc-offer sent');
         } catch (e) {
           console.error('❌ createOffer failed:', e);
-          offerSentRef.current = false;   // allow retry
+          offerSentRef.current = false;   // allow retry on next webrtc-ready
         }
       };
 
-      const handleOffer = async ({ offer }: { appointmentId: string; offer: any }) => {
-        if (isInitiatorRef.current) return;   // initiator never handles incoming offers
+      // ── Receiver: process incoming offer and reply with answer ────────────
+      const handleOffer = async (payload: any) => {
+        // Payload shape from server: { appointmentId, offer }
+        const offer = payload?.offer ?? payload;
+        if (!offer || isInitiatorRef.current) return;
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          // Drain the ICE candidate queue that accumulated before remote desc was set
+          // Drain candidates that arrived before remote description was set
           for (const c of iceCandidateQueue.current) {
             await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
           }
@@ -381,8 +419,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      const handleAnswer = async ({ answer }: { appointmentId: string; answer: any }) => {
-        if (!isInitiatorRef.current) return;  // receiver never handles answers
+      // ── Initiator: complete the handshake with the answer ─────────────────
+      const handleAnswer = async (payload: any) => {
+        // Payload shape from server: { appointmentId, answer }
+        const answer = payload?.answer ?? payload;
+        if (!answer || !isInitiatorRef.current) return;
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
           for (const c of iceCandidateQueue.current) {
@@ -394,12 +435,19 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      const handleIceCandidate = async ({ candidate }: { appointmentId: string; candidate: any }) => {
+      // ── Both sides: trickle ICE candidates ───────────────────────────────
+      const handleIceCandidate = async (payload: any) => {
+        // Payload shape: { appointmentId, candidate }
+        const candidate = payload?.candidate ?? payload;
         if (!candidate) return;
-        if (pc.remoteDescription) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-        } else {
-          iceCandidateQueue.current.push(candidate);
+        try {
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            iceCandidateQueue.current.push(candidate);
+          }
+        } catch {
+          // Stale ICE candidates after renegotiation — safe to discard
         }
       };
 

@@ -4,6 +4,13 @@ import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { TOKEN_KEY } from "../services/Auth";
 
+// RTCIceServer is a plain object type — no import from react-native-webrtc needed
+interface RTCIceServer {
+  urls:        string | string[];
+  username?:   string;
+  credential?: string;
+}
+
 const API_URL = `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/video`;
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -119,6 +126,45 @@ export const useVideoCall = () => {
   }, []);
 
   /**
+   * Fetch ICE server config from the backend.
+   * Falls back to hardcoded defaults if the server is unreachable so calls
+   * still work even if this request times out.
+   */
+  const getIceServers = useCallback(async (): Promise<RTCIceServer[]> => {
+    const fallback: RTCIceServer[] = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls:       'turn:openrelay.metered.ca:80',
+        username:   'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls:       'turn:openrelay.metered.ca:443',
+        username:   'openrelayproject',
+        credential: 'openrelayproject',
+      },
+    ];
+
+    try {
+      const headers = await getAuthHeader();
+      const response = await axios.get(`${API_URL}/ice-servers`, {
+        headers,
+        timeout: 5000,
+      });
+      const servers = response.data?.data?.iceServers;
+      if (Array.isArray(servers) && servers.length > 0) {
+        console.log(`✅ ICE servers fetched from backend (${servers.length} entries)`);
+        return servers;
+      }
+    } catch (err: any) {
+      console.warn('⚠️ Could not fetch ICE servers from backend, using fallback:', err.message);
+    }
+
+    return fallback;
+  }, []);
+
+  /**
    * Fetch current call status.
    * Returns a safe default on error — never throws.
    */
@@ -160,8 +206,8 @@ export const useVideoCall = () => {
     endCall,
     declineCall,
     getCallStatus,
+    getIceServers,
     reportCallIssue,
-    // Convenience alias used in some places:
     extractErrorMessage,
   };
 };
