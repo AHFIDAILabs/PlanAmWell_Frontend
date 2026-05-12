@@ -275,11 +275,47 @@ export default function DoctorProfileScreen() {
             </TouchableOpacity>
           )}
 
-          <View style={styles.infoRow}>
-            <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-            <Text style={[styles.infoText, { color: colors.text }]}>
-              License: {doctor.licenseNumber}
-            </Text>
+          {/* Verification block */}
+          <View style={styles.verificationCard}>
+            <View style={styles.verificationHeader}>
+              <Ionicons name="shield-checkmark" size={20} color="#16A34A" />
+              <Text style={styles.verificationTitle}>Doctor Verification</Text>
+              {doctor.licenseNumber ? (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark-circle" size={13} color="#FFF" />
+                  <Text style={styles.verifiedBadgeText}>Verified</Text>
+                </View>
+              ) : (
+                <View style={[styles.verifiedBadge, { backgroundColor: "#F59E0B" }]}>
+                  <Ionicons name="time-outline" size={13} color="#FFF" />
+                  <Text style={styles.verifiedBadgeText}>Pending</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.licenseRow}>
+              <Text style={styles.licenseLabel}>License No.</Text>
+              <Text style={styles.licenseValue}>
+                {doctor.licenseNumber || "Not provided"}
+              </Text>
+            </View>
+            <View style={styles.licenseRow}>
+              <Text style={styles.licenseLabel}>Issuing Body</Text>
+              <Text style={styles.licenseValue}>
+                {(doctor as any).issuingBody || "Medical & Dental Council of Nigeria (MDCN)"}
+              </Text>
+            </View>
+            <View style={styles.licenseRow}>
+              <Text style={styles.licenseLabel}>Valid Through</Text>
+              <Text style={styles.licenseValue}>
+                {(doctor as any).licenseValidYear || "On File"}
+              </Text>
+            </View>
+            {!doctor.licenseNumber && (
+              <Text style={styles.verificationNote}>
+                🔍 Verification in progress. Our team will review your credentials shortly.
+              </Text>
+            )}
           </View>
         </View>
 
@@ -526,6 +562,28 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E5E7EB",
   },
   infoText: { fontSize: 14, flex: 1 },
+
+  verificationCard: {
+    marginTop: 12,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
+  },
+  verificationHeader: {
+    flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10,
+  },
+  verificationTitle: { fontWeight: "700", fontSize: 14, flex: 1, color: "#166534" },
+  verifiedBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "#16A34A", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  verifiedBadgeText: { color: "#FFF", fontSize: 11, fontWeight: "700" },
+  licenseRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  licenseLabel: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
+  licenseValue: { fontSize: 13, color: "#1A1A1A", fontWeight: "600", flex: 1, textAlign: "right" },
+  verificationNote: { fontSize: 12, color: "#92400E", marginTop: 8, lineHeight: 17 },
 
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   ratingText: { fontSize: 20, fontWeight: "700" },

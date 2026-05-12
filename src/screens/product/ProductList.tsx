@@ -1,70 +1,79 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { StackScreenProps } from '@react-navigation/stack';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { getProductsByCategory} from '../../services/product';
-import { cartService } from '../../services/cart';
+import { getProductsByCategory } from '../../services/product';
+import { CartContext } from '../../context/CartContext';
 import Toast from 'react-native-toast-message';
 import { AppStackParamList } from '../../types/App';
-import { IProduct, ICartItem } from '../../types/backendType';
-
+import { IProduct } from '../../types/backendType';
 
 type Props = StackScreenProps<AppStackParamList, 'ProductList'>;
 
 export default function ProductList({ route, navigation }: Props) {
-    const { category, fromChat } = route.params;
+    const { category } = route.params;
+    const { addProduct } = useContext(CartContext);
     const [products, setProducts] = useState<IProduct[]>([]);
-    const [loading, setLoading] = useState(true);   
+    const [loading, setLoading] = useState(true);
+    const [addingId, setAddingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-        try {
-            const data = await getProductsByCategory(category);
-            console.log("Fetched products:", data);
-            setProducts(Array.isArray(data) ? data : data.products || []);
-        } catch (err) {
-            console.error("Failed to fetch products:", err);
-            Toast.show({ type: 'error', text1: 'Failed to load products' });
-        } finally {
-            setLoading(false);
-        }
-    };
-    fetchProducts();
-}, [category]);
-
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const data = await getProductsByCategory(category);
+                setProducts(Array.isArray(data) ? data : (data as any).products || []);
+            } catch (err) {
+                console.error("Failed to fetch products:", err);
+                Toast.show({ type: 'error', text1: 'Failed to load products' });
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchProducts();
+    }, [category]);
 
     const handleAddToCart = async (product: IProduct) => {
-        if (!product._id) {
-            Toast.show({ type: 'error', text1: 'Error', text2: 'Product ID is missing' });
-            return;
-        }
+        if (addingId) return; // prevent double-tap
+        setAddingId(product._id ?? null);
         try {
-            // Explicitly map product fields to ICartItem to avoid type mismatch
-            const cartItem: ICartItem = {
-                drugId: product._id,
-                quantity: 1,
-                price: product.price,
-                drugName: product.name,
-                imageUrl: product.imageUrl
-            };
-            await cartService.addToCart([], "guest-session-id", [cartItem] as any);
-            Toast.show({ type: 'success', text1: `${product.name} added to cart!` });
-            navigation.navigate('CartModal');
+            await addProduct(product);
+            Toast.show({ type: 'success', text1: 'Added to Cart', text2: `${product.name} added!` });
         } catch (err: any) {
             Toast.show({ type: 'error', text1: 'Failed to add to cart', text2: err.message });
+        } finally {
+            setAddingId(null);
         }
     };
 
-    const renderItem = ({ item }: { item: IProduct }) => (
-        <View style={styles.card}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.price}>₦{item.price}</Text>
-            <TouchableOpacity onPress={() => handleAddToCart(item)} style={styles.button}>
-                <Text style={styles.buttonText}>Add to Cart</Text>
-            </TouchableOpacity>
-        </View>
-    );
+    const renderItem = ({ item }: { item: IProduct }) => {
+        const isAdding = addingId === item._id;
+        return (
+            <View style={styles.card}>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.price}>₦{item.price?.toLocaleString()}</Text>
+                <TouchableOpacity
+                    onPress={() => handleAddToCart(item)}
+                    style={[styles.button, isAdding && styles.buttonDisabled]}
+                    disabled={isAdding}
+                    activeOpacity={0.8}
+                >
+                    {isAdding
+                        ? <ActivityIndicator size="small" color="#FFF" />
+                        : <Text style={styles.buttonText}>Add to Cart</Text>
+                    }
+                </TouchableOpacity>
+            </View>
+        );
+    };
 
     if (loading) return <ActivityIndicator size="large" color="#D81E5B" style={{ marginTop: 50 }} />;
+
+    if (products.length === 0) {
+        return (
+            <View style={styles.empty}>
+                <Text style={styles.emptyText}>No products found in this category.</Text>
+            </View>
+        );
+    }
 
     return (
         <FlatList
@@ -77,9 +86,12 @@ export default function ProductList({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-    card: { padding: 15, borderRadius: 10, marginBottom: 10, backgroundColor: '#FFF', elevation: 2 },
-    name: { fontWeight: 'bold', fontSize: 16 },
-    price: { marginVertical: 5, color: '#1A1A1A' },
-    button: { backgroundColor: '#D81E5B', padding: 10, borderRadius: 5, alignItems: 'center' },
-    buttonText: { color: '#FFF', fontWeight: 'bold' },
+    card:           { padding: 15, borderRadius: 10, marginBottom: 10, backgroundColor: '#FFF', elevation: 2 },
+    name:           { fontWeight: 'bold', fontSize: 16, color: '#1A1A1A', marginBottom: 4 },
+    price:          { marginVertical: 6, color: '#D81E5B', fontWeight: '600', fontSize: 15 },
+    button:         { backgroundColor: '#D81E5B', padding: 12, borderRadius: 8, alignItems: 'center', minHeight: 44 },
+    buttonDisabled: { backgroundColor: '#F0A0B8' },
+    buttonText:     { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+    empty:          { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 80 },
+    emptyText:      { color: '#666', fontSize: 15 },
 });

@@ -184,13 +184,13 @@ export default function AllDoctorsScreen({ navigation }: any) {
           <Text style={styles.filterTitle}>Filter Doctors</Text>
 
           <View style={styles.filterOption}>
-            <Text>Available Today</Text>
-            <Switch value={availableToday} onValueChange={setAvailableToday} />
+            <Text style={styles.filterOptionText}>Available Today</Text>
+            <Switch value={availableToday} onValueChange={setAvailableToday} trackColor={{ false: "#DDD", true: "#D81E5B" }} thumbColor="#FFF" />
           </View>
 
           <View style={styles.filterOption}>
-            <Text>Rating 4.0+</Text>
-            <Switch value={highRating} onValueChange={setHighRating} />
+            <Text style={styles.filterOptionText}>Rating 4.0+</Text>
+            <Switch value={highRating} onValueChange={setHighRating} trackColor={{ false: "#DDD", true: "#D81E5B" }} thumbColor="#FFF" />
           </View>
 
           <Text style={styles.filterSubtitle}>Specialty</Text>
@@ -233,9 +233,9 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   headerTitle: { fontSize: 28, fontWeight: "700", color: "#1A1A1A" },
   filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  subtitle: { fontSize: 14, color: "#666", marginBottom: 16 },
+  subtitle: { fontSize: 14, color: "#555", marginBottom: 16 },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -268,13 +268,13 @@ const styles = StyleSheet.create({
   doctorImage: { width: 80, height: 80, borderRadius: 12, backgroundColor: "#f5f5f5" },
   doctorInfo: { flex: 1, marginLeft: 12, justifyContent: "center" },
   doctorName: { fontSize: 16, fontWeight: "600", color: "#1A1A1A", marginBottom: 4 },
-  specialty: { fontSize: 13, color: "#666", marginBottom: 6 },
+  specialty: { fontSize: 14, color: "#555", marginBottom: 6 },
   ratingRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
-  ratingText: { fontSize: 13, fontWeight: "600", color: "#1A1A1A", marginLeft: 4 },
-  reviewCount: { fontSize: 12, color: "#999", marginLeft: 4 },
-  availability: { fontSize: 12, color: "#666" },
-  bookButton: { backgroundColor: "#D81E5B", borderRadius: 8, paddingVertical: 10, alignItems: "center" },
-  bookButtonText: { fontSize: 14, fontWeight: "600", color: "#fff" },
+  ratingText: { fontSize: 14, fontWeight: "600", color: "#1A1A1A", marginLeft: 4 },
+  reviewCount: { fontSize: 13, color: "#777", marginLeft: 4 },
+  availability: { fontSize: 13, color: "#555" },
+  bookButton: { backgroundColor: "#D81E5B", borderRadius: 10, paddingVertical: 14, alignItems: "center", minHeight: 48, justifyContent: "center" },
+  bookButtonText: { fontSize: 15, fontWeight: "700", color: "#fff" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60 },
   noResultsText: { fontSize: 18, fontWeight: "600", color: "#666", marginTop: 16, textAlign: "center" },
@@ -283,9 +283,10 @@ const styles = StyleSheet.create({
   // Filter modal styles
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
   filterModal: { position: "absolute", bottom: 0, width: "100%", backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "80%" },
-  filterTitle: { fontSize: 18, fontWeight: "700", marginBottom: 15 },
-  filterOption: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
-  filterSubtitle: { fontSize: 14, fontWeight: "600", marginBottom: 8 },
+  filterTitle: { fontSize: 18, fontWeight: "700", marginBottom: 15, color: "#1A1A1A" },
+  filterOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  filterOptionText: { fontSize: 15, color: "#333", fontWeight: "500" },
+  filterSubtitle: { fontSize: 15, fontWeight: "600", marginBottom: 10, color: "#333" },
   specialtyOption: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#ddd", marginBottom: 6 },
   specialtyText: { fontSize: 14, color: "#222" },
   applyBtn: { backgroundColor: "#D81E5B", padding: 12, borderRadius: 10, alignItems: "center", marginTop: 12 },

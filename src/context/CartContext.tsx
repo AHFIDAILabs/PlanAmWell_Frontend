@@ -3,6 +3,7 @@ import React, { createContext, useState, useEffect } from "react";
 import { ICart, ICartItem, IProduct } from "../types/backendType";
 import { cartService, ICartResponse } from "../services/cart";
 import { useAuth } from "../hooks/useAuth";
+import Toast from 'react-native-toast-message';
 
 interface CartContextProps {
   cart: ICart | null;
@@ -66,7 +67,10 @@ const refreshCart = async () => {
 
 const addProduct = async (product: IProduct) => {
   const cartId = getCartId();
-  if (!cartId) return;
+  if (!cartId) {
+    Toast.show({ type: 'error', text1: 'Session Error', text2: 'Could not identify your session. Please restart the app.' });
+    return;
+  }
 
   setLoading(true);
   try {

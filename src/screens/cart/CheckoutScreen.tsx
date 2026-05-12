@@ -408,7 +408,7 @@ const runCheckout = async () => {
 };
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: "#F9F9F9" }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -584,24 +584,26 @@ const runCheckout = async () => {
             )}
           </ScrollView>
 
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.placeOrderBtn}
-              onPress={handlePlaceOrder}
-              disabled={loading || checkoutLoading}
-            >
-              {loading || checkoutLoading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-             <Text style={styles.placeOrderText}>
-  Place Order — ₦{(totalAmount + deliveryFee).toLocaleString()}
-</Text>
-              )}
-            </TouchableOpacity>
-          </View>
         </View>
       </KeyboardAvoidingView>
 
+      {/* Footer rendered OUTSIDE KeyboardAvoidingView so SafeAreaView bottom inset protects it */}
+      <SafeAreaView style={styles.footer} edges={['bottom']}>
+        <TouchableOpacity
+          style={[styles.placeOrderBtn, (loading || checkoutLoading) && { opacity: 0.7 }]}
+          onPress={handlePlaceOrder}
+          disabled={loading || checkoutLoading}
+          activeOpacity={0.85}
+        >
+          {loading || checkoutLoading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.placeOrderText}>
+              Place Order — ₦{(totalAmount + deliveryFee).toLocaleString()}
+            </Text>
+          )}
+        </TouchableOpacity>
+      </SafeAreaView>
     </SafeAreaView>
   );
 };
@@ -621,7 +623,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: "700", color: "#222" },
   backBtn: { padding: 5 },
-  content: { padding: 20, paddingBottom: 100 },
+  content: { padding: 20, paddingBottom: 24 },
   section: {
     backgroundColor: "#FFF",
     borderRadius: 12,
@@ -712,12 +714,10 @@ const styles = StyleSheet.create({
   checkboxContainer: { flexDirection: "row", alignItems: "center" },
   checkboxLabel: { marginLeft: 10, fontSize: 14, color: "#444" },
   footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: "#FFF",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
     borderTopWidth: 1,
     borderTopColor: "#EEE",
   },

@@ -107,4 +107,20 @@ getConversationHistory: async (sessionId: string, userId?: string): Promise<Conv
             throw error;
         }
     },
+
+    // Upload image or document to chatbot CDN (public — no auth required)
+    uploadFile: async (
+        uri: string,
+        mimeType: string,
+        fileName: string
+    ): Promise<{ url: string; fileType: 'image' | 'document'; fileName: string; mimeType: string }> => {
+        const formData = new FormData();
+        formData.append('file', { uri, type: mimeType, name: fileName } as any);
+        const response = await axios.post(`${API_URL}/api/v1/chatbot/upload`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000,
+        });
+        if (!response.data.success) throw new Error(response.data.message || 'Upload failed');
+        return response.data.data;
+    },
 };

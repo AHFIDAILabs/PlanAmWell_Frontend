@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
   doctorRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#EEE" },
   doctorName: { fontSize: 16, fontWeight: "700", color: "#333" },
-  specialty: { fontSize: 13, color: "#666" },
+  specialty: { fontSize: 14, color: "#555" },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -496,13 +496,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  statusText: { fontSize: 12, fontWeight: "600" },
+  statusText: { fontSize: 13, fontWeight: "600" },
 
   divider: { height: 1, backgroundColor: "#EEE", marginVertical: 12 },
 
   detailRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   detailText: { fontSize: 14, color: "#333", flex: 1 },
-  countdown: { fontSize: 12, color: "#4CAF50", fontWeight: "600" },
+  countdown: { fontSize: 14, color: "#4CAF50", fontWeight: "600" },
 
   joinButton: {
     backgroundColor: "#10B981",
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
   modalSpecialty: { fontSize: 14, color: "#666" },
 
   modalSection: { marginBottom: 16 },
-  sectionLabel: { fontSize: 13, color: "#999", marginBottom: 4, fontWeight: "500" },
+  sectionLabel: { fontSize: 14, color: "#777", marginBottom: 4, fontWeight: "500" },
   sectionValue: { fontSize: 15, color: "#333", fontWeight: "500" },
 
   modalStatusBadge: {

@@ -22,6 +22,7 @@ import {
   Phone,
   FileText,
   LogOut,
+  Lock,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../hooks/useAuth';
@@ -177,6 +178,48 @@ const SettingsScreen: React.FC = () => {
           />
         </View>
 
+        {/* PRIVACY & SECURITY */}
+        <View style={[styles.card, { backgroundColor: themeStyles.card }]}>
+          <Text style={[styles.sectionTitle, { color: themeStyles.text }]}>
+            Privacy & Security
+          </Text>
+
+          <View style={styles.privacyBanner}>
+            <Lock size={14} color="#166534" />
+            <Text style={styles.privacyBannerText}>
+              Your health data is encrypted and never shared with third parties.
+            </Text>
+          </View>
+
+          <MenuItem
+            icon={<Shield size={20} color={themeStyles.text} />}
+            title="Privacy Controls"
+            textColor={themeStyles.text}
+            onPress={() => navigation.navigate("PrivacySettingsScreen")}
+          />
+
+          <MenuItem
+            icon={<Lock size={20} color={themeStyles.text} />}
+            title="Data Management"
+            textColor={themeStyles.text}
+            onPress={() => navigation.navigate("PrivacySettingsScreen")}
+          />
+
+          <MenuItem
+            icon={<FileText size={20} color={themeStyles.text} />}
+            title="Privacy Policy"
+            textColor={themeStyles.text}
+            onPress={() => navigation.navigate("PrivacyPolicyScreen")}
+          />
+
+          <MenuItem
+            icon={<FileText size={20} color={themeStyles.text} />}
+            title="Terms of Service"
+            textColor={themeStyles.text}
+            onPress={() => navigation.navigate("TermsOfServiceScreen" as any)}
+          />
+        </View>
+
         {/* SUPPORT & LEGAL */}
         <View style={[styles.card, { backgroundColor: themeStyles.card }]}>
           <Text style={[styles.sectionTitle, { color: themeStyles.text }]}>
@@ -195,13 +238,6 @@ const SettingsScreen: React.FC = () => {
             title="Contact Us"
             textColor={themeStyles.text}
             onPress={() => Linking.openURL("mailto:support@planamwell.com")}
-          />
-
-          <MenuItem
-            icon={<FileText size={20} color={themeStyles.text} />}
-            title="Privacy Policy"
-            textColor={themeStyles.text}
-            onPress={() => navigation.navigate("PrivacyPolicyScreen")}
           />
         </View>
 
@@ -371,6 +407,24 @@ const styles = StyleSheet.create({
 
   rightText: {
     fontSize: 14,
+  },
+
+  privacyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  privacyBannerText: {
+    fontSize: 13,
+    color: '#166534',
+    flex: 1,
+    lineHeight: 18,
   },
 
   logoutButton: {

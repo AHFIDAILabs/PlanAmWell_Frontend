@@ -124,8 +124,8 @@ const styles = StyleSheet.create({
   },
 
   manufacturer: {
-    fontSize: 13,
-    color: "#777",
+    fontSize: 14,
+    color: "#666",
     marginTop: 3,
   },
 
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
 
   stockStatus: {
     marginTop: 8,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
   },
 
@@ -155,12 +155,13 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 16,
     backgroundColor: "#D81E5B",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
     borderRadius: 30,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    minHeight: 48,
     shadowColor: "#D81E5B",
     shadowOpacity: 0.4,
     shadowRadius: 8,

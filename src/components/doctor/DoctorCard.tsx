@@ -171,9 +171,9 @@ const styles = StyleSheet.create({
   },
 
   specialty: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: "Inter_500Medium",
-    color: "#777",
+    color: "#666",
     marginTop: 3,
   },
   specialtyDark: {
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
 
   ratingText: {
     marginLeft: 4,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: "Inter_600SemiBold",
     color: "#D81E5B",
   },

@@ -96,7 +96,7 @@ export const ChatRoomScreen: React.FC = () => {
   const patientIdRef = useRef<string | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentUserId = user?._id;
   const isDoctor = userRole === "Doctor";
 

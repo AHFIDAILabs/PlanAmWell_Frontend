@@ -507,8 +507,8 @@ const styles = StyleSheet.create({
     },
     appointmentInfo: { flex: 1, marginLeft: 12 },
     appointmentDoctor: { fontSize: 15, fontWeight: '700', color: '#222' },
-    appointmentSpec: { fontSize: 12, color: '#666', marginTop: 2 },
-    appointmentTime: { fontSize: 12, color: '#D81E5B', marginTop: 4, fontWeight: '600' },
+    appointmentSpec: { fontSize: 14, color: '#555', marginTop: 2 },
+    appointmentTime: { fontSize: 14, color: '#D81E5B', marginTop: 4, fontWeight: '600' },
     appointmentBadge: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -517,8 +517,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 12,
+        minHeight: 32,
     },
-    appointmentBadgeText: { fontSize: 11, color: '#FFF', fontWeight: '700' },
+    appointmentBadgeText: { fontSize: 13, color: '#FFF', fontWeight: '700' },
     
     menuGroup: { 
         backgroundColor: '#FFF', 
