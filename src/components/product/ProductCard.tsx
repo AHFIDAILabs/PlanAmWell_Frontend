@@ -29,7 +29,7 @@ export default function ProductCard({
   onAddToCart,
   cardWidth = GRID_CARD_WIDTH,
 }: ProductCardProps) {
-  const imageHeight = Math.round(cardWidth * 0.9); // near-square image for good visual weight
+  const imageHeight = Math.round(cardWidth * 0.9);
 
   const imageUrl =
     product.imageUrl ||
@@ -58,44 +58,49 @@ export default function ProductCard({
             <Text style={styles.ribbonText}>Sold Out</Text>
           </View>
         )}
-
-        {/* Cart FAB */}
-        <TouchableOpacity
-          style={[styles.fab, !isAvailable && styles.fabDisabled]}
-          onPress={() => isAvailable && onAddToCart?.(product)}
-          activeOpacity={0.8}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Feather
-            name="shopping-cart"
-            size={15}
-            color={isAvailable ? "#FFF" : "#BBB"}
-          />
-        </TouchableOpacity>
       </View>
 
       {/* ── Info ── */}
       <View style={styles.info}>
+        {/* Name */}
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
 
+        {/* Brand */}
         <Text style={styles.brand} numberOfLines={1}>
           {product.manufacturerName || "PlanAmWell"}
         </Text>
 
-        <View style={styles.priceRow}>
-          <Text style={styles.price}>
-            ₦{product.price?.toLocaleString()}
-          </Text>
-          <Text
-            style={[
-              styles.stockLabel,
-              isAvailable ? styles.inStock : styles.outOfStock,
-            ]}
+        {/* Price + Add button — flex space-between */}
+        <View style={styles.bottomRow}>
+          <View style={styles.priceBlock}>
+            <Text style={styles.price}>₦{product.price?.toLocaleString()}</Text>
+            <Text
+              style={[
+                styles.stockLabel,
+                isAvailable ? styles.inStock : styles.outOfStock,
+              ]}
+            >
+              {isAvailable ? "In stock" : "Unavailable"}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.addBtn, !isAvailable && styles.addBtnDisabled]}
+            onPress={() => isAvailable && onAddToCart?.(product)}
+            disabled={!isAvailable}
+            activeOpacity={0.8}
           >
-            {isAvailable ? "In stock" : "Unavailable"}
-          </Text>
+            <Feather
+              name="shopping-cart"
+              size={13}
+              color={isAvailable ? "#FFF" : "#AAA"}
+            />
+            <Text style={[styles.addBtnText, !isAvailable && styles.addBtnTextDisabled]}>
+              Add
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </TouchableOpacity>
@@ -136,28 +141,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  fab: {
-    position: "absolute",
-    right: 10,
-    bottom: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#D81E5B",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#D81E5B",
-    shadowOpacity: 0.45,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
-  },
-  fabDisabled: {
-    backgroundColor: "#DDD",
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-
   info: {
     padding: 12,
   },
@@ -171,20 +154,24 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 12,
     color: "#999",
-    marginBottom: 8,
+    marginBottom: 10,
   },
 
-  priceRow: {
+  // Bottom row: price block left, Add button right
+  bottomRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 4,
+    gap: 6,
+  },
+  priceBlock: {
+    flex: 1,
   },
   price: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
     color: "#D81E5B",
+    marginBottom: 2,
   },
   stockLabel: {
     fontSize: 11,
@@ -192,4 +179,33 @@ const styles = StyleSheet.create({
   },
   inStock: { color: "#10B981" },
   outOfStock: { color: "#EF4444" },
+
+  // Add button
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#D81E5B",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    shadowColor: "#D81E5B",
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  addBtnDisabled: {
+    backgroundColor: "#EFEFEF",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  addBtnText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  addBtnTextDisabled: {
+    color: "#AAA",
+  },
 });

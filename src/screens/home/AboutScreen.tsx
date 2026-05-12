@@ -87,7 +87,7 @@ export default function AboutScreen() {
         {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.logoCircle}>
-            <Text style={styles.logoInitials}>PA</Text>
+            <Text style={styles.logoInitials}>PAW</Text>
           </View>
           <Text style={styles.heroTagline}>Your Health. Your Terms.</Text>
           <Text style={styles.heroSub}>
@@ -188,7 +188,7 @@ export default function AboutScreen() {
 
         {/* Version */}
         <Text style={styles.versionText}>PlanAmWell · Version 1.0.0</Text>
-        <Text style={styles.copyrightText}>© 2024 PlanAmWell. All rights reserved.</Text>
+        <Text style={styles.copyrightText}>© 2025 PlanAmWell. All rights reserved.</Text>
 
         <View style={{ height: 40 }} />
       </ScrollView>
