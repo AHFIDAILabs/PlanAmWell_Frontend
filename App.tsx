@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
+import ErrorBoundary from "./src/components/ErrorBoundary";
 import * as Notifications from "expo-notifications";
 import * as Updates from "expo-updates";
 import { NavigationContainer } from "@react-navigation/native";
@@ -250,8 +251,10 @@ function AppContent() {
 /* ================= ROOT ================= */
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
