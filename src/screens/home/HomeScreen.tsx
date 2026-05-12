@@ -85,10 +85,11 @@ const ProductSection = ({ navigation }: ProductSectionProps) => {
                     decelerationRate="fast"
                     renderItem={({ item }) => (
                         <View style={styles.productCardWrapper}>
-                            <ProductCard 
-                                product={item} 
-                                onPress={() => navigation.navigate('ProductsScreen' as any, { productId: item._id })} 
-                                onAddToCart={handleAddToCart} 
+                            <ProductCard
+                                product={item}
+                                cardWidth={CAROUSEL_CARD_WIDTH}
+                                onPress={() => navigation.navigate('ProductsScreen' as any, { productId: item._id })}
+                                onAddToCart={handleAddToCart}
                             />
                         </View>
                     )}

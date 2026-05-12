@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TextInput,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -25,11 +24,7 @@ import BottomBar from '../../components/common/BottomBar';
 import { IProduct, ICategory } from '../../types/backendType';
 import Toast from 'react-native-toast-message';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const COLUMN_GAP = 12;
-const H_PADDING = 16;
-// Each card fills exactly half minus half the gap
-const CARD_WIDTH = (SCREEN_WIDTH - H_PADDING * 2 - COLUMN_GAP) / 2;
+// Card sizing is owned by ProductCard itself; screen only controls spacing.
 
 // ─── Category chips ───────────────────────────────────────────────────────────
 const CategoryChips = ({
@@ -198,13 +193,11 @@ export default function ProductsScreen() {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={ListHeader}
           renderItem={({ item }) => (
-            <View style={styles.cardCell}>
-              <ProductCard
-                product={item}
-                onPress={() => handleViewDetail(item)}
-                onAddToCart={() => handleAddToCart(item)}
-              />
-            </View>
+            <ProductCard
+              product={item}
+              onPress={() => handleViewDetail(item)}
+              onAddToCart={() => handleAddToCart(item)}
+            />
           )}
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
@@ -277,7 +270,7 @@ const styles = StyleSheet.create({
   cartBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
 
   // List
-  listContent: { paddingHorizontal: H_PADDING, paddingBottom: 100 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 100 },
   listHeader: { paddingTop: 14, paddingBottom: 6 },
 
   // Search
@@ -320,9 +313,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Grid
-  row: { gap: COLUMN_GAP, marginBottom: COLUMN_GAP },
-  cardCell: { width: CARD_WIDTH },
+  // Grid — space-between fills the row; ProductCard owns its own width
+  row: { justifyContent: 'space-between', marginBottom: 14 },
 
   // Empty / Error
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
