@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
-} from "react-native";
+import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { IProduct } from "../../types/backendType";
 
@@ -15,161 +9,144 @@ interface ProductCardProps {
   onAddToCart?: (product: IProduct) => void;
 }
 
-export default function ProductCard({
-  product,
-  onPress,
-  onAddToCart,
-}: ProductCardProps) {
-  const handlePress = () => onPress?.(product);
-  const handleAddToCart = () => onAddToCart?.(product);
-
+export default function ProductCard({ product, onPress, onAddToCart }: ProductCardProps) {
   const imageUrl =
-    product.imageUrl ||
-    "https://placehold.co/600x300/F0F0F0/D81E5B?text=No+Image";
+    product.imageUrl || "https://placehold.co/300x200/F8F8F8/D81E5B?text=Product";
 
-  const isAvailable =
-    product.stockQuantity > 0 && product.status !== "OUT_OF_STOCK";
+  const isAvailable = product.stockQuantity > 0 && product.status !== "OUT_OF_STOCK";
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={handlePress}
-      activeOpacity={0.9}
-    >
-      
+    <TouchableOpacity style={styles.card} onPress={() => onPress?.(product)} activeOpacity={0.88}>
+      {/* Image */}
       <View style={styles.imageWrapper}>
-        <Image source={{ uri: imageUrl }} style={styles.image} />
+        <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+        {!isAvailable && (
+          <View style={styles.soldOutOverlay}>
+            <Text style={styles.soldOutText}>Sold Out</Text>
+          </View>
+        )}
       </View>
 
-   
-      <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={1}>
-          {product.name}
-        </Text>
-
-        <Text style={styles.manufacturer} numberOfLines={1}>
+      {/* Body */}
+      <View style={styles.body}>
+        <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
+        <Text style={styles.brand} numberOfLines={1}>
           {product.manufacturerName || "PlanAmWell"}
         </Text>
 
-        <Text style={styles.price}>₦{product.price?.toLocaleString()}</Text>
+        <View style={styles.footer}>
+          <Text style={styles.price}>₦{product.price?.toLocaleString()}</Text>
+          <TouchableOpacity
+            style={[styles.cartBtn, !isAvailable && styles.cartBtnDisabled]}
+            onPress={() => onAddToCart?.(product)}
+            disabled={!isAvailable}
+            activeOpacity={0.75}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather
+              name={isAvailable ? "shopping-cart" : "x"}
+              size={14}
+              color={isAvailable ? "#FFF" : "#AAA"}
+            />
+          </TouchableOpacity>
+        </View>
 
-     
-        <Text
-          style={[
-            styles.stockStatus,
-            isAvailable ? styles.inStock : styles.outOfStock,
-          ]}
-        >
-          {isAvailable
-            ? `${product.stockQuantity} in stock`
-            : "Out of Stock"}
+        <Text style={[styles.stock, isAvailable ? styles.inStock : styles.outOfStock]}>
+          {isAvailable ? `${product.stockQuantity} in stock` : "Unavailable"}
         </Text>
       </View>
-
-      <TouchableOpacity
-        style={[
-          styles.addBtn,
-          !isAvailable && styles.addBtnDisabled,
-        ]}
-        onPress={handleAddToCart}
-        disabled={!isAvailable}
-        activeOpacity={0.7}
-      >
-        <Feather
-          name="shopping-cart"
-          size={18}
-          color={isAvailable ? "#fff" : "#999"}
-        />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    marginBottom: 26,
-    width: "95%",
+    backgroundColor: "#FFF",
+    borderRadius: 14,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+    flex: 1,
   },
 
   imageWrapper: {
     width: "100%",
-    height: 180,
-    overflow: "hidden",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    height: 110,
+    backgroundColor: "#F5F5F5",
+    position: "relative",
   },
-
   image: {
     width: "100%",
     height: "100%",
   },
-
-  content: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  soldOutOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-
-  title: {
-    fontSize: 17,
+  soldOutText: {
+    color: "#FFF",
     fontWeight: "700",
-    color: "#222",
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
 
-  manufacturer: {
-    fontSize: 14,
-    color: "#666",
-    marginTop: 3,
+  body: {
+    padding: 10,
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1A1A1A",
+    lineHeight: 18,
+    marginBottom: 3,
+  },
+  brand: {
+    fontSize: 11,
+    color: "#888",
+    marginBottom: 8,
   },
 
-  price: {
-    fontSize: 18,
-    color: "#D81E5B",
-    fontWeight: "900",
-    marginTop: 8,
-  },
-
-  stockStatus: {
-    marginTop: 8,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  inStock: {
-    color: "#10B981",
-  },
-
-  outOfStock: {
-    color: "#EF4444",
-  },
-
-  addBtn: {
-    position: "absolute",
-    right: 16,
-    bottom: 16,
-    backgroundColor: "#D81E5B",
-    paddingVertical: 13,
-    paddingHorizontal: 18,
-    borderRadius: 30,
+  footer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    minHeight: 48,
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  price: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#D81E5B",
+    flexShrink: 1,
+  },
+  cartBtn: {
+    backgroundColor: "#D81E5B",
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
     shadowColor: "#D81E5B",
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  cartBtnDisabled: {
+    backgroundColor: "#EEE",
+    shadowOpacity: 0,
+    elevation: 0,
   },
 
-  addBtnDisabled: {
-    backgroundColor: "#E5E5E5",
+  stock: {
+    fontSize: 11,
+    fontWeight: "600",
   },
+  inStock: { color: "#10B981" },
+  outOfStock: { color: "#EF4444" },
 });

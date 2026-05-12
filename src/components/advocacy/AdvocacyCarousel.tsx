@@ -28,7 +28,7 @@ const AdvocacyCarousel: React.FC = () => {
   const { darkMode } = useTheme();
   const flatListRef = useRef<FlatList<IAdvocacyArticle>>(null);
   const currentIndexRef = useRef(0);
-  const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch featured articles
   useEffect(() => {

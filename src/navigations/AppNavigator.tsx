@@ -46,6 +46,7 @@ import DoctorPendingScreen from "../screens/doctor/DoctorPendingScreen";
 import DoctorOnboardingScreen from "../screens/doctor/DoctorOnboardingScreen";
 import PrivacyPolicyScreen from "../screens/legal/PrivacyPolicyScreen";
 import TermsOfServiceScreen from "../screens/legal/TermsOfServiceScreen";
+import AboutScreen from "../screens/home/AboutScreen";
 import FindAClinicScreen from "../screens/clinic/FindAClinicScreen";
 import ClinicDetailScreen from "../screens/clinic/ClinicDetailScreen";
 
@@ -178,6 +179,7 @@ export default function AppNavigator() {
       {/* Legal */}
       <RootStack.Screen name="PrivacyPolicyScreen" component={PrivacyPolicyScreen} />
       <RootStack.Screen name="TermsOfServiceScreen" component={TermsOfServiceScreen} />
+      <RootStack.Screen name="AboutScreen" component={AboutScreen} />
 
       {/* Clinics */}
       <RootStack.Screen name="FindAClinicScreen" component={FindAClinicScreen} />

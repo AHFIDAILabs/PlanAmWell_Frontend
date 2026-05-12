@@ -113,6 +113,7 @@ export type AppStackParamList = {
 
   PrivacyPolicyScreen: undefined;
   TermsOfServiceScreen: undefined;
+  AboutScreen: undefined;
 
   FindAClinicScreen: undefined;
   ClinicDetailScreen: { clinic: IClinic };
