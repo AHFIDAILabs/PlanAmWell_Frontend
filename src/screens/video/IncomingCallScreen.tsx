@@ -76,8 +76,14 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
   }, []);
 
   const startRingtone = async () => {
+    // Fallback chain — try each URL until one loads successfully
+    const RINGTONE_URLS = [
+      'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
+      'https://www.soundjay.com/phone/phone-ringing-01a.mp3',
+      'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg',
+    ];
+
     try {
-      // Configure audio to play even in silent mode
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         staysActiveInBackground: true,
@@ -86,21 +92,27 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
         playThroughEarpieceAndroid: false,
       });
 
-      // Load and play ringtone
-      const { sound } = await Audio.Sound.createAsync(
-        // require('../../assets/sounds/ringtone.mp3'), // Add custom ringtone
-        { uri: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' }, // Fallback
-        {
-          isLooping: true,
-          volume: 1.0,
-          shouldPlay: true,
+      let loaded = false;
+      for (const url of RINGTONE_URLS) {
+        try {
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: url },
+            { isLooping: true, volume: 1.0, shouldPlay: true }
+          );
+          soundRef.current = sound;
+          console.log('🔔 Ringtone playing:', url);
+          loaded = true;
+          break;
+        } catch {
+          console.warn('⚠️ Ringtone URL failed, trying next:', url);
         }
-      );
+      }
 
-      soundRef.current = sound;
-      console.log('🔔 Ringtone playing');
+      if (!loaded) {
+        console.warn('⚠️ All ringtone URLs failed — vibration only');
+      }
     } catch (error) {
-      console.error('❌ Failed to play ringtone:', error);
+      console.error('❌ Failed to configure audio:', error);
     }
   };
 

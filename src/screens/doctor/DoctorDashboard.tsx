@@ -400,9 +400,15 @@ export default function DoctorDashboardScreen({ navigation }: any) {
 
   const getAvatarUri = () => {
     if (!doctorUser) return "";
-    if (typeof doctorUser.profileImage === "string") return doctorUser.profileImage;
-    return doctorUser.profileImage?.imageUrl || doctorUser.profileImage?.secure_url ||
-      `https://ui-avatars.com/api/?name=${doctorUser.firstName}+${doctorUser.lastName}`;
+    // doctorImage is the populated Image document (primary source after upload)
+    const docImg = doctorUser.doctorImage as any;
+    if (docImg?.imageUrl) return docImg.imageUrl;
+    if (docImg?.secure_url) return docImg.secure_url;
+    // Legacy fallback: profileImage string
+    if (typeof doctorUser.profileImage === "string" && doctorUser.profileImage) return doctorUser.profileImage;
+    const profileImg = doctorUser.profileImage as any;
+    if (profileImg?.imageUrl) return profileImg.imageUrl;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctorUser.firstName} ${doctorUser.lastName}`)}&background=D81E5B&color=fff`;
   };
 
   const scheduleData = Array.from({ length: 7 }, (_, i) => {

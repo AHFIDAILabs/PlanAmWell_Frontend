@@ -34,10 +34,12 @@ class PushNotificationService {
 
       await Notifications.setNotificationChannelAsync('default', {
         name: 'General Notifications',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250],
         lightColor: '#D81E5B',
         sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
       });
 
       console.log('✅ Android notification channels configured');

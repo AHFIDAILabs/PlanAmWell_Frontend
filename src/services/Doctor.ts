@@ -197,41 +197,59 @@ export const updateDoctorProfile = async (
             throw new Error('Authentication required');
         }
 
-        let body: any;
-        let headers: Record<string, string> = { Authorization: `Bearer ${authToken}` };
+        const headers: Record<string, string> = { Authorization: `Bearer ${authToken}` };
 
         if (imageUri) {
-            // Use FormData only when uploading an image file
+            // Use FormData with native fetch — preserves the multipart boundary that Multer needs
             const formData = new FormData();
             Object.keys(updateData).forEach(key => {
                 const value = (updateData as any)[key];
                 if (value !== undefined && value !== null) {
-                    formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value.toString());
+                    formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
                 }
             });
             const filename = imageUri.split('/').pop() || 'doctor_image.jpg';
             const ext = (/\.(\w+)$/.exec(filename)?.[1] ?? 'jpg').toLowerCase();
-            formData.append('doctorImage', { uri: imageUri, name: filename, type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` } as any);
-            body = formData;
-            // Let React Native set the multipart boundary automatically — do NOT set Content-Type manually
+            formData.append('doctorImage', {
+                uri: imageUri,
+                name: filename,
+                type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}`,
+            } as any);
+
+            // Do NOT set Content-Type — fetch auto-sets it with the correct boundary
+            const res = await fetch(`${API_URL}/${doctorId}`, {
+                method: 'PUT',
+                headers: { Authorization: `Bearer ${authToken}` },
+                body: formData as any,
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData?.message || `Server error: ${res.status}`);
+            }
+
+            const data = await res.json();
+            if (data.success) {
+                console.log('[DoctorService] ✅ Doctor profile updated (with image)');
+                return data.data;
+            }
+            return null;
         } else {
-            // Plain JSON for text-only updates (avoids multipart boundary issues)
-            body = updateData;
+            // Text-only update — plain JSON avoids multipart overhead
             headers['Content-Type'] = 'application/json';
+
+            const response: AxiosResponse<SingleDoctorResponse> = await axios.put(
+                `${API_URL}/${doctorId}`,
+                updateData,
+                { headers }
+            );
+
+            if (response.data.success) {
+                console.log('[DoctorService] ✅ Doctor profile updated');
+                return response.data.data;
+            }
+            return null;
         }
-
-        const response: AxiosResponse<SingleDoctorResponse> = await axios.put(
-            `${API_URL}/${doctorId}`,
-            body,
-            { headers }
-        );
-
-        if (response.data.success) {
-            console.log('[DoctorService] ✅ Doctor profile updated');
-            return response.data.data;
-        }
-
-        return null;
     } catch (error: any) {
         console.error(`[DoctorService] ❌ Error updating doctor:`, error.response?.data || error.message);
         throw error;

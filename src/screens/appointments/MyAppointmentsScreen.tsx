@@ -1,6 +1,6 @@
 // src/screens/MyAppointmentsScreen.tsx - COMPLETE WITH SOCKET SUPPORT
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ export const MyAppointmentsScreen: React.FC = () => {
   const { getCallStatus } = useVideoCall();
 
   const [appointments, setAppointments] = useState<IAppointment[]>([]);
+  const appointmentsRef = useRef<IAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [callStatusMap, setCallStatusMap] = useState<{ [key: string]: string }>({});
@@ -58,6 +59,11 @@ export const MyAppointmentsScreen: React.FC = () => {
     },
     [callStatusMap]
   );
+
+  // Keep ref in sync so socket handlers always read fresh appointments
+  useEffect(() => {
+    appointmentsRef.current = appointments;
+  }, [appointments]);
 
   const fetchAppointments = async () => {
     try {
@@ -156,11 +162,29 @@ export const MyAppointmentsScreen: React.FC = () => {
       setCallStatusMap((prev) => ({ ...prev, [data.appointmentId]: "in-progress" }));
     };
 
-    const handleCallRinging = (data: { appointmentId: string }) => {
+    const handleCallRinging = (data: { appointmentId: string; initiatedBy?: string }) => {
       setAppointments((prev) =>
         prev.map((appt) => (appt._id === data.appointmentId ? { ...appt, callStatus: "ringing" } : appt))
       );
       setCallStatusMap((prev) => ({ ...prev, [data.appointmentId]: "in-progress" }));
+
+      // Navigate to IncomingCallScreen — patient receives the ring notification
+      const appt = appointmentsRef.current.find((a) => a._id === data.appointmentId);
+      if (appt) {
+        const doc = typeof appt.doctorId === "object" ? (appt.doctorId as IDoctor) : null;
+        const callerName = doc?.firstName
+          ? `Dr. ${doc.firstName} ${doc.lastName || ""}`.trim()
+          : "Doctor";
+        const docImg = doc?.doctorImage as any;
+        const callerImage = docImg?.imageUrl || docImg?.secure_url || undefined;
+
+        navigation.navigate("IncomingCall", {
+          appointmentId: data.appointmentId,
+          callerName,
+          callerImage,
+          callerType: "Doctor",
+        });
+      }
     };
 
     const handleAppointmentUpdated = (data: { appointment: IAppointment }) => {

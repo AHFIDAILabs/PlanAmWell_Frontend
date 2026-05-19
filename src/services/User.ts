@@ -8,18 +8,16 @@ const USER_API_URL = `${SERVER_URL}/api/v1/users`;
 const DOCTOR_API_URL = `${SERVER_URL}/api/v1/doctors`;
 
 export interface UpdateUserData {
-  firstName?: string;
-  lastName?: string;
+  name?: string;
   email?: string;
-  phoneNumber?: string;
-  address?: string;
+  phone?: string;
+  homeAddress?: string;
   city?: string;
-  lga? : string;
-  state? : string;
+  lga?: string;
+  state?: string;
   country?: string;
   dateOfBirth?: string;
   gender?: string;
-  profileImage?: string;
 }
 
 interface UserProfileResponse {
@@ -69,10 +67,10 @@ export const fetchUserProfile = async (token: string): Promise<UserProfileRespon
     let response: AxiosResponse<UserProfileResponse>;
 
     if (isDoctor && userId) {
-      // Fetch doctor profile
-      const url = `${DOCTOR_API_URL}/${userId}`;
+      // Use /profile endpoint — populates doctorImage and works for any approval status
+      const url = `${DOCTOR_API_URL}/profile`;
       console.log('    API URL (Doctor):', url);
-      
+
       response = await axios.get(url, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -119,39 +117,40 @@ export const updateUserProfile = async (
   try {
     const url = `${USER_API_URL}/${userId}`;
 
-    // If image is provided, use FormData
+    // If image is provided, use FormData with native fetch (preserves multipart boundary)
     if (imageUri) {
       const formData = new FormData();
 
-      // Append all text fields
       Object.keys(data).forEach((key) => {
         const value = (data as any)[key];
-        if (value !== undefined && value !== null) {
-          formData.append(key, value);
+        if (value !== undefined && value !== null && value !== '') {
+          formData.append(key, value as string);
         }
       });
 
-      // Append the image file
-      const filename = imageUri.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const type = match ? `image/${match[1]}` : `image/jpeg`;
-
+      const filename = imageUri.split('/').pop() || 'profile_image.jpg';
+      const ext = (/\.(\w+)$/.exec(filename)?.[1] ?? 'jpg').toLowerCase();
       formData.append('userImage', {
         uri: imageUri,
-        name: filename || 'profile_image.jpg',
-        type,
+        name: filename,
+        type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}`,
       } as any);
 
-      const response = await axios.put<UserProfileResponse>(url, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
+      // Do NOT set Content-Type — fetch sets it automatically with the correct boundary
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData as any,
       });
 
-      return response.data;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.message || `Server error: ${res.status}`);
+      }
+
+      return await res.json();
     } else {
-      // No image, send JSON
+      // No image — send plain JSON
       const response = await axios.put<UserProfileResponse>(url, data, {
         headers: {
           Authorization: `Bearer ${token}`,

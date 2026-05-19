@@ -112,7 +112,7 @@ export default function DoctorProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.6,
     });
     if (!result.canceled && result.assets[0]) {
       setPickedAvatarUri(result.assets[0].uri);
@@ -128,7 +128,7 @@ export default function DoctorProfileScreen() {
 
     setSaving(true);
     try {
-      await updateDoctorProfile(
+      const updatedDoctor = await updateDoctorProfile(
         doctor._id.toString(),
         {
           firstName: editForm.firstName.trim(),
@@ -142,8 +142,12 @@ export default function DoctorProfileScreen() {
         pickedAvatarUri ?? undefined
       );
 
-      const refreshed = await refreshUser();
-      if (refreshed) setDoctor(refreshed as IDoctor);
+      // Use response data directly (it has doctorImage populated)
+      if (updatedDoctor) {
+        setDoctor(updatedDoctor);
+      }
+      // Also sync auth context in background
+      refreshUser().catch(() => {});
 
       Toast.show({ type: "success", text1: "Profile updated!" });
       setEditVisible(false);

@@ -76,17 +76,49 @@ function AppContent() {
     checkForOTAUpdate();
   }, []);
 
-  /* ============ SOCKET INIT ============ */
+  /* ============ SOCKET INIT + GLOBAL CALL-RINGING LISTENER ============ */
   useEffect(() => {
+    let socket: any = null;
+
+    const handleCallRinging = (data: any) => {
+      console.log("📞 Global call-ringing received:", data);
+      if (!navigationRef.current || !data?.appointmentId) return;
+
+      // Don't navigate if already on IncomingCall or VideoCallScreen
+      const currentRoute = navigationRef.current.getCurrentRoute?.();
+      if (
+        currentRoute?.name === "IncomingCall" ||
+        currentRoute?.name === "VideoCallScreen"
+      ) return;
+
+      navigationRef.current.navigate("IncomingCall", {
+        appointmentId:  data.appointmentId,
+        callerName:     data.callerName    || "Incoming Call",
+        callerImage:    data.callerImage,
+        callerType:     data.callerType,
+        channelName:    data.channelName,
+        conversationId: data.conversationId,
+        videoRequestId: data.videoRequestId,
+      });
+    };
+
     const initSocket = async () => {
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
       if (token && isAuthenticated) {
         await socketService.connect();
         console.log("✅ Socket connected");
+        // Register global call-ringing listener AFTER socket is connected
+        socket = socketService.getSocket();
+        if (socket) {
+          socket.on("call-ringing", handleCallRinging);
+        }
       }
     };
+
     initSocket();
+
     return () => {
+      if (socket) socket.off("call-ringing", handleCallRinging);
       socketService.disconnect();
       console.log("🔌 Socket disconnected");
     };
@@ -98,10 +130,8 @@ function AppContent() {
 
     const initPushAndLinking = async () => {
       pushNotificationService.configure();
-
-      if (navigationRef.current) {
-        pushNotificationService.setNavigationRef(navigationRef.current);
-      }
+      // NOTE: setNavigationRef is called in NavigationContainer.onReady to avoid
+      // a timing race where navigationRef.current is still null here.
 
       // Register device push token
       const token = await pushNotificationService.registerForPushNotifications();
@@ -137,7 +167,14 @@ function AppContent() {
     notificationListener.current =
       pushNotificationService.handleNotificationReceived((notification) => {
         const data = notification.request.content.data;
-        if (!data || data.type === "incoming_call") return;
+        if (!data) return;
+
+        if (data.type === "incoming_call") {
+          // Foreground incoming call — navigate directly (socket may have handled it already,
+          // but navigating twice to IncomingCall is idempotent due to the screen guard above)
+          handleNavigationFromData(data);
+          return;
+        }
 
         Toast.show({
           type: "info",
@@ -150,8 +187,9 @@ function AppContent() {
     responseListener.current =
       pushNotificationService.handleNotificationResponse((response) => {
         const data = response.notification.request.content.data;
-        if (!data || data.type === "incoming_call") return;
+        if (!data) return;
 
+        // incoming_call taps must also navigate — user tapped the notification banner
         handleNavigationFromData(data);
       });
 
@@ -208,15 +246,20 @@ function AppContent() {
           });
           break;
 
-        case "incoming_call":
+        case "incoming_call": {
+          const cur = navigationRef.current.getCurrentRoute?.();
+          if (cur?.name === "IncomingCall" || cur?.name === "VideoCallScreen") break;
           navigationRef.current.navigate("IncomingCall", {
-            appointmentId: data.appointmentId,
-            callerName: data.callerName,
-            callerImage: data.callerImage,
-            callerType: data.callerType,
-            channelName: data.channelName,
+            appointmentId:  data.appointmentId,
+            callerName:     data.callerName,
+            callerImage:    data.callerImage,
+            callerType:     data.callerType,
+            channelName:    data.channelName,
+            conversationId: data.conversationId,
+            videoRequestId: data.videoRequestId,
           });
           break;
+        }
 
         default:
           navigationRef.current.navigate("HomeScreen");
@@ -236,6 +279,11 @@ function AppContent() {
               ref={navigationRef}
               linking={linking}
               fallback={null}
+              onReady={() => {
+                if (navigationRef.current) {
+                  pushNotificationService.setNavigationRef(navigationRef.current);
+                }
+              }}
             >
               <AppNavigator />
             </NavigationContainer>

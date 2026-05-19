@@ -20,7 +20,7 @@ import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { UpdateUserData, updateUserProfile } from '../../services/User';
+import { UpdateUserData } from '../../services/User';
 
 interface EditProfileModalProps {
     visible: boolean;
@@ -41,7 +41,7 @@ interface ProfileFormState {
 }
 
 const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose }) => {
-    const { user, updateUser, userToken, refreshUser } = useAuth();
+    const { user, updateUser } = useAuth();
     const [isSaving, setIsSaving] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -135,49 +135,36 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
 
         try {
             const payload: UpdateUserData = {
-                firstName: formData.name.trim(),
-                phoneNumber: formData.phone.trim(),
+                name: formData.name.trim(),
+                phone: formData.phone.trim(),
                 gender: formData.gender,
                 dateOfBirth: formData.dateOfBirth,
-                address: formData.homeAddress,
+                homeAddress: formData.homeAddress,
                 city: formData.city,
                 state: formData.state,
                 lga: formData.lga,
             };
 
-            const token = userToken || "";
-
-            // Call service to update profile
-            const updated = await updateUserProfile(
-                user._id.toString(),
-                token,
-                payload,
+            const imageUri =
                 formData.imageChanged && formData.userImageUri.startsWith('file://')
                     ? formData.userImageUri
-                    : undefined
-            );
+                    : undefined;
 
-            if (!updated || !updated.success) {
-                throw new Error('Update failed');
+            // updateUser hook calls setUser(response.data) internally — no extra refreshUser needed
+            const updated = await updateUser(user._id.toString(), payload, imageUri);
+
+            if (!updated) {
+                throw new Error('Profile update failed. Please try again.');
             }
 
             console.log('✅ Profile updated successfully');
 
-            Toast.show({ 
-                type: 'success', 
+            Toast.show({
+                type: 'success',
                 text1: 'Profile updated',
-                text2: 'Your profile has been updated successfully' 
+                text2: 'Your profile has been updated successfully'
             });
 
-            // ✅ KEY FIX: Force immediate refresh from server to get updated image
-            console.log('🔄 Refreshing user data from server...');
-            const refreshedUser = await refreshUser();
-            
-            if (refreshedUser) {
-                console.log('✅ User data refreshed, new image:', refreshedUser.userImage);
-            }
-
-            // Close modal
             onClose();
 
         } catch (error: any) {
