@@ -7,39 +7,29 @@
     "development": {
       "developmentClient": false,
       "distribution": "internal",
-      "channel": "development",  
+      "channel": "development",
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL",
-        "EXPO_PUBLIC_OPENAI_API_KEY": "@EXPO_PUBLIC_OPENAI_API_KEY",
-        "EXPO_PUBLIC_WHISPER_API_KEY": "@EXPO_PUBLIC_WHISPER_API_KEY"
+        "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL"
       }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",  
+      "channel": "preview",
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL",
-        "EXPO_PUBLIC_OPENAI_API_KEY": "@EXPO_PUBLIC_OPENAI_API_KEY",
-        "EXPO_PUBLIC_WHISPER_API_KEY": "@EXPO_PUBLIC_WHISPER_API_KEY"
+        "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL"
       }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production",  
-      "android": {
-        "buildType": "apk",
-        "distribution": "internal"
-      },
+      "channel": "production",
       "env": {
-        "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL",
-        "EXPO_PUBLIC_OPENAI_API_KEY": "@EXPO_PUBLIC_OPENAI_API_KEY",
-        "EXPO_PUBLIC_WHISPER_API_KEY": "@EXPO_PUBLIC_WHISPER_API_KEY"
+        "EXPO_PUBLIC_SERVER_URL": "@EXPO_PUBLIC_SERVER_URL"
       }
     }
   },

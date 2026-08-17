@@ -370,9 +370,19 @@ const handleAppointmentPress = async (appointment: IUpcomingAppointment) => {
 
                 {/* Menu Group */}
                 <View style={styles.menuGroup}>
-                    <ProfileMenuItem 
-                        icon="bell" 
-                        title="Notifications" 
+                    <ProfileMenuItem
+                        icon="activity"
+                        title="Medication Reminders"
+                        onPress={() => navigation.navigate('MedicationRemindersScreen' as never)}
+                    />
+                    <ProfileMenuItem
+                        icon="users"
+                        title="Family Profiles"
+                        onPress={() => navigation.navigate('FamilyProfilesScreen' as never)}
+                    />
+                    <ProfileMenuItem
+                        icon="bell"
+                        title="Notifications"
                         onPress={() => navigation.navigate('NotificationsScreen' as never)}
                         badge={unreadCount}
                     />

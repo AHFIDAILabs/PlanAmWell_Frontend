@@ -27,14 +27,13 @@ export default function AskAmWellCard() {
       
       {/* Wrapper for the two main actions, centralized */}
       <View style={styles.actionsWrapper}>
-        
+
         {/* 1. Ask AmWell Button (Now contains the icon and circle) */}
-        {/* 💡 Note: The wrapper div is now the TouchableOpacity's parent to help position the absolute element */}
         <View style={styles.actionItem}>
           <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("AmWellChatModal") } >
             <Text style={styles.buttonText}>Ask AmWell</Text>
-            
-            {/* 💡 Mic Icon with Circle, positioned absolutely inside the button */}
+
+            {/* Mic Icon with Circle, positioned absolutely inside the button */}
             <View style={styles.micCircleInsideButton}>
               <Feather name="mic" size={18} color="#D81E5B" />
             </View>
@@ -50,6 +49,15 @@ export default function AskAmWellCard() {
         </TouchableOpacity>
 
       </View>
+
+      {/* Second row: Check Symptoms */}
+      <TouchableOpacity
+        style={styles.symptomButton}
+        onPress={() => navigation.navigate("SymptomCheckerScreen")}
+      >
+        <Feather name="activity" size={16} color="#00897B" style={{ marginRight: 6 }} />
+        <Text style={styles.symptomButtonText}>Check Symptoms</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -131,6 +139,23 @@ const styles = StyleSheet.create({
     zIndex: 2, // Ensure it's rendered on top
   },
   
+  symptomButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 30,
+    borderWidth: 1.5,
+    borderColor: '#00897B',
+    backgroundColor: '#F0FAF9',
+  },
+  symptomButtonText: {
+    color: '#00897B',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+
   // 2. Find A Clinic Button Container (Pink background)
   findClinicButton: {
     backgroundColor: '#D81E5B', 

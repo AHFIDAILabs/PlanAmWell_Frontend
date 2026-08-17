@@ -19,6 +19,7 @@ import Toast from "react-native-toast-message";
 import { getMyAppointments, formatAppointmentTime, updateAppointment } from "../../services/Appointment";
 import { getDoctorImageUri } from "../../services/Doctor";
 import { IAppointment, IDoctor } from "../../types/backendType";
+import ReviewModal from "../../components/reviews/ReviewModal";
 
 type TabType = "upcoming" | "pending" | "past";
 
@@ -31,6 +32,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
   const [selectedAppointment, setSelectedAppointment] = useState<IAppointment | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
 
   const fetchAppointments = async () => {
     try {
@@ -328,6 +330,17 @@ export const ConsultationHistoryScreen: React.FC = () => {
       )}
 
   
+      {/* Review Modal */}
+      {selectedAppointment && typeof selectedAppointment.doctorId === "object" && (
+        <ReviewModal
+          visible={reviewModalVisible}
+          doctorId={(selectedAppointment.doctorId as IDoctor)._id}
+          doctorName={`${(selectedAppointment.doctorId as IDoctor).firstName} ${(selectedAppointment.doctorId as IDoctor).lastName}`}
+          onClose={() => setReviewModalVisible(false)}
+          onSubmitted={() => setReviewModalVisible(false)}
+        />
+      )}
+
       {selectedAppointment && (
         <Modal visible={modalVisible} transparent animationType="slide">
           <View style={styles.modalOverlay}>
@@ -408,7 +421,7 @@ export const ConsultationHistoryScreen: React.FC = () => {
       
               <View style={styles.modalActions}>
                 {canJoinCall(selectedAppointment) && (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.joinCallButton}
                     onPress={() => {
                       setModalVisible(false);
@@ -417,6 +430,17 @@ export const ConsultationHistoryScreen: React.FC = () => {
                   >
                     <Feather name="video" size={20} color="#FFF" />
                     <Text style={styles.joinCallText}>Join Call</Text>
+                  </TouchableOpacity>
+                )}
+
+                {selectedAppointment.status === "completed" &&
+                  typeof selectedAppointment.doctorId === "object" && (
+                  <TouchableOpacity
+                    style={styles.reviewButton}
+                    onPress={() => setReviewModalVisible(true)}
+                  >
+                    <Feather name="star" size={18} color="#F59E0B" />
+                    <Text style={styles.reviewButtonText}>Leave a Review</Text>
                   </TouchableOpacity>
                 )}
 
@@ -592,4 +616,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelButtonText: { color: "#F44336", fontSize: 16, fontWeight: "700" },
+
+  reviewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1.5,
+    borderColor: "#F59E0B",
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  reviewButtonText: { color: "#B45309", fontSize: 16, fontWeight: "700" },
 });

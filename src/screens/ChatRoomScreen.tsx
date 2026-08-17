@@ -20,6 +20,10 @@ import {
   Alert,
   Modal,
   Linking,
+  Share,
+  Pressable,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import {
   SafeAreaView,
@@ -50,9 +54,12 @@ import {
   cancelVideoCallRequest,
   uploadChatFile,
   unlockConversation,
+  editMessageService,
+  deleteMessageService,
 } from "../services/Chat";
 import { endAppointment } from "../services/Appointment";
 import { getDoctorImageUri } from "../services/Doctor";
+import { messageQueueService } from "../services/messageQueueService";
 
 type ChatRoomRouteProps = RouteProp<AppStackParamList, "ChatRoomScreen">;
 
@@ -82,6 +89,12 @@ export const ChatRoomScreen: React.FC = () => {
   const [endingAppointment, setEndingAppointment] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
 
+  // Message actions
+  const [selectedMessage, setSelectedMessage] = useState<IMessage | null>(null);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<IMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<IMessage | null>(null);
+
   // Mirrors isLocked for use inside socket handlers (avoids stale closure)
   const isLockedRef = useRef(false);
 
@@ -104,6 +117,52 @@ export const ChatRoomScreen: React.FC = () => {
   useEffect(() => {
     isLockedRef.current = isLocked;
   }, [isLocked]);
+
+  // ─── Offline queue flush ───────────────────────────────────────────────────
+  // Flushes pending messages for this conversation when the app returns to the
+  // foreground or when this screen gains focus after being away.
+  const flushQueueRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    flushQueueRef.current = async () => {
+      const convId = conversationIdRef.current;
+      if (!convId) return;
+      const queued = await messageQueueService.getForConversation(convId);
+      if (queued.length === 0) return;
+      for (const item of queued) {
+        try {
+          const sent = await sendMessage(
+            item.conversationId,
+            item.content,
+            item.messageType,
+            item.mediaUrl,
+            item.replyTo as any,
+          );
+          if (sent) {
+            await messageQueueService.remove(item.tempId);
+            setMessages(prev =>
+              dedupeMessages(prev.map(m => m._id === item.tempId ? sent : m))
+            );
+          }
+        } catch {
+          break; // still offline — stop and wait for next flush
+        }
+      }
+    };
+  });
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') flushQueueRef.current?.();
+    });
+    return () => sub.remove();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      flushQueueRef.current?.();
+    }, [])
+  );
 
   // ─── Derived state ────────────────────────────────────────────────────────────
   const otherParticipant = useMemo(() => {
@@ -316,6 +375,36 @@ export const ChatRoomScreen: React.FC = () => {
       loadConversation();
     };
 
+    const handleMessageEdited = (data: {
+      conversationId: string;
+      messageId: string;
+      content: string;
+      editedAt: string;
+    }) => {
+      if (data.conversationId !== conversationIdRef.current) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === data.messageId
+            ? { ...m, content: data.content, isEdited: true, editedAt: data.editedAt }
+            : m
+        )
+      );
+    };
+
+    const handleMessageDeleted = (data: {
+      conversationId: string;
+      messageId: string;
+    }) => {
+      if (data.conversationId !== conversationIdRef.current) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === data.messageId
+            ? { ...m, isDeleted: true, content: "This message was deleted", mediaUrl: undefined }
+            : m
+        )
+      );
+    };
+
     socket.on("new-message", handleNewMessage);
     socket.on("typing-indicator", handleTyping);
     socket.on("messages-read", handleMessagesRead);
@@ -323,6 +412,8 @@ export const ChatRoomScreen: React.FC = () => {
     socket.on("video-call-response", handleVideoResponse);
     socket.on("appointment-ended", handleAppointmentEnded);
     socket.on("conversation-unlocked", handleConversationUnlocked);
+    socket.on("message-edited", handleMessageEdited);
+    socket.on("message-deleted", handleMessageDeleted);
 
     return () => {
       socket.off("new-message", handleNewMessage);
@@ -332,6 +423,8 @@ export const ChatRoomScreen: React.FC = () => {
       socket.off("video-call-response", handleVideoResponse);
       socket.off("appointment-ended", handleAppointmentEnded);
       socket.off("conversation-unlocked", handleConversationUnlocked);
+      socket.off("message-edited", handleMessageEdited);
+      socket.off("message-deleted", handleMessageDeleted);
     };
   }, [
     // ← Stable deps only — no `conversation` object here.
@@ -482,30 +575,104 @@ export const ChatRoomScreen: React.FC = () => {
   // FIX: `sending` no longer drives a spinner on the send button — the button
   // just disables briefly. This eliminates the "rolling" UX.
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !conversation || sending || isLockedRef.current) return;
+    if (!inputText.trim() || !conversation || isLockedRef.current) return;
 
+    // ── Edit mode ──────────────────────────────────────────────────────────
+    if (editingMessage) {
+      const newContent = inputText.trim();
+      setInputText("");
+      setEditingMessage(null);
+      try {
+        await editMessageService(conversation._id, editingMessage._id.toString(), newContent);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === editingMessage._id
+              ? { ...m, content: newContent, isEdited: true }
+              : m
+          )
+        );
+      } catch (error: any) {
+        Toast.show({ type: "error", text1: "Failed to edit message", text2: error.message });
+        setEditingMessage(editingMessage);
+        setInputText(newContent);
+      }
+      return;
+    }
+
+    // ── Normal send ────────────────────────────────────────────────────────
+    if (sending) return;
     const messageText = inputText.trim();
-    setInputText(""); // clear input immediately for responsiveness
+    const currentReply = replyingTo;
+    setInputText("");
+    setReplyingTo(null);
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     updateTypingIndicator(conversation._id, false);
     setIsTyping(false);
 
+    // Optimistic add — shown immediately while we await the network
+    const tempId = `pending_${Date.now()}`;
+    const replyPayload = currentReply
+      ? {
+          messageId: currentReply._id.toString(),
+          content: currentReply.isDeleted ? "This message was deleted" : currentReply.content,
+          senderType: currentReply.senderType,
+        }
+      : undefined;
+
+    const optimisticMsg: IMessage = {
+      _id: tempId,
+      senderId: String(currentUserId),
+      senderType: isDoctor ? "Doctor" : "User",
+      content: messageText,
+      messageType: "text",
+      status: "sent",
+      createdAt: new Date().toISOString(),
+      replyTo: replyPayload,
+      _pending: true,
+    };
+    setMessages((prev) => dedupeMessages([...prev, optimisticMsg]));
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+
     try {
       setSending(true);
-      const newMessage = await sendMessage(conversation._id, messageText, "text");
+      const newMessage = await sendMessage(
+        conversation._id,
+        messageText,
+        "text",
+        undefined,
+        replyPayload
+      );
       if (newMessage) {
-        // Add locally using de-dupe helper — socket echo will be ignored
-        setMessages((prev) => dedupeMessages([...prev, newMessage]));
+        // Replace optimistic bubble with real server message
+        setMessages((prev) =>
+          dedupeMessages(prev.map((m) => (m._id === tempId ? newMessage : m)))
+        );
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
       }
     } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: "Failed to send message",
-        text2: error.message,
-      });
-      setInputText(messageText); // restore on failure
+      const isNetworkError = !error.response;
+      if (isNetworkError) {
+        // Queue for later and keep the pending bubble in the UI
+        await messageQueueService.enqueue({
+          tempId,
+          conversationId: conversation._id,
+          content: messageText,
+          messageType: "text",
+          replyTo: replyPayload,
+        });
+        Toast.show({
+          type: "info",
+          text1: "No connection",
+          text2: "Message queued — will send when you're back online.",
+        });
+      } else {
+        // Server error — remove optimistic bubble and let user retry
+        setMessages((prev) => prev.filter((m) => m._id !== tempId));
+        setInputText(messageText);
+        if (currentReply) setReplyingTo(currentReply);
+        Toast.show({ type: "error", text1: "Failed to send", text2: error.message });
+      }
     } finally {
       setSending(false);
     }
@@ -523,6 +690,65 @@ export const ChatRoomScreen: React.FC = () => {
       setIsTyping(false);
       updateTypingIndicator(conversation._id, false);
     }, 2000);
+  };
+
+  // ─── Message long-press actions ──────────────────────────────────────────────
+  const handleLongPressMessage = (message: IMessage) => {
+    if (message.messageType === "system" || message.isDeleted) return;
+    setSelectedMessage(message);
+    setShowMessageMenu(true);
+  };
+
+  const handleMenuReply = () => {
+    setShowMessageMenu(false);
+    setReplyingTo(selectedMessage);
+    setEditingMessage(null);
+  };
+
+  const handleMenuCopy = async () => {
+    setShowMessageMenu(false);
+    if (!selectedMessage) return;
+    try {
+      await Share.share({ message: selectedMessage.content });
+    } catch (_) {}
+  };
+
+  const handleMenuEdit = () => {
+    setShowMessageMenu(false);
+    if (!selectedMessage) return;
+    setEditingMessage(selectedMessage);
+    setInputText(selectedMessage.content);
+    setReplyingTo(null);
+  };
+
+  const handleMenuDelete = () => {
+    setShowMessageMenu(false);
+    if (!selectedMessage || !conversation) return;
+    Alert.alert(
+      "Delete Message",
+      "Delete this message for everyone?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMessageService(conversation._id, selectedMessage._id.toString());
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m._id === selectedMessage._id
+                    ? { ...m, isDeleted: true, content: "This message was deleted", mediaUrl: undefined }
+                    : m
+                )
+              );
+            } catch (error: any) {
+              Toast.show({ type: "error", text1: "Failed to delete", text2: error.message });
+            }
+          },
+        },
+      ]
+    );
   };
 
   // ─── Upload helpers ───────────────────────────────────────────────────────────
@@ -689,8 +915,10 @@ export const ChatRoomScreen: React.FC = () => {
   const renderMessage = ({ item }: { item: IMessage }) => {
     const isOwn = String(item.senderId) === String(currentUserId);
     const isSystem = item.messageType === "system";
-    const isImage = item.messageType === "image" && !!item.mediaUrl;
+    const isDeleted = !!item.isDeleted;
+    const isImage = !isDeleted && item.messageType === "image" && !!item.mediaUrl;
     const isDoc =
+      !isDeleted &&
       (item.messageType === "audio" || item.messageType === "document") &&
       !!item.mediaUrl;
 
@@ -703,8 +931,39 @@ export const ChatRoomScreen: React.FC = () => {
     }
 
     return (
-      <View style={[styles.msgRow, isOwn ? styles.ownRow : styles.otherRow]}>
-        <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
+      <Pressable
+        onLongPress={() => handleLongPressMessage(item)}
+        delayLongPress={300}
+        style={[styles.msgRow, isOwn ? styles.ownRow : styles.otherRow]}
+      >
+        <View
+          style={[
+            styles.bubble,
+            isOwn ? styles.ownBubble : styles.otherBubble,
+            isDeleted && styles.deletedBubble,
+          ]}
+        >
+          {/* Reply preview */}
+          {item.replyTo && !isDeleted && (
+            <View style={[styles.replyPreview, isOwn && styles.replyPreviewOwn]}>
+              <View style={[styles.replyBar, isOwn && styles.replyBarOwn]} />
+              <Text
+                style={[styles.replyPreviewText, isOwn && styles.replyPreviewTextOwn]}
+                numberOfLines={2}
+              >
+                {item.replyTo.content}
+              </Text>
+            </View>
+          )}
+
+          {/* Deleted message */}
+          {isDeleted && (
+            <Text style={styles.deletedText}>
+              <Ionicons name="ban-outline" size={13} /> This message was deleted
+            </Text>
+          )}
+
+          {/* Image */}
           {isImage && (
             <TouchableOpacity
               activeOpacity={0.85}
@@ -728,6 +987,8 @@ export const ChatRoomScreen: React.FC = () => {
               )}
             </TouchableOpacity>
           )}
+
+          {/* Document */}
           {isDoc && (
             <TouchableOpacity
               style={styles.docContainer}
@@ -743,58 +1004,60 @@ export const ChatRoomScreen: React.FC = () => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text
-                  style={[
-                    styles.docName,
-                    isOwn ? styles.ownText : styles.otherText,
-                  ]}
+                  style={[styles.docName, isOwn ? styles.ownText : styles.otherText]}
                   numberOfLines={2}
                 >
                   {item.content}
                 </Text>
-                <Text
-                  style={[
-                    styles.docTap,
-                    isOwn ? { color: "#FFE0EB" } : { color: "#999" },
-                  ]}
-                >
+                <Text style={[styles.docTap, isOwn ? { color: "#FFE0EB" } : { color: "#999" }]}>
                   Tap to open
                 </Text>
               </View>
             </TouchableOpacity>
           )}
-          {!isImage && !isDoc && (
-            <Text
-              style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}
-            >
+
+          {/* Plain text */}
+          {!isImage && !isDoc && !isDeleted && (
+            <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}>
               {item.content}
             </Text>
           )}
-          <View style={styles.msgFooter}>
-            <Text
-              style={[styles.msgTime, isOwn ? styles.ownTime : styles.otherTime]}
-            >
-              {new Date(item.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </Text>
-            {isOwn && (
-              <Ionicons
-                name={
-                  item.status === "read"
-                    ? "checkmark-done"
-                    : item.status === "delivered"
-                    ? "checkmark-done-outline"
-                    : "checkmark"
-                }
-                size={14}
-                color={item.status === "read" ? "#4FC3F7" : "#B0BEC5"}
-                style={{ marginLeft: 4 }}
-              />
-            )}
-          </View>
+
+          {/* Footer: time + tick + edited */}
+          {!isDeleted && (
+            <View style={styles.msgFooter}>
+              {item.isEdited && (
+                <Text style={[styles.editedLabel, isOwn ? styles.ownTime : styles.otherTime]}>
+                  edited{" "}
+                </Text>
+              )}
+              <Text style={[styles.msgTime, isOwn ? styles.ownTime : styles.otherTime]}>
+                {new Date(item.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+              {isOwn && item._pending && (
+                <Ionicons name="time-outline" size={13} color="#B0BEC5" style={{ marginLeft: 4 }} />
+              )}
+              {isOwn && !item._pending && (
+                <Ionicons
+                  name={
+                    item.status === "read"
+                      ? "checkmark-done"
+                      : item.status === "delivered"
+                      ? "checkmark-done-outline"
+                      : "checkmark"
+                  }
+                  size={14}
+                  color={item.status === "read" ? "#4FC3F7" : "#B0BEC5"}
+                  style={{ marginLeft: 4 }}
+                />
+              )}
+            </View>
+          )}
         </View>
-      </View>
+      </Pressable>
     );
   };
 
@@ -977,6 +1240,41 @@ export const ChatRoomScreen: React.FC = () => {
           </View>
         )}
 
+        {/* ── Reply bar ── */}
+        {replyingTo && !isLocked && (
+          <View style={styles.replyBarContainer}>
+            <View style={styles.replyBarAccent} />
+            <View style={styles.replyBarBody}>
+              <Text style={styles.replyBarLabel}>Reply to</Text>
+              <Text style={styles.replyBarContent} numberOfLines={1}>
+                {replyingTo.isDeleted ? "This message was deleted" : replyingTo.content}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setReplyingTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Editing bar ── */}
+        {editingMessage && !isLocked && (
+          <View style={styles.editingBar}>
+            <Ionicons name="create-outline" size={18} color="#6366F1" />
+            <View style={styles.replyBarBody}>
+              <Text style={styles.editingBarLabel}>Editing message</Text>
+              <Text style={styles.replyBarContent} numberOfLines={1}>
+                {editingMessage.content}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => { setEditingMessage(null); setInputText(""); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* ── Input area or locked footer ── */}
         {isLocked ? (
           <View style={[styles.lockedFooter, { paddingBottom: insets.bottom + 8 }]}>
@@ -1006,15 +1304,13 @@ export const ChatRoomScreen: React.FC = () => {
             </TouchableOpacity>
             <TextInput
               style={styles.input}
-              placeholder="Type a message..."
+              placeholder={editingMessage ? "Edit message..." : "Type a message..."}
               placeholderTextColor="#999"
               value={inputText}
               onChangeText={handleTextChange}
               multiline
               maxLength={1000}
             />
-            {/* FIX: Send button never shows a spinner — no more "rolling" effect.
-                It simply disables while the API call is in flight. */}
             <TouchableOpacity
               style={[
                 styles.sendButton,
@@ -1023,11 +1319,67 @@ export const ChatRoomScreen: React.FC = () => {
               onPress={handleSendMessage}
               disabled={!inputText.trim() || sending}
             >
-              <Ionicons name="send" size={20} color="#fff" />
+              <Ionicons name={editingMessage ? "checkmark" : "send"} size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         )}
       </KeyboardAvoidingView>
+
+      {/* ── Message context menu ── */}
+      <Modal
+        visible={showMessageMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMessageMenu(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setShowMessageMenu(false)}>
+          <View style={styles.menuSheet}>
+            {/* Preview of selected message */}
+            {selectedMessage && (
+              <View style={styles.menuPreview}>
+                <Text style={styles.menuPreviewText} numberOfLines={3}>
+                  {selectedMessage.content}
+                </Text>
+              </View>
+            )}
+
+            {/* Actions */}
+            <TouchableOpacity style={styles.menuItem} onPress={handleMenuReply}>
+              <Ionicons name="return-down-back-outline" size={22} color="#333" />
+              <Text style={styles.menuItemText}>Reply</Text>
+            </TouchableOpacity>
+
+            {selectedMessage?.messageType === "text" && (
+              <TouchableOpacity style={styles.menuItem} onPress={handleMenuCopy}>
+                <Ionicons name="copy-outline" size={22} color="#333" />
+                <Text style={styles.menuItemText}>Copy</Text>
+              </TouchableOpacity>
+            )}
+
+            {String(selectedMessage?.senderId) === String(currentUserId) &&
+              selectedMessage?.messageType === "text" && (
+                <TouchableOpacity style={styles.menuItem} onPress={handleMenuEdit}>
+                  <Ionicons name="create-outline" size={22} color="#6366F1" />
+                  <Text style={[styles.menuItemText, { color: "#6366F1" }]}>Edit</Text>
+                </TouchableOpacity>
+              )}
+
+            {String(selectedMessage?.senderId) === String(currentUserId) && (
+              <TouchableOpacity style={styles.menuItem} onPress={handleMenuDelete}>
+                <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                <Text style={[styles.menuItemText, { color: "#EF4444" }]}>Delete</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuCancel]}
+              onPress={() => setShowMessageMenu(false)}
+            >
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* ── Incoming video call modal ── */}
       <Modal
@@ -1371,4 +1723,94 @@ const styles = StyleSheet.create({
   declineButton: { backgroundColor: "#F44336" },
   acceptButton: { backgroundColor: "#4CAF50" },
   videoRequestButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+
+  // ── Deleted message ──────────────────────────────────────────────────────────
+  deletedBubble: { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", borderWidth: 1 },
+  deletedText: { fontSize: 14, color: "#9CA3AF", fontStyle: "italic" },
+
+  // ── Edited indicator ─────────────────────────────────────────────────────────
+  editedLabel: { fontSize: 11, fontStyle: "italic" },
+
+  // ── Reply preview inside bubble ───────────────────────────────────────────────
+  replyPreview: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.08)",
+    borderRadius: 8,
+    marginBottom: 6,
+    overflow: "hidden",
+  },
+  replyPreviewOwn: { backgroundColor: "rgba(255,255,255,0.18)" },
+  replyBar: { width: 3, backgroundColor: "#fff", borderRadius: 2 },
+  replyBarOwn: { backgroundColor: "#FFE0EB" },
+  replyPreviewText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#555",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  replyPreviewTextOwn: { color: "#FFE0EB" },
+
+  // ── Reply bar above input ─────────────────────────────────────────────────────
+  replyBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  replyBarAccent: { width: 3, height: "100%", backgroundColor: "#D81E5B", borderRadius: 2 },
+  replyBarBody: { flex: 1 },
+  replyBarLabel: { fontSize: 12, fontWeight: "700", color: "#D81E5B", marginBottom: 2 },
+  replyBarContent: { fontSize: 13, color: "#555" },
+
+  // ── Editing bar above input ───────────────────────────────────────────────────
+  editingBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EEF2FF",
+    borderTopWidth: 1,
+    borderTopColor: "#C7D2FE",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  editingBarLabel: { fontSize: 12, fontWeight: "700", color: "#6366F1", marginBottom: 2 },
+
+  // ── Message context menu ──────────────────────────────────────────────────────
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  menuSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 32,
+    overflow: "hidden",
+  },
+  menuPreview: {
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  menuPreviewText: { fontSize: 14, color: "#555", fontStyle: "italic" },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#F3F4F6",
+  },
+  menuItemText: { fontSize: 16, color: "#111" },
+  menuCancel: { marginTop: 4, borderBottomWidth: 0 },
+  menuCancelText: { fontSize: 16, color: "#999", textAlign: "center", flex: 1 },
 });

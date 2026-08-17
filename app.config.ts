@@ -28,11 +28,9 @@ plugins: [
   [
     'expo-location',
     {
-      locationAlwaysAndWhenInUsePermission: 'Allow PlanAmWell to use your location to find clinics near you.',
       locationWhenInUsePermission: 'Allow PlanAmWell to use your location to find clinics near you.',
     },
   ],
-  './src/plugins/withAgora',
   [
     'expo-build-properties',
     {
@@ -107,10 +105,6 @@ plugins: [
     googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     iosClientId: process.env.EXPO_PUBLIC_IOS_CLIENT_ID,
     androidClientId: process.env.EXPO_PUBLIC_ANDROID_CLIENT_ID,
-    openAIKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
-    whisperKey: process.env.EXPO_PUBLIC_WHISPER_API_KEY,
-    agoraAppId: process.env.EXPO_PUBLIC_AGORA_APP_ID,
-    agoraAppCertificate: process.env.EXPO_PUBLIC_AGORA_APP_CERTIFICATE,
   },
 };
 

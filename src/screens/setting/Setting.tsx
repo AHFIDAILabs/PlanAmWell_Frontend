@@ -33,7 +33,7 @@ import { AppStackParamList } from '../../types/App';
 import { useTheme } from '../../context/ThemeContext';
 
 const SettingsScreen: React.FC = () => {
-  const { darkMode, toggleDarkMode } = useTheme();
+  const { darkMode, toggleDarkMode, lowDataMode, toggleLowDataMode } = useTheme();
   const [reminders, setReminders] = useState(true);
   const [education, setEducation] = useState(true);
 
@@ -145,6 +145,14 @@ const SettingsScreen: React.FC = () => {
             textColor={themeStyles.text}
             value={darkMode}
             onToggle={toggleDarkMode}
+          />
+
+          <ToggleItem
+            icon={<Phone size={20} color="#F57C00" />}
+            title="Low Data Mode"
+            textColor={themeStyles.text}
+            value={lowDataMode}
+            onToggle={toggleLowDataMode}
           />
 
           <MenuItem

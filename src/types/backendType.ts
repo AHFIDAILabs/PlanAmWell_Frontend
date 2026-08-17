@@ -64,6 +64,17 @@ export interface IDoctor {
     profileComplete?: boolean;
 }
 
+export interface IReview {
+  _id: string;
+  doctorId: string;
+  userId: string;
+  appointmentId?: string;
+  name: string;
+  rating: number;
+  comment: string;
+  createdAt?: string;
+}
+
 export type AuthEntity = IUser | IDoctor;
 
 export interface DoctorRegistrationData {
@@ -396,6 +407,16 @@ export interface IMessage {
   status: MessageStatus;
   createdAt: string;
   readAt?: string;
+  isEdited?: boolean;
+  editedAt?: string;
+  isDeleted?: boolean;
+  replyTo?: {
+    messageId: string;
+    content: string;
+    senderType: "User" | "Doctor";
+  };
+  // Client-only: true while message is queued/pending delivery
+  _pending?: boolean;
 }
 
 export interface IVideoCallRequest {

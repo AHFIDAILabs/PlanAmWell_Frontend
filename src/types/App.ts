@@ -7,7 +7,6 @@ export type AppStackParamList = {
   AuthStack: NavigatorScreenParams<AuthStackParamList>; // ✅
 
   AmWellChatModal: undefined;
-  CartModal: undefined;
 
   ProductsScreen: { productId?: string };
   ProductList: { category: string; fromChat?: boolean };
@@ -74,10 +73,6 @@ export type AppStackParamList = {
     conversationId?: string;
   };
 
-  OrdersScreen: {
-    
-  };
-
   PaymentScreen: {
     doctor: IDoctor;
     scheduledAt: string;       
@@ -117,4 +112,8 @@ export type AppStackParamList = {
 
   FindAClinicScreen: undefined;
   ClinicDetailScreen: { clinic: IClinic };
+
+  SymptomCheckerScreen: undefined;
+  MedicationRemindersScreen: undefined;
+  FamilyProfilesScreen: undefined;
 };

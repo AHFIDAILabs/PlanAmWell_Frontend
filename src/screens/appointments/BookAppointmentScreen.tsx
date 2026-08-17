@@ -1,5 +1,5 @@
 // screens/BookAppointmentScreen.tsx
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,18 +12,51 @@ import {
 import Toast from "react-native-toast-message";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import { RouteProp, useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { RFValue } from "react-native-responsive-fontsize";
 
 import { AppStackParamList } from "../../types/App";
-import { useAuth } from "../../hooks/useAuth";
 import { IDoctor } from "../../types/backendType";
 import { CompleteProfileModal } from "../../components/profile/CompleteProfileModal";
 import { validateProfile  } from "../../services/Appointment";
+import { familyMemberService, IFamilyMember } from "../../services/familyMemberService";
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "BookAppointmentScreen">;
+
+// ── Availability helpers ──────────────────────────────────────────────────────
+const WEEKDAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+function getDayAvailability(
+  date: Date,
+  availability: Record<string, any> | undefined
+): { from: string; to: string; slotDuration: number } | null {
+  if (!availability) return null;
+  const name = WEEKDAY_NAMES[date.getDay()];
+  const slot = availability[name];
+  if (!slot?.from || !slot?.to) return null;
+  return { from: slot.from, to: slot.to, slotDuration: availability.slotDuration ?? 30 };
+}
+
+function generateTimeSlots(from: string, to: string, slotMin: number): string[] {
+  const [fh, fm] = from.split(":").map(Number);
+  const [th, tm] = to.split(":").map(Number);
+  const start = fh * 60 + fm;
+  const end   = th * 60 + tm;
+  const slots: string[] = [];
+  for (let t = start; t < end; t += slotMin) {
+    slots.push(`${String(Math.floor(t / 60)).padStart(2,"0")}:${String(t % 60).padStart(2,"0")}`);
+  }
+  return slots;
+}
+
+function slotToDate(base: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(":").map(Number);
+  const d = new Date(base);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
 
 // ── Placeholder rate ─────────────────────────────────────────────────────────
 export const CONSULTATION_RATE = 15000;
@@ -32,16 +65,37 @@ export const CONSULTATION_RATE_LABEL = "₦15,000";
 export const BookAppointmentScreen: React.FC = () => {
   const route      = useRoute<DoctorRouteProps>();
   const navigation = useNavigation<any>();
-  const { user }   = useAuth();
 
   const doctor = route.params?.doctor as IDoctor;
 
   const [selectedDate, setSelectedDate]     = useState<Date | null>(null);
   const [selectedTime, setSelectedTime]     = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [selectedSlot,   setSelectedSlot]   = useState<string | null>(null);
+
+  // Recompute time slots whenever the selected date changes
+  useEffect(() => {
+    setSelectedSlot(null);
+    setSelectedTime(null);
+    if (!selectedDate) { setAvailableSlots([]); return; }
+    const info = getDayAvailability(selectedDate, doctor.availability);
+    if (info) {
+      setAvailableSlots(generateTimeSlots(info.from, info.to, info.slotDuration));
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [selectedDate]);
   const [reason, setReason]                 = useState("");
   const [notes, setNotes]                   = useState("");
   const [shareUserInfo, setShareUserInfo]   = useState(true);
+
+  const [familyMembers, setFamilyMembers]   = useState<IFamilyMember[]>([]);
+  const [selectedMember, setSelectedMember] = useState<IFamilyMember | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    familyMemberService.getAll().then(setFamilyMembers).catch(() => {});
+  }, []));
 
   // ── CompleteProfileModal state ────────────────────────────────────────────
   const [showProfileModal, setShowProfileModal]   = useState(false);
@@ -54,9 +108,9 @@ export const BookAppointmentScreen: React.FC = () => {
     shareUserInfo: boolean;
   } | null>(null);
 
-  // 14-day mini calendar
+  // 14-day mini calendar — includes availability flag per day
   const next14Days = useMemo(() => {
-    const arr: { date: Date; day: string; dayNum: number }[] = [];
+    const arr: { date: Date; day: string; dayNum: number; available: boolean }[] = [];
     for (let i = 0; i < 14; i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
@@ -64,6 +118,9 @@ export const BookAppointmentScreen: React.FC = () => {
         date: d,
         day: d.toLocaleDateString("en-US", { weekday: "short" }),
         dayNum: d.getDate(),
+        available: doctor.availability
+          ? getDayAvailability(d, doctor.availability) !== null
+          : true, // no schedule set → all days allowed (free picker)
       });
     }
     return arr;
@@ -136,7 +193,18 @@ export const BookAppointmentScreen: React.FC = () => {
       return Toast.show({ type: "error", text1: "Please select a future date and time" });
     }
 
-    attemptProceed(scheduledAt.toISOString(), reason, notes, shareUserInfo);
+    // Compose notes — prepend family member health context when booking for someone else
+    let composedNotes = notes;
+    if (selectedMember) {
+      const parts = [`[For: ${selectedMember.name} (${selectedMember.relationship})]`];
+      if (selectedMember.bloodGroup) parts.push(`Blood: ${selectedMember.bloodGroup}`);
+      if (selectedMember.allergies) parts.push(`Allergies: ${selectedMember.allergies}`);
+      if (selectedMember.notes) parts.push(selectedMember.notes);
+      const context = parts.join(" | ");
+      composedNotes = notes ? `${context}\n${notes}` : context;
+    }
+
+    attemptProceed(scheduledAt.toISOString(), reason, composedNotes, shareUserInfo);
   };
 
   // ── Called after CompleteProfileModal saves successfully ──────────────────
@@ -190,11 +258,22 @@ export const BookAppointmentScreen: React.FC = () => {
             return (
               <TouchableOpacity
                 key={d.date.toDateString()}
-                style={[styles.datePill, selected && styles.datePillActive]}
-                onPress={() => setSelectedDate(d.date)}
+                style={[
+                  styles.datePill,
+                  selected && styles.datePillActive,
+                  !d.available && styles.datePillUnavailable,
+                ]}
+                onPress={() => {
+                  if (!d.available) {
+                    Toast.show({ type: "info", text1: "Doctor unavailable", text2: "No slots on this day." });
+                    return;
+                  }
+                  setSelectedDate(d.date);
+                }}
               >
-                <Text style={[styles.dateDay, selected && styles.dateTextActive]}>{d.day}</Text>
-                <Text style={[styles.dateNum, selected && styles.dateTextActive]}>{d.dayNum}</Text>
+                <Text style={[styles.dateDay, selected && styles.dateTextActive, !d.available && styles.dateTextUnavailable]}>{d.day}</Text>
+                <Text style={[styles.dateNum, selected && styles.dateTextActive, !d.available && styles.dateTextUnavailable]}>{d.dayNum}</Text>
+                {!d.available && <Text style={styles.datePillDash}>—</Text>}
               </TouchableOpacity>
             );
           })}
@@ -202,23 +281,82 @@ export const BookAppointmentScreen: React.FC = () => {
 
         {/* ── Time picker ───────────────────────────────────────────────── */}
         <Text style={styles.fieldLabel}>Select Time</Text>
-        <TouchableOpacity style={styles.timeBtn} onPress={() => setShowTimePicker(true)}>
-          <Ionicons name="time-outline" size={20} color="#D81E5B" />
-          <Text style={styles.timeBtnText}>
-            {selectedTime
-              ? selectedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "Tap to choose time"}
-          </Text>
-        </TouchableOpacity>
-        {showTimePicker && (
-          <DateTimePicker
-            value={selectedTime || new Date()}
-            mode="time"
-            onChange={(_, time) => {
-              setShowTimePicker(false);
-              if (time) setSelectedTime(time);
-            }}
-          />
+
+        {availableSlots.length > 0 ? (
+          /* Slot grid — shown when doctor has set availability for this day */
+          <>
+            <View style={styles.slotGrid}>
+              {availableSlots.map((slot) => {
+                const active = selectedSlot === slot;
+                return (
+                  <TouchableOpacity
+                    key={slot}
+                    style={[styles.slotPill, active && styles.slotPillActive]}
+                    onPress={() => {
+                      setSelectedSlot(slot);
+                      setSelectedTime(slotToDate(selectedDate!, slot));
+                    }}
+                  >
+                    <Text style={[styles.slotText, active && styles.slotTextActive]}>{slot}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {!selectedSlot && (
+              <Text style={styles.slotHint}>Tap a slot to select your appointment time</Text>
+            )}
+          </>
+        ) : (
+          /* Free picker — shown when no schedule is set or date not selected */
+          <>
+            <TouchableOpacity style={styles.timeBtn} onPress={() => setShowTimePicker(true)}>
+              <Ionicons name="time-outline" size={20} color="#D81E5B" />
+              <Text style={styles.timeBtnText}>
+                {selectedTime
+                  ? selectedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                  : "Tap to choose time"}
+              </Text>
+            </TouchableOpacity>
+            {showTimePicker && (
+              <DateTimePicker
+                value={selectedTime || new Date()}
+                mode="time"
+                onChange={(_, time) => {
+                  setShowTimePicker(false);
+                  if (time) setSelectedTime(time);
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {/* ── Who is this appointment for? ──────────────────────────────── */}
+        {familyMembers.length > 0 && (
+          <>
+            <Text style={styles.fieldLabel}>Who is this for?</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+              {/* Myself chip */}
+              <TouchableOpacity
+                style={[styles.forChip, selectedMember === null && styles.forChipActive]}
+                onPress={() => setSelectedMember(null)}
+              >
+                <Ionicons name="person" size={14} color={selectedMember === null ? "#fff" : "#555"} />
+                <Text style={[styles.forChipText, selectedMember === null && styles.forChipTextActive]}>Myself</Text>
+              </TouchableOpacity>
+              {familyMembers.map(m => (
+                <TouchableOpacity
+                  key={m._id}
+                  style={[styles.forChip, selectedMember?._id === m._id && styles.forChipActive]}
+                  onPress={() => setSelectedMember(m)}
+                >
+                  <Ionicons name="people" size={14} color={selectedMember?._id === m._id ? "#fff" : "#555"} />
+                  <Text style={[styles.forChipText, selectedMember?._id === m._id && styles.forChipTextActive]}>
+                    {m.name.split(" ")[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
         )}
 
         {/* ── Reason ────────────────────────────────────────────────────── */}
@@ -363,10 +501,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#EEE",
   },
-  datePillActive: { backgroundColor: "#D81E5B", borderColor: "#D81E5B" },
-  dateDay:        { fontSize: RFValue(11), color: "#777" },
-  dateNum:        { fontSize: RFValue(18), fontWeight: "700", color: "#222", marginTop: 2 },
-  dateTextActive: { color: "#fff" },
+  datePillActive:      { backgroundColor: "#D81E5B", borderColor: "#D81E5B" },
+  datePillUnavailable: { backgroundColor: "#F5F5F5", borderColor: "#E0E0E0", opacity: 0.5 },
+  dateDay:             { fontSize: RFValue(11), color: "#777" },
+  dateNum:             { fontSize: RFValue(18), fontWeight: "700", color: "#222", marginTop: 2 },
+  dateTextActive:      { color: "#fff" },
+  dateTextUnavailable: { color: "#CCC" },
+  datePillDash:        { fontSize: RFValue(10), color: "#CCC", marginTop: 2 },
+
+  // Slot grid
+  slotGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 8,
+  },
+  slotPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+    backgroundColor: "#FAFAFA",
+  },
+  slotPillActive: {
+    backgroundColor: "#D81E5B",
+    borderColor: "#D81E5B",
+  },
+  slotText:       { fontSize: RFValue(13), fontWeight: "600", color: "#444" },
+  slotTextActive: { color: "#FFF" },
+  slotHint: {
+    fontSize: RFValue(12),
+    color: "#AAA",
+    marginBottom: 20,
+    fontStyle: "italic",
+  },
 
   // Time
   timeBtn: {
@@ -440,4 +609,21 @@ const styles = StyleSheet.create({
   },
   proceedBtnText: { color: "#fff", fontSize: RFValue(16), fontWeight: "700" },
   disclaimer:     { fontSize: RFValue(11), color: "#AAA", textAlign: "center", lineHeight: 16 },
+
+  // "Who is this for?" chips
+  forChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+    backgroundColor: "#FAFAFA",
+    marginRight: 8,
+  },
+  forChipActive:     { backgroundColor: "#D81E5B", borderColor: "#D81E5B" },
+  forChipText:       { fontSize: RFValue(13), fontWeight: "600", color: "#555" },
+  forChipTextActive: { color: "#FFF" },
 });

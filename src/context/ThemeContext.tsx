@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import * as SecureStore from "expo-secure-store";
 
-// 1. Define Color Interface based on common usage in your components
+const LOW_DATA_KEY = "low_data_mode";
+
 interface IThemeColors {
     background: string;
     text: string;
@@ -16,12 +18,11 @@ interface IThemeColors {
     info: string;
 }
 
-// 2. Define Light and Dark Theme color palettes
 const LightThemeColors: IThemeColors = {
     background: '#FFFFFF',
     text: '#1A1A1A',
     textMuted: '#666666',
-    primary: '#D81E5B', 
+    primary: '#D81E5B',
     secondary: '#9C27B0',
     card: '#F9F9F9',
     border: '#E0E0E0',
@@ -47,32 +48,47 @@ const DarkThemeColors: IThemeColors = {
     info: '#90CAF9',
 };
 
-
 interface ThemeContextType {
-  darkMode: boolean;
-  toggleDarkMode: () => void;
-  colors: IThemeColors; // <-- FIX: Added the missing property
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+  colors: IThemeColors;
+  lowDataMode: boolean;
+  toggleLowDataMode: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [lowDataMode, setLowDataMode] = useState(false);
 
-  const toggleDarkMode = () => setDarkMode(prev => !prev);
-  
-  // Dynamically select colors
+  useEffect(() => {
+    SecureStore.getItemAsync(LOW_DATA_KEY).then(v => {
+      if (v === "1") setLowDataMode(true);
+    });
+  }, []);
+
+  const toggleDarkMode = () => setDarkMode(prev => !prev);
+
+  const toggleLowDataMode = () => {
+    setLowDataMode(prev => {
+      const next = !prev;
+      SecureStore.setItemAsync(LOW_DATA_KEY, next ? "1" : "0");
+      return next;
+    });
+  };
+
   const currentColors = darkMode ? DarkThemeColors : LightThemeColors;
 
-  return (
-    <ThemeContext.Provider value={{ darkMode, toggleDarkMode, colors: currentColors }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return (
+    <ThemeContext.Provider value={{ darkMode, toggleDarkMode, colors: currentColors, lowDataMode, toggleLowDataMode }}>
+      {children}
+    </ThemeContext.Provider>
+  );
 };
 
 export const useTheme = () => {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be used inside a ThemeProvider");
-  return ctx;
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside a ThemeProvider");
+  return ctx;
 };

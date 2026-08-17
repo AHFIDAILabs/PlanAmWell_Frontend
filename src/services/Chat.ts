@@ -42,17 +42,57 @@ export const sendMessage = async (
   conversationId: string,
   content: string,
   messageType: "text" | "image" | "audio" | "document" = "text",
-  mediaUrl?: string
+  mediaUrl?: string,
+  replyTo?: { messageId: string; content: string; senderType: "User" | "Doctor" }
 ): Promise<IMessage | null> => {
   try {
     const response = await axios.post(
       `${BASE_URL}/conversation/${conversationId}/message`,
-      { content, messageType, mediaUrl }
+      { content, messageType, mediaUrl, ...(replyTo ? { replyTo } : {}) }
     );
     if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to send message:", error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Edit a message (own text messages only)
+ */
+export const editMessageService = async (
+  conversationId: string,
+  messageId: string,
+  content: string
+): Promise<IMessage | null> => {
+  try {
+    const response = await axios.put(
+      `${BASE_URL}/conversation/${conversationId}/messages/${messageId}`,
+      { content }
+    );
+    if (response.data.success) return response.data.data;
+    return null;
+  } catch (error: any) {
+    console.error("[Chat] Failed to edit message:", error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Delete a message (soft delete — sender only)
+ */
+export const deleteMessageService = async (
+  conversationId: string,
+  messageId: string
+): Promise<boolean> => {
+  try {
+    const response = await axios.delete(
+      `${BASE_URL}/conversation/${conversationId}/messages/${messageId}`
+    );
+    return response.data.success;
+  } catch (error: any) {
+    console.error("[Chat] Failed to delete message:", error.response?.data || error.message);
     throw error;
   }
 };

@@ -15,6 +15,7 @@ import {
   MessageSquare,
   FileText,
   ChevronRight,
+  MessageCircle,
 } from "lucide-react-native";
 import Header from "../../components/home/header";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,6 +26,7 @@ import { AppStackParamList } from "../../types/App";
 
 const SUPPORT_EMAIL = "support@planamwell.com";
 const SUPPORT_PHONE = "+2348000000000";
+const SUPPORT_WHATSAPP = "2348000000000"; // international format without +
 
 const HelpSupportScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
@@ -60,6 +62,13 @@ const HelpSupportScreen: React.FC = () => {
     );
   };
 
+  const openWhatsApp = () => {
+    const msg = encodeURIComponent("Hello PlanAmWell Support, I need help with the app.");
+    Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP}?text=${msg}`).catch(() =>
+      Alert.alert("WhatsApp", `Please message us on WhatsApp at ${SUPPORT_PHONE}`)
+    );
+  };
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ScrollView style={styles.container}>
@@ -92,6 +101,12 @@ const HelpSupportScreen: React.FC = () => {
             subtitle="Mon–Fri, 8am–6pm WAT"
             icon={<MessageSquare size={20} color="#8B5CF6" />}
             onPress={openLiveChat}
+          />
+          <MenuItem
+            title="WhatsApp Support"
+            subtitle="Quick reply, works on slow connections"
+            icon={<MessageCircle size={20} color="#25D366" />}
+            onPress={openWhatsApp}
             isLast
           />
         </View>
