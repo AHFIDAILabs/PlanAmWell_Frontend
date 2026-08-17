@@ -34,7 +34,9 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
     channelName,
     conversationId,
     videoRequestId,
+    callType = 'video',
   } = route.params;
+  const isVoiceCall = callType === 'audio';
 
   const { declineCall } = useVideoCall();
 
@@ -167,6 +169,7 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
         appointmentId,
         name: callerName,
         role: callerType === 'Doctor' ? 'user' : 'doctor',
+        callType,
       });
     } finally {
       setResponding(false);
@@ -205,7 +208,7 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerText}>Incoming Video Call</Text>
+          <Text style={styles.headerText}>{isVoiceCall ? 'Incoming Voice Call' : 'Incoming Video Call'}</Text>
         </View>
 
         {/* Caller Info */}
@@ -274,7 +277,7 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
               {responding ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Ionicons name="videocam" size={32} color="#fff" />
+                <Ionicons name={isVoiceCall ? 'call' : 'videocam'} size={32} color="#fff" />
               )}
             </LinearGradient>
             <Text style={styles.actionLabel}>{responding ? 'Joining...' : 'Accept'}</Text>

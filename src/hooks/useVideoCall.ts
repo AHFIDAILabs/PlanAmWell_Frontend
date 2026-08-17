@@ -18,6 +18,7 @@ const API_URL = `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/video`;
 export interface VideoTokenResponse {
   channelName:      string;
   callStatus:       string;
+  callType:         "audio" | "video";
   isInitiator:      boolean;
   doctorName:       string;
   patientName:      string;
@@ -58,13 +59,13 @@ export const useVideoCall = () => {
    * Throws a human-readable string on failure — caller must handle it.
    */
   const startCall = useCallback(
-    async (appointmentId: string): Promise<VideoTokenResponse> => {
-      console.log(`🎥 startCall → appointment ${appointmentId}`);
+    async (appointmentId: string, callType: "audio" | "video" = "video"): Promise<VideoTokenResponse> => {
+      console.log(`🎥 startCall → appointment ${appointmentId} (${callType})`);
       const headers = await getAuthHeader();
 
       const response = await axios.post(
         `${API_URL}/token`,
-        { appointmentId },
+        { appointmentId, callType },
         { headers: { ...headers, "Content-Type": "application/json" }, timeout: 15000 }
       );
 

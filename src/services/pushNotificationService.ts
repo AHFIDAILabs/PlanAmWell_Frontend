@@ -92,6 +92,7 @@ handleNotificationReceived(
         channelName: data.channelName,
         conversationId: data.conversationId,
         videoRequestId: data.videoRequestId,
+        callType: data.callType,
       });
     }
 
@@ -119,6 +120,7 @@ handleNotificationReceived(
         channelName: data.channelName,
         conversationId: data.conversationId,
         videoRequestId: data.videoRequestId,
+        callType: data.callType,
       });
     }
 
@@ -144,6 +146,7 @@ handleNotificationReceived(
         channelName: data.channelName,
         conversationId: data.conversationId,
         videoRequestId: data.videoRequestId,
+        callType: data.callType,
       });
     }, 1000);
   }

@@ -320,6 +320,7 @@ export const ChatRoomScreen: React.FC = () => {
     const handleVideoResponse = (data: {
       conversationId: string;
       status: "accepted" | "declined" | "expired" | "cancelled";
+      callType?: "audio" | "video";
     }) => {
       if (data.conversationId !== conversationIdRef.current) return;
       if (data.status === "accepted") {
@@ -331,6 +332,7 @@ export const ChatRoomScreen: React.FC = () => {
             patientId: patientIdRef.current || '',
             role: isDoctor ? "doctor" : "user",
             autoJoin: true,
+            callType: data.callType,
           });
         }, 500);
       } else if (data.status === "declined") {
@@ -850,18 +852,18 @@ export const ChatRoomScreen: React.FC = () => {
   };
 
   // ─── Video call handlers ──────────────────────────────────────────────────────
-  const handleRequestVideoCall = async () => {
+  const handleRequestVideoCall = async (callType: "audio" | "video" = "video") => {
     if (!conversation || isLockedRef.current) return;
     if (conversation.activeVideoRequest?.status === "pending") {
       Toast.show({
         type: "info",
         text1: "Request Pending",
-        text2: "A video call request is already active",
+        text2: "A call request is already active",
       });
       return;
     }
     try {
-      const request = await requestVideoCall(conversation._id);
+      const request = await requestVideoCall(conversation._id, callType);
       if (request) {
         setOutgoingVideoRequest(request);
         Toast.show({ type: "success", text1: "Request Sent", text2: "Waiting for response..." });
@@ -888,6 +890,7 @@ export const ChatRoomScreen: React.FC = () => {
             patientId: conversation.participants.userId._id,
             role: isDoctor ? "doctor" : "user",
             autoJoin: true,
+            callType: response.callType,
           });
         }, 500);
       }
@@ -1103,7 +1106,21 @@ export const ChatRoomScreen: React.FC = () => {
         {!isLocked && (
           <TouchableOpacity
             style={styles.videoButton}
-            onPress={handleRequestVideoCall}
+            onPress={() => handleRequestVideoCall("audio")}
+            disabled={!!outgoingVideoRequest}
+          >
+            <Ionicons
+              name="call"
+              size={24}
+              color={outgoingVideoRequest ? "#999" : "#D81E5B"}
+            />
+          </TouchableOpacity>
+        )}
+
+        {!isLocked && (
+          <TouchableOpacity
+            style={styles.videoButton}
+            onPress={() => handleRequestVideoCall("video")}
             disabled={!!outgoingVideoRequest}
           >
             <Ionicons
@@ -1393,10 +1410,16 @@ export const ChatRoomScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.videoRequestModal}>
             <View style={styles.videoRequestHeader}>
-              <Ionicons name="videocam" size={48} color="#D81E5B" />
-              <Text style={styles.videoRequestTitle}>Video Call Request</Text>
+              <Ionicons
+                name={incomingVideoRequest?.callType === "audio" ? "call" : "videocam"}
+                size={48}
+                color="#D81E5B"
+              />
+              <Text style={styles.videoRequestTitle}>
+                {incomingVideoRequest?.callType === "audio" ? "Voice Call Request" : "Video Call Request"}
+              </Text>
               <Text style={styles.videoRequestSubtitle}>
-                {otherParticipantName} wants to start a video call
+                {otherParticipantName} wants to start a {incomingVideoRequest?.callType === "audio" ? "voice" : "video"} call
               </Text>
               <Text style={styles.videoRequestCountdown}>
                 Expires in {requestCountdown}s
@@ -1414,7 +1437,11 @@ export const ChatRoomScreen: React.FC = () => {
                 style={[styles.videoRequestButton, styles.acceptButton]}
                 onPress={() => handleRespondToVideoRequest(true)}
               >
-                <Ionicons name="videocam" size={24} color="#fff" />
+                <Ionicons
+                  name={incomingVideoRequest?.callType === "audio" ? "call" : "videocam"}
+                  size={24}
+                  color="#fff"
+                />
                 <Text style={styles.videoRequestButtonText}>Accept</Text>
               </TouchableOpacity>
             </View>

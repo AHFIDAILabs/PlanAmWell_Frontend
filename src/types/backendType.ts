@@ -358,6 +358,7 @@ export type NotificationData =
       callerImage?: string;
       callerType: string;
       channelName: string;
+      callType?: 'audio' | 'video';
       conversationId?: string;
       videoRequestId?: string;
     }
@@ -424,6 +425,7 @@ export interface IVideoCallRequest {
   requestedBy: string;
   requestedByType: "User" | "Doctor";
   status: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+  callType?: "audio" | "video";
   requestedAt: string;
   respondedAt?: string;
   expiresAt: string;

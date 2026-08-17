@@ -175,7 +175,7 @@ const handleAppointmentPress = async (appointment: IUpcomingAppointment) => {
     );
     return;
   }
-        const { isActive, token } = response.data;
+        const { isActive, token, callType } = response.data as any;
         const doctorName = `${appointment.doctorId.firstName} ${appointment.doctorId.lastName}`;
 
         // Navigate directly to video call if active or allow join attempt
@@ -186,6 +186,7 @@ const handleAppointmentPress = async (appointment: IUpcomingAppointment) => {
             autoJoin: isActive, // autoJoin only if call is active
             fromAppointmentList: true,
             token, // optional: pass token if your backend provides it
+            callType: callType || 'video',
         });
 
         // If call is not active, you could also show an alert to inform user

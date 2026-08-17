@@ -117,6 +117,7 @@ export const NotificationsScreen = () => {
                   role: currentRole === 'doctor' ? 'Doctor' : 'User',
                   autoJoin: true,
                   fromNotification: true,
+                  callType: (appointment as any).callType || 'video',
                 });
               } catch (error: any) {
                 Toast.show({
@@ -337,6 +338,7 @@ if (notification.type === 'order') {
           role: currentRole === 'doctor' ? 'Doctor' : 'User',
           autoJoin: true,
           fromNotification: true,
+          callType: (callStatus.data as any)?.callType || 'video',
         });
         return;
       }

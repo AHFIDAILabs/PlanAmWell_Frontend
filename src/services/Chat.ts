@@ -186,10 +186,14 @@ export const updateTypingIndicator = async (
  * Request video call
  */
 export const requestVideoCall = async (
-  conversationId: string
+  conversationId: string,
+  callType: "audio" | "video" = "video"
 ): Promise<IVideoCallRequest | null> => {
   try {
-    const response = await axios.post(`${BASE_URL}/conversation/${conversationId}/video-request`);
+    const response = await axios.post(
+      `${BASE_URL}/conversation/${conversationId}/video-request`,
+      { callType }
+    );
     if (response.data.success) return response.data.data;
     return null;
   } catch (error: any) {
@@ -206,7 +210,7 @@ export const respondToVideoCall = async (
   conversationId: string,
   requestId: string,
   accept: boolean
-): Promise<{ accepted: boolean; appointmentId: string } | null> => {
+): Promise<{ accepted: boolean; appointmentId: string; callType: "audio" | "video" } | null> => {
   try {
     const response = await axios.post(
       `${BASE_URL}/conversation/${conversationId}/video-request/${requestId}/respond`,

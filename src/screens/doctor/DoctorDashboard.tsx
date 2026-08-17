@@ -259,7 +259,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
       return;
     }
 
-    const navigateToCall = () => {
+    const navigateToCall = (callType: 'audio' | 'video' = 'video') => {
       const navParams = {
         appointmentId: appointment._id,
         name: appointment.patientSnapshot?.name || 'Patient',
@@ -267,6 +267,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
         role: 'doctor' as const,
         autoJoin: true,
         fromAppointmentList: true,
+        callType,
       };
 
       try {
@@ -309,11 +310,11 @@ export default function DoctorDashboardScreen({ navigation }: any) {
         throw new Error(response?.message || 'Failed to check call status');
       }
 
-      const { isActive, callStatus } = response.data;
+      const { isActive, callStatus, callType } = response.data;
 
       if (isActive === true) {
         console.log('✅ Call is active (status:', callStatus, '), joining...');
-        navigateToCall();
+        navigateToCall(callType || 'video');
       } else {
         console.log('ℹ️ Call not active (status:', callStatus, '), showing options...');
         

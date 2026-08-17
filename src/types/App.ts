@@ -54,6 +54,7 @@ export type AppStackParamList = {
     fromNotification?: boolean;
     userImage?: string;
     doctorImage?: string;
+    callType?: 'audio' | 'video';
   };
 
   AllActivePartnerScreen: undefined;
@@ -66,6 +67,7 @@ export type AppStackParamList = {
     channelName: string;
     conversationId?: string;
     videoRequestId?: string;
+    callType?: 'audio' | 'video';
   };
 
   ChatRoomScreen: {

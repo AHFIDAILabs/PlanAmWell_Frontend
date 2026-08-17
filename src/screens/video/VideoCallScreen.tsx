@@ -55,6 +55,7 @@ interface RouteParams {
   fromAppointmentList?: boolean;
   userImage?:          string;
   doctorImage?:        string;
+  callType?:           'audio' | 'video';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
     appointmentId,
     name = 'Participant',
     role: rawRole = 'User',
+    callType = 'video',
   } = route.params as RouteParams;
 
   // Normalise to 'Doctor' | 'User' to match backend expectations.
@@ -110,6 +112,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const [isVideoOff,    setIsVideoOff]    = useState(false);
   const [isSpeakerOn,   setIsSpeakerOn]  = useState(true);
   const [callDuration,  setCallDuration]  = useState(0);
+  // Starts as whatever the call was requested as, but can flip to 'video' mid-call
+  // if either side switches their camera on (WhatsApp-style silent upgrade).
+  const [callMode,      setCallMode]      = useState<'audio' | 'video'>(callType);
+  const [isUpgrading,   setIsUpgrading]   = useState(false);
+
+  const isVoiceCall = callMode === 'audio';
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const safeSetState = (setter: React.Dispatch<React.SetStateAction<any>>, value: any) => {
@@ -125,12 +133,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
   // ── Permissions ──────────────────────────────────────────────────────────
   const requestPermissions = async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
-    const result = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.CAMERA,
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-    ]);
+    const permissions = isVoiceCall
+      ? [PermissionsAndroid.PERMISSIONS.RECORD_AUDIO]
+      : [PermissionsAndroid.PERMISSIONS.CAMERA, PermissionsAndroid.PERMISSIONS.RECORD_AUDIO];
+    const result = await PermissionsAndroid.requestMultiple(permissions);
     return (
-      result['android.permission.CAMERA']       === PermissionsAndroid.RESULTS.GRANTED &&
+      (isVoiceCall || result['android.permission.CAMERA'] === PermissionsAndroid.RESULTS.GRANTED) &&
       result['android.permission.RECORD_AUDIO'] === PermissionsAndroid.RESULTS.GRANTED
     );
   };
@@ -192,6 +200,13 @@ export default function VideoCallScreen({ route, navigation }: any) {
             if (isMountedRef.current) setCallDuration(prev => prev + 1);
           }, 1000);
         }
+      }
+
+      // The other side silently switched their camera on mid-call — follow
+      // suit locally so both screens show the video layout (WhatsApp-style,
+      // no prompt needed; the track arriving *is* the signal).
+      if (event.track?.kind === 'video') {
+        safeSetState(setCallMode, 'video');
       }
     };
 
@@ -255,7 +270,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
       // 1. Permissions
       const permitted = await requestPermissions();
       if (!permitted) {
-        Alert.alert('Permissions Required', 'Camera and microphone access are needed for video calls.');
+        Alert.alert(
+          'Permissions Required',
+          isVoiceCall
+            ? 'Microphone access is needed for voice calls.'
+            : 'Camera and microphone access are needed for video calls.'
+        );
         navigation.goBack();
         return;
       }
@@ -339,17 +359,17 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
       // 6. Register with the backend — get channel name and initiator flag.
       //    startCall throws a human-readable string on any non-network error.
-      const data: VideoTokenResponse = await startCall(appointmentId);
+      const data: VideoTokenResponse = await startCall(appointmentId, callType);
 
       if (!isMountedRef.current) return;
 
       isInitiatorRef.current = data.isInitiator;
       console.log(`📞 Call session: channel=${data.channelName}, isInitiator=${data.isInitiator}, callStatus=${data.callStatus}`);
 
-      // 7. Capture local camera + mic
+      // 7. Capture local mic (+ camera, for video calls)
       const stream = await mediaDevices.getUserMedia({
         audio: true,
-        video: { facingMode: 'user', width: 640, height: 480 },
+        video: isVoiceCall ? false : { facingMode: 'user', width: 640, height: 480 },
       }) as MediaStream;
 
       if (!isMountedRef.current) {
@@ -398,11 +418,20 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      // ── Receiver: process incoming offer and reply with answer ────────────
+      // ── Process incoming offer and reply with answer ──────────────────────
+      // NOTE: not gated on isInitiatorRef — that flag only decides who sends
+      // the FIRST offer. Mid-call renegotiation (e.g. upgrading a voice call
+      // to video) can be triggered by either side, so whoever receives an
+      // offer must be able to process it regardless of their original role.
+      // socket.to() already excludes the sender, so we never see our own offer.
       const handleOffer = async (payload: any) => {
         // Payload shape from server: { appointmentId, offer }
         const offer = payload?.offer ?? payload;
-        if (!offer || isInitiatorRef.current) return;
+        if (!offer) return;
+        if (pc.signalingState !== 'stable') {
+          console.warn('⚠️ Ignoring offer — signaling state not stable:', pc.signalingState);
+          return;
+        }
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
           // Drain candidates that arrived before remote description was set
@@ -419,11 +448,18 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      // ── Initiator: complete the handshake with the answer ─────────────────
+      // ── Complete the handshake with the answer ────────────────────────────
+      // Gated on signalingState rather than isInitiatorRef for the same
+      // renegotiation reason as handleOffer above: whoever sent the most
+      // recent offer (have-local-offer) is the one expecting this answer.
       const handleAnswer = async (payload: any) => {
         // Payload shape from server: { appointmentId, answer }
         const answer = payload?.answer ?? payload;
-        if (!answer || !isInitiatorRef.current) return;
+        if (!answer) return;
+        if (pc.signalingState !== 'have-local-offer') {
+          console.warn('⚠️ Ignoring answer — no outstanding local offer, state:', pc.signalingState);
+          return;
+        }
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
           for (const c of iceCandidateQueue.current) {
@@ -523,6 +559,63 @@ export default function VideoCallScreen({ route, navigation }: any) {
     if (track) (track as any)._switchCamera();
   };
 
+  // ── Voice → video upgrade ───────────────────────────────────────────────
+  // Adds a camera track to the already-connected peer connection and
+  // renegotiates. Silent on the other end, WhatsApp-style — the arriving
+  // video track itself is what flips their UI (see ontrack above).
+  const requestCameraPermission = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return true;
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  };
+
+  const handleUpgradeToVideo = async () => {
+    if (!isVoiceCall || isUpgrading || !isConnected) return;
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    setIsUpgrading(true);
+    try {
+      const granted = await requestCameraPermission();
+      if (!granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to switch to video.');
+        return;
+      }
+
+      const camStream = await mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: 'user', width: 640, height: 480 },
+      }) as MediaStream;
+
+      if (!isMountedRef.current || pcRef.current !== pc) {
+        // Screen left (or call ended/cleaned up) while permission/camera was pending.
+        camStream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        return;
+      }
+
+      const videoTrack = camStream.getVideoTracks()[0];
+      if (!videoTrack) throw new Error('Could not access camera');
+
+      localStreamRef.current?.addTrack(videoTrack);
+      pc.addTrack(videoTrack, localStreamRef.current!);
+
+      // One-shot renegotiation offer — the 5s retry loop from initCall is
+      // only for the initial connection and isn't involved here since the
+      // link is already live.
+      const offer = await (pc as any).createOffer();
+      await pc.setLocalDescription(offer);
+      socketService.getSocket()?.emit('webrtc-offer', { appointmentId, offer });
+      console.log('📤 renegotiation webrtc-offer sent (voice → video upgrade)');
+
+      safeSetState(setCallMode, 'video');
+    } catch (e: any) {
+      console.error('❌ Upgrade to video failed:', e);
+      Alert.alert('Could not switch to video', e?.message || 'Please try again.');
+    } finally {
+      if (isMountedRef.current) setIsUpgrading(false);
+    }
+  };
+
   const handleEndCall = () => {
     Alert.alert('End Call', 'Are you sure you want to end the call?', [
       { text: 'Cancel', style: 'cancel' },
@@ -574,51 +667,69 @@ export default function VideoCallScreen({ route, navigation }: any) {
         )}
       </View>
 
-      {/* Video area */}
-      <View style={styles.videoContainer}>
-        {peerConnected ? (
-          <RTCView
-            streamURL={remoteStream!.toURL()}
-            style={styles.remoteVideo}
-            objectFit="cover"
-            mirror={false}
-            zOrder={0}
+      {/* Call area */}
+      {isVoiceCall ? (
+        <View style={styles.voiceContainer}>
+          <Image
+            source={{ uri: role === 'Doctor' ? userImage : doctorImage }}
+            style={styles.voiceAvatar}
           />
-        ) : (
-          <View style={styles.waitingContainer}>
-            <Ionicons name="person-outline" size={80} color="#666" />
-            <Text style={styles.waitingText}>Waiting for {name}…</Text>
-            <ActivityIndicator size="small" color="#666" style={{ marginTop: 12 }} />
-          </View>
-        )}
-
-        {/* Local picture-in-picture */}
-        {!isVideoOff && localStream ? (
-          <View style={styles.localVideoContainer}>
+          <Text style={styles.voiceName}>{name}</Text>
+          {peerConnected ? (
+            <Text style={styles.voiceStatus}>{formatDuration(callDuration)}</Text>
+          ) : (
+            <View style={styles.callingContainerVoice}>
+              <Text style={styles.voiceStatus}>Calling…</Text>
+              <ActivityIndicator size="small" color="#999" style={{ marginTop: 8 }} />
+            </View>
+          )}
+        </View>
+      ) : (
+        <View style={styles.videoContainer}>
+          {peerConnected ? (
             <RTCView
-              streamURL={localStream.toURL()}
-              style={styles.localVideo}
+              streamURL={remoteStream!.toURL()}
+              style={styles.remoteVideo}
               objectFit="cover"
-              mirror
-              zOrder={1}
+              mirror={false}
+              zOrder={0}
             />
-            <View style={styles.localLabel}>
-              <Text style={styles.localLabelText}>You</Text>
+          ) : (
+            <View style={styles.waitingContainer}>
+              <Ionicons name="person-outline" size={80} color="#666" />
+              <Text style={styles.waitingText}>Waiting for {name}…</Text>
+              <ActivityIndicator size="small" color="#666" style={{ marginTop: 12 }} />
             </View>
-          </View>
-        ) : (
-          <View style={[styles.localVideoContainer, styles.videoOffContainer]}>
-            <Image
-              source={{ uri: role === 'Doctor' ? doctorImage : userImage }}
-              style={styles.localVideo}
-              resizeMode="cover"
-            />
-            <View style={styles.localLabel}>
-              <Text style={styles.localLabelText}>You</Text>
+          )}
+
+          {/* Local picture-in-picture */}
+          {!isVideoOff && localStream ? (
+            <View style={styles.localVideoContainer}>
+              <RTCView
+                streamURL={localStream.toURL()}
+                style={styles.localVideo}
+                objectFit="cover"
+                mirror
+                zOrder={1}
+              />
+              <View style={styles.localLabel}>
+                <Text style={styles.localLabelText}>You</Text>
+              </View>
             </View>
-          </View>
-        )}
-      </View>
+          ) : (
+            <View style={[styles.localVideoContainer, styles.videoOffContainer]}>
+              <Image
+                source={{ uri: role === 'Doctor' ? doctorImage : userImage }}
+                style={styles.localVideo}
+                resizeMode="cover"
+              />
+              <View style={styles.localLabel}>
+                <Text style={styles.localLabelText}>You</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Controls */}
       <View style={styles.controlsContainer}>
@@ -631,13 +742,28 @@ export default function VideoCallScreen({ route, navigation }: any) {
             <Text style={styles.controlLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.controlButton, isVideoOff && styles.controlButtonActive]}
-            onPress={toggleVideo}
-          >
-            <Ionicons name={isVideoOff ? 'videocam-off' : 'videocam'} size={26} color={isVideoOff ? '#EF4444' : '#fff'} />
-            <Text style={styles.controlLabel}>Video</Text>
-          </TouchableOpacity>
+          {isVoiceCall ? (
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={handleUpgradeToVideo}
+              disabled={isUpgrading || !isConnected}
+            >
+              {isUpgrading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="videocam" size={26} color={isConnected ? '#fff' : '#666'} />
+              )}
+              <Text style={styles.controlLabel}>Video</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.controlButton, isVideoOff && styles.controlButtonActive]}
+              onPress={toggleVideo}
+            >
+              <Ionicons name={isVideoOff ? 'videocam-off' : 'videocam'} size={26} color={isVideoOff ? '#EF4444' : '#fff'} />
+              <Text style={styles.controlLabel}>Video</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.endCallButton} onPress={handleEndCall}>
             <Ionicons name="call" size={28} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
@@ -655,10 +781,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
             <Text style={styles.controlLabel}>Speaker</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.controlButton} onPress={switchCamera}>
-            <Ionicons name="camera-reverse" size={26} color="#fff" />
-            <Text style={styles.controlLabel}>Flip</Text>
-          </TouchableOpacity>
+          {!isVoiceCall && (
+            <TouchableOpacity style={styles.controlButton} onPress={switchCamera}>
+              <Ionicons name="camera-reverse" size={26} color="#fff" />
+              <Text style={styles.controlLabel}>Flip</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -696,6 +824,12 @@ const styles = StyleSheet.create({
   remoteVideo:      { width: '100%', height: '100%' },
   waitingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   waitingText:      { color: '#fff', fontSize: 18, fontWeight: '500', marginTop: 12 },
+
+  voiceContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  voiceAvatar:    { width: 160, height: 160, borderRadius: 80, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  voiceName:      { color: '#fff', fontSize: 22, fontWeight: '700', marginTop: 20 },
+  voiceStatus:    { color: '#999', fontSize: 16, marginTop: 8, fontVariant: ['tabular-nums'] },
+  callingContainerVoice: { alignItems: 'center', marginTop: 8 },
 
   localVideoContainer: {
     position:    'absolute',
