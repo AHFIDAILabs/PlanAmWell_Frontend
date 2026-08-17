@@ -38,6 +38,26 @@ export interface CheckoutDetails {
   };
 }
 
+export interface IDeliveryZoneLga {
+  name: string;
+  price: number;
+}
+
+export interface IDeliveryZoneState {
+  state: string;
+  lgas: IDeliveryZoneLga[];
+}
+
+/**
+ * States + LGAs the delivery partner actually services, with per-LGA price.
+ * Used to preload the checkout location picker so users can only pick an
+ * address the partner can deliver to.
+ */
+export const getDeliveryZones = async (): Promise<IDeliveryZoneState[]> => {
+  const res = await axios.get(`${SERVER_URL}/api/v1/checkout/delivery-zones`);
+  return res.data?.data ?? [];
+};
+
 export const checkoutServices = {
   checkout: async (
     cartItems: ICartItem[],

@@ -1,7 +1,8 @@
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Keyboard,
   Modal,
@@ -14,13 +15,19 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { NIGERIA_STATES } from "../../constants/nigeriaLocations";
+import { getDeliveryZones, IDeliveryZoneState } from "../../services/checkout";
 
 type PickerMode = "state" | "lga";
+
+interface PickerItem {
+  name: string;
+  price?: number; // present only for LGA items backed by live delivery-zone data
+}
 
 interface SearchModalProps {
   visible: boolean;
   mode: PickerMode;
-  items: string[];
+  items: PickerItem[];
   onSelect: (value: string) => void;
   onClose: () => void;
 }
@@ -48,7 +55,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   const filtered = query.trim()
     ? items.filter((item) =>
-        item.toLowerCase().includes(query.toLowerCase())
+        item.name.toLowerCase().includes(query.toLowerCase())
       )
     : items;
 
@@ -112,17 +119,22 @@ const SearchModal: React.FC<SearchModalProps> = ({
         {/* List */}
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item}
+          keyExtractor={(item) => item.name}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={modal.listContent}
           ItemSeparatorComponent={() => <View style={modal.separator} />}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={modal.item}
-              onPress={() => handleSelect(item)}
+              onPress={() => handleSelect(item.name)}
               activeOpacity={0.6}
             >
-              <Text style={modal.itemText}>{item}</Text>
+              <Text style={modal.itemText}>{item.name}</Text>
+              {typeof item.price === "number" && (
+                <Text style={modal.itemPrice}>
+                  {item.price > 0 ? `₦${item.price.toLocaleString()}` : "Free"}
+                </Text>
+              )}
               <Feather name="chevron-right" size={16} color="#CCC" />
             </TouchableOpacity>
           )}
@@ -150,10 +162,36 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>("state");
+  const [zones, setZones] = useState<IDeliveryZoneState[] | null>(null);
+  const [loadingZones, setLoadingZones] = useState(true);
 
-  const stateNames = NIGERIA_STATES.map((s) => s.name);
-  const selectedStateObj = NIGERIA_STATES.find((s) => s.name === state);
-  const lgaList = selectedStateObj?.lgas ?? [];
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getDeliveryZones();
+        if (!cancelled && data.length > 0) setZones(data);
+      } catch (err) {
+        console.warn("[LocationPicker] Failed to load delivery zones, falling back to full state/LGA list:", err);
+      } finally {
+        if (!cancelled) setLoadingZones(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Prefer the partner's actual coverage list; fall back to the full static
+  // Nigeria list (no price data) only if the live fetch fails or is empty.
+  const usingLiveZones = !!zones;
+  const stateNames: PickerItem[] = usingLiveZones
+    ? zones!.map((s) => ({ name: s.state }))
+    : NIGERIA_STATES.map((s) => ({ name: s.name }));
+
+  const lgaList: PickerItem[] = usingLiveZones
+    ? zones!.find((s) => s.state === state)?.lgas.map((l) => ({ name: l.name, price: l.price })) ?? []
+    : NIGERIA_STATES.find((s) => s.name === state)?.lgas.map((name) => ({ name })) ?? [];
 
   const openStatePicker = () => {
     setPickerMode("state");
@@ -198,13 +236,21 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
             style={[picker.input, picker.pickerTrigger]}
             onPress={openStatePicker}
             activeOpacity={0.7}
+            disabled={loadingZones}
           >
-            <Text
-              style={state ? picker.pickerValueText : picker.pickerPlaceholderText}
-              numberOfLines={1}
-            >
-              {state || "Select state"}
-            </Text>
+            {loadingZones ? (
+              <>
+                <ActivityIndicator size="small" color="#999" />
+                <Text style={[picker.pickerPlaceholderText, { marginLeft: 8 }]}>Loading states…</Text>
+              </>
+            ) : (
+              <Text
+                style={state ? picker.pickerValueText : picker.pickerPlaceholderText}
+                numberOfLines={1}
+              >
+                {state || "Select state"}
+              </Text>
+            )}
             <Feather name="chevron-down" size={16} color="#999" />
           </TouchableOpacity>
         </View>
@@ -392,6 +438,12 @@ const modal = StyleSheet.create({
     fontSize: 15,
     color: "#333",
     flex: 1,
+  },
+  itemPrice: {
+    fontSize: 13,
+    color: "#00897B",
+    fontWeight: "600",
+    marginRight: 8,
   },
   emptyContainer: {
     alignItems: "center",

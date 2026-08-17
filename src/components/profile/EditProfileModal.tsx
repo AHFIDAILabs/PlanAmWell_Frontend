@@ -12,7 +12,8 @@ import {
     ScrollView,
     Platform,
     Image,
-    Alert
+    Alert,
+    KeyboardAvoidingView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
@@ -181,7 +182,10 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
 
     return (
         <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-            <View style={styles.overlay}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.overlay}
+            >
                 <View style={styles.modalContainer}>
                     <View style={styles.header}>
                         <Text style={styles.headerTitle}>Edit Profile</Text>
@@ -190,7 +194,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
                         </TouchableOpacity>
                     </View>
 
-                    <ScrollView contentContainerStyle={styles.content}>
+                    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
                         <TouchableOpacity
                             style={styles.imageContainer}
                             onPress={handleImagePick}
@@ -311,7 +315,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
                         )}
                     </TouchableOpacity>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };

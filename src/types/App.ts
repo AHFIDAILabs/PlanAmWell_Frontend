@@ -113,7 +113,6 @@ export type AppStackParamList = {
   FindAClinicScreen: undefined;
   ClinicDetailScreen: { clinic: IClinic };
 
-  SymptomCheckerScreen: undefined;
   MedicationRemindersScreen: undefined;
   FamilyProfilesScreen: undefined;
 };

@@ -1,8 +1,8 @@
 // Persists unsent messages to the filesystem so they survive app restarts.
 // Uses expo-file-system because it has no size limits and no sensitivity concerns.
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 
-const QUEUE_FILE = `${FileSystem.documentDirectory}message_queue.json`;
+const queueFile = new File(Paths.document, 'message_queue.json');
 
 export interface QueuedMessage {
   tempId: string;
@@ -16,9 +16,8 @@ export interface QueuedMessage {
 
 async function readQueue(): Promise<QueuedMessage[]> {
   try {
-    const info = await FileSystem.getInfoAsync(QUEUE_FILE);
-    if (!info.exists) return [];
-    const raw = await FileSystem.readAsStringAsync(QUEUE_FILE);
+    if (!queueFile.exists) return [];
+    const raw = await queueFile.text();
     return JSON.parse(raw) as QueuedMessage[];
   } catch {
     return [];
@@ -27,7 +26,10 @@ async function readQueue(): Promise<QueuedMessage[]> {
 
 async function writeQueue(queue: QueuedMessage[]): Promise<void> {
   try {
-    await FileSystem.writeAsStringAsync(QUEUE_FILE, JSON.stringify(queue));
+    if (!queueFile.exists) {
+      queueFile.create({ intermediates: true, overwrite: true });
+    }
+    queueFile.write(JSON.stringify(queue));
   } catch {}
 }
 

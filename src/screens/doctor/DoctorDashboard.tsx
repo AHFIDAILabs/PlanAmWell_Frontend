@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -763,7 +765,10 @@ export default function DoctorDashboardScreen({ navigation }: any) {
 
       {/* Availability Modal */}
       <Modal visible={showAvailabilityModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.availabilityModal, { backgroundColor: colors.background }]}>
             <View style={styles.availabilityModalHeader}>
               <Text style={[styles.availabilityModalTitle, { color: colors.text }]}>
@@ -884,7 +889,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Appointment Modal */}

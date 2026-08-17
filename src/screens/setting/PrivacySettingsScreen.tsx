@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Shield, Lock, EyeOff, Trash2, Download, Cookie } from "lucide-react-native";
 import Header from "../../components/home/header";
@@ -153,7 +155,10 @@ const PrivacySettingsScreen: React.FC = () => {
 
       {/* Delete Account Password Modal */}
       <Modal visible={deleteModalVisible} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Confirm Account Deletion</Text>
             <Text style={styles.modalSubtitle}>
@@ -190,7 +195,7 @@ const PrivacySettingsScreen: React.FC = () => {
               <Text style={styles.cancelModalText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <BottomBar activeRoute="PrivacySettingsScreen" cartItemCount={0} />

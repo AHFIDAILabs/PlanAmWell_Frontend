@@ -49,15 +49,6 @@ export default function AskAmWellCard() {
         </TouchableOpacity>
 
       </View>
-
-      {/* Second row: Check Symptoms */}
-      <TouchableOpacity
-        style={styles.symptomButton}
-        onPress={() => navigation.navigate("SymptomCheckerScreen")}
-      >
-        <Feather name="activity" size={16} color="#00897B" style={{ marginRight: 6 }} />
-        <Text style={styles.symptomButtonText}>Check Symptoms</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -139,23 +130,6 @@ const styles = StyleSheet.create({
     zIndex: 2, // Ensure it's rendered on top
   },
   
-  symptomButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingVertical: 10,
-    borderRadius: 30,
-    borderWidth: 1.5,
-    borderColor: '#00897B',
-    backgroundColor: '#F0FAF9',
-  },
-  symptomButtonText: {
-    color: '#00897B',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-
   // 2. Find A Clinic Button Container (Pink background)
   findClinicButton: {
     backgroundColor: '#D81E5B', 

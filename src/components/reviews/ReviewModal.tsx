@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
@@ -52,7 +54,10 @@ export default function ReviewModal({ visible, doctorId, doctorName, onClose, on
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.overlay}
+      >
         <View style={styles.sheet}>
           <View style={styles.drag} />
 
@@ -106,7 +111,7 @@ export default function ReviewModal({ visible, doctorId, doctorName, onClose, on
             )}
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

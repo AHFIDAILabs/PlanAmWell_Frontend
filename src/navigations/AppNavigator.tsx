@@ -49,7 +49,6 @@ import TermsOfServiceScreen from "../screens/legal/TermsOfServiceScreen";
 import AboutScreen from "../screens/home/AboutScreen";
 import FindAClinicScreen from "../screens/clinic/FindAClinicScreen";
 import ClinicDetailScreen from "../screens/clinic/ClinicDetailScreen";
-import SymptomCheckerScreen from "../screens/SymptomCheckerScreen";
 import MedicationRemindersScreen from "../screens/MedicationRemindersScreen";
 import FamilyProfilesScreen from "../screens/FamilyProfilesScreen";
 import PaymentStatusScreen from "../screens/payment/PaymentStatusScreen";
@@ -188,9 +187,6 @@ export default function AppNavigator() {
       {/* Clinics */}
       <RootStack.Screen name="FindAClinicScreen" component={FindAClinicScreen} />
       <RootStack.Screen name="ClinicDetailScreen" component={ClinicDetailScreen} />
-
-      {/* Symptom Checker */}
-      <RootStack.Screen name="SymptomCheckerScreen" component={SymptomCheckerScreen} />
 
       {/* Medication Reminders */}
       <RootStack.Screen name="MedicationRemindersScreen" component={MedicationRemindersScreen} />
