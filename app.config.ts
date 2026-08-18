@@ -25,6 +25,9 @@ plugins: [
       color: '#D81E5B',
     },
   ],
+  '@react-native-firebase/app',
+  '@react-native-firebase/messaging',
+  './src/plugins/withCallNotifications',
   [
     'expo-location',
     {
@@ -36,6 +39,12 @@ plugins: [
     {
       android: {
         enableProguardInReleaseBuilds: true,
+      },
+      // Firebase's iOS SDK needs static frameworks to avoid CocoaPods
+      // conflicts — required once @react-native-firebase/* is linked,
+      // even though Phase 1's iOS notifications don't call it directly yet.
+      ios: {
+        useFrameworks: 'static',
       },
     },
   ],

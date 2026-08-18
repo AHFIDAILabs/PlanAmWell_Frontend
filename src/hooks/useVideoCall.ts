@@ -48,6 +48,26 @@ const extractErrorMessage = (err: any): string => {
   return err?.message || "An unexpected error occurred.";
 };
 
+/**
+ * Decline a ringing appointment-based call. Never throws.
+ * Module-level (not hook-wrapped) so it can also be called from outside a
+ * React tree — e.g. a notifee background event handler when the user taps
+ * "Decline" on the full-screen incoming-call notification.
+ */
+export const declineCallDirect = async (appointmentId: string): Promise<void> => {
+  try {
+    const headers = await getAuthHeader();
+    await axios.post(
+      `${API_URL}/decline`,
+      { appointmentId },
+      { headers: { ...headers, "Content-Type": "application/json" }, timeout: 8000 }
+    );
+    console.log(`📵 declineCall sent for appointment ${appointmentId}`);
+  } catch (err: any) {
+    console.warn("⚠️ declineCall failed (non-fatal):", err.message);
+  }
+};
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export const useVideoCall = () => {
@@ -112,19 +132,7 @@ export const useVideoCall = () => {
    * Decline a ringing appointment-based call.
    * Never throws.
    */
-  const declineCall = useCallback(async (appointmentId: string): Promise<void> => {
-    try {
-      const headers = await getAuthHeader();
-      await axios.post(
-        `${API_URL}/decline`,
-        { appointmentId },
-        { headers: { ...headers, "Content-Type": "application/json" }, timeout: 8000 }
-      );
-      console.log(`📵 declineCall sent for appointment ${appointmentId}`);
-    } catch (err: any) {
-      console.warn("⚠️ declineCall failed (non-fatal):", err.message);
-    }
-  }, []);
+  const declineCall = useCallback(declineCallDirect, []);
 
   /**
    * Fetch ICE server config from the backend.

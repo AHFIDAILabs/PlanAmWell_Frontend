@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { Platform } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import ErrorBoundary from "./src/components/ErrorBoundary";
 import * as Notifications from "expo-notifications";
@@ -14,6 +15,13 @@ import { useAuth } from "./src/hooks/useAuth";
 import Toast from "react-native-toast-message";
 import socketService from "./src/services/socketService";
 import pushNotificationService from "./src/services/pushNotificationService";
+import notifee from "@notifee/react-native";
+import {
+  setupCallNotificationChannel,
+  registerForegroundCallHandler,
+  registerNotifeeEventHandlers,
+  getInitialCallNotificationData,
+} from "./src/services/callNotificationService";
 import * as SecureStore from "expo-secure-store";
 import axios from "axios";
 import { TOKEN_KEY } from "./src/services/Auth";
@@ -137,6 +145,15 @@ function AppContent() {
       const token = await pushNotificationService.registerForPushNotifications();
       if (token) await sendPushTokenToBackend(token);
 
+      // Full-screen incoming-call notifications (Android only — this is the
+      // notifee + RNFirebase Messaging layer that rings even when the app is
+      // fully killed, which expo-notifications' own background handler can't
+      // reliably do).
+      if (Platform.OS === "android") {
+        await setupCallNotificationChannel();
+        await notifee.requestPermission();
+      }
+
       // Handle cold-start / app launched via push notification
       const initialNotification =
         await pushNotificationService.getInitialNotification();
@@ -145,9 +162,27 @@ function AppContent() {
         const data = initialNotification.notification.request.content.data;
         if (data) handleNavigationFromData(data);
       }
+
+      // Handle cold-start / app launched by tapping the full-screen call
+      // notification (or its Accept action) while fully killed.
+      const initialCallData = await getInitialCallNotificationData();
+      if (initialCallData) handleNavigationFromData(initialCallData);
     };
 
     initPushAndLinking();
+  }, [isAuthenticated]);
+
+  /* ============ FOREGROUND CALL NOTIFICATION HANDLERS ============ */
+  useEffect(() => {
+    if (!isAuthenticated || Platform.OS !== "android") return;
+
+    const unsubscribeForegroundMessages = registerForegroundCallHandler();
+    const unsubscribeNotifeeEvents = registerNotifeeEventHandlers();
+
+    return () => {
+      unsubscribeForegroundMessages();
+      unsubscribeNotifeeEvents();
+    };
   }, [isAuthenticated]);
 
   /* ============ SAVE PUSH TOKEN ============ */
@@ -257,6 +292,7 @@ function AppContent() {
             channelName:    data.channelName,
             conversationId: data.conversationId,
             videoRequestId: data.videoRequestId,
+            callType:       data.callType,
           });
           break;
         }

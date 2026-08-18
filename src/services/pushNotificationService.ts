@@ -5,6 +5,15 @@ import { NavigationProp } from '@react-navigation/native';
 import { AppStackParamList } from '../types/App';
 import { NotificationData } from '../types/backendType';
 
+// Maps a notification action button press to what IncomingCallScreen should
+// auto-run on mount — undefined for a plain tap (today's behavior: just open
+// the screen and let the user choose).
+function actionIdentifierToAutoAction(actionIdentifier: string): 'accept' | 'decline' | undefined {
+  if (actionIdentifier === 'accept') return 'accept';
+  if (actionIdentifier === 'decline') return 'decline';
+  return undefined;
+}
+
 // Define notification data types
 class PushNotificationService {
   private navigationRef: NavigationProp<AppStackParamList> | null = null;
@@ -16,6 +25,37 @@ class PushNotificationService {
   configure() {
     if (Platform.OS === 'android') {
       this.setupAndroidChannels();
+    }
+    if (Platform.OS === 'ios') {
+      this.setupIosCallCategory();
+    }
+  }
+
+  // Registers the Accept/Decline action buttons that appear directly on the
+  // lock-screen notification, matched by sendIncomingCallPushNotification's
+  // categoryIdentifier: 'INCOMING_CALL' (backend/src/util/sendPushNotification.ts).
+  private async setupIosCallCategory() {
+    try {
+      // Both actions open the app — a truly silent/headless decline while the
+      // app is fully killed on iOS needs a registered background task (or
+      // CallKit), which is out of scope for this phase. Opening the app and
+      // auto-running the decline immediately (see IncomingCallScreen's
+      // autoAction handling) still saves the user the extra tap.
+      await Notifications.setNotificationCategoryAsync('INCOMING_CALL', [
+        {
+          identifier: 'decline',
+          buttonTitle: 'Decline',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'accept',
+          buttonTitle: 'Accept',
+          options: { opensAppToForeground: true },
+        },
+      ]);
+      console.log('✅ iOS incoming-call notification category configured');
+    } catch (error) {
+      console.error('❌ Failed to setup iOS call category:', error);
     }
   }
 
@@ -121,6 +161,7 @@ handleNotificationReceived(
         conversationId: data.conversationId,
         videoRequestId: data.videoRequestId,
         callType: data.callType,
+        autoAction: actionIdentifierToAutoAction(response.actionIdentifier),
       });
     }
 
@@ -147,6 +188,7 @@ handleNotificationReceived(
         conversationId: data.conversationId,
         videoRequestId: data.videoRequestId,
         callType: data.callType,
+        autoAction: actionIdentifierToAutoAction(response.actionIdentifier),
       });
     }, 1000);
   }

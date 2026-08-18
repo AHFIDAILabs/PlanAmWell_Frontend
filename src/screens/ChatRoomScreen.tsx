@@ -39,6 +39,7 @@ import {
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import { Audio, AVPlaybackStatus } from "expo-av";
 
 import { AppStackParamList } from "../types/App";
 import { IConversation, IMessage, IVideoCallRequest } from "../types/backendType";
@@ -95,8 +96,26 @@ export const ChatRoomScreen: React.FC = () => {
   const [replyingTo, setReplyingTo] = useState<IMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<IMessage | null>(null);
 
+  // Voice notes
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [playbackProgress, setPlaybackProgress] = useState(0); // 0–1, current message only
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
   // Mirrors isLocked for use inside socket handlers (avoids stale closure)
   const isLockedRef = useRef(false);
+
+  // Stop any in-flight recording/playback when leaving the screen
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+      soundRef.current?.unloadAsync().catch(() => {});
+    };
+  }, []);
 
   // Prevents useFocusEffect from double-firing on the very first mount
   const hasMountedRef = useRef(false);
@@ -758,7 +777,8 @@ export const ChatRoomScreen: React.FC = () => {
     uri: string,
     mimeType: string,
     fileName: string,
-    type: "image" | "document"
+    type: "image" | "document" | "audio",
+    displayLabel?: string
   ) => {
     if (!conversation || isLockedRef.current) return;
     setShowAttachMenu(false);
@@ -767,10 +787,10 @@ export const ChatRoomScreen: React.FC = () => {
       const uploaded = await uploadChatFile(uri, mimeType, fileName);
       if (!uploaded) throw new Error("Upload returned empty response");
       const backendType: "image" | "audio" | "document" =
-        type === "image" ? "image" : "document";
+        type === "image" ? "image" : type === "audio" ? "audio" : "document";
       const newMessage = await sendMessage(
         conversation._id,
-        uploaded.fileName,
+        displayLabel || uploaded.fileName,
         backendType,
         uploaded.url
       );
@@ -851,6 +871,132 @@ export const ChatRoomScreen: React.FC = () => {
     }
   };
 
+  // ─── Voice notes ────────────────────────────────────────────────────────────
+  const startRecording = async () => {
+    if (!conversation || isLockedRef.current || isRecording) return;
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow microphone access to send voice notes.");
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+      setRecordingDuration(0);
+      setIsRecording(true);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((d) => d + 1);
+      }, 1000);
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: "Could not start recording", text2: error.message });
+    }
+  };
+
+  const cancelRecording = async () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    const recording = recordingRef.current;
+    recordingRef.current = null;
+    setIsRecording(false);
+    setRecordingDuration(0);
+    try {
+      await recording?.stopAndUnloadAsync();
+    } catch {
+      // Already stopped/unloaded — safe to ignore
+    }
+  };
+
+  const stopAndSendRecording = async () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    const recording = recordingRef.current;
+    recordingRef.current = null;
+    const duration = recordingDuration;
+    setIsRecording(false);
+    setRecordingDuration(0);
+
+    if (!recording) return;
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      if (!uri) throw new Error("Recording failed — no file produced");
+      if (duration < 1) {
+        Toast.show({ type: "info", text1: "Recording too short" });
+        return;
+      }
+      // Recording preset produces different containers per platform
+      // (typically .m4a on Android, .caf on iOS) — match the real extension
+      // instead of assuming one, so the mimetype we send is accurate.
+      const ext = (uri.split(".").pop() || "m4a").toLowerCase();
+      const mimeByExt: Record<string, string> = {
+        m4a: "audio/m4a",
+        caf: "audio/x-caf",
+        mp4: "audio/mp4",
+        aac: "audio/aac",
+      };
+      await handleUploadAndSend(
+        uri,
+        mimeByExt[ext] || "audio/mp4",
+        `voice_${Date.now()}.${ext}`,
+        "audio",
+        formatDuration(duration)
+      );
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: "Could not send voice note", text2: error.message });
+    }
+  };
+
+  const handlePlayAudio = async (message: IMessage) => {
+    if (!message.mediaUrl) return;
+    try {
+      // Tapping the message that's already playing pauses it
+      if (playingMessageId === message._id) {
+        await soundRef.current?.pauseAsync();
+        setPlayingMessageId(null);
+        return;
+      }
+
+      // Only one voice note plays at a time — stop whatever's currently loaded
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+
+      const onStatus = (status: AVPlaybackStatus) => {
+        if (!status.isLoaded) return;
+        if (status.durationMillis) {
+          setPlaybackProgress(status.positionMillis / status.durationMillis);
+        }
+        if (status.didJustFinish) {
+          setPlayingMessageId(null);
+          setPlaybackProgress(0);
+        }
+      };
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: message.mediaUrl },
+        { shouldPlay: true },
+        onStatus
+      );
+      soundRef.current = sound;
+      setPlayingMessageId(message._id);
+      setPlaybackProgress(0);
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: "Could not play voice note" });
+    }
+  };
+
   // ─── Video call handlers ──────────────────────────────────────────────────────
   const handleRequestVideoCall = async (callType: "audio" | "video" = "video") => {
     if (!conversation || isLockedRef.current) return;
@@ -920,10 +1066,9 @@ export const ChatRoomScreen: React.FC = () => {
     const isSystem = item.messageType === "system";
     const isDeleted = !!item.isDeleted;
     const isImage = !isDeleted && item.messageType === "image" && !!item.mediaUrl;
-    const isDoc =
-      !isDeleted &&
-      (item.messageType === "audio" || item.messageType === "document") &&
-      !!item.mediaUrl;
+    const isAudioMsg = !isDeleted && item.messageType === "audio" && !!item.mediaUrl;
+    const isDoc = !isDeleted && item.messageType === "document" && !!item.mediaUrl;
+    const isPlayingThis = playingMessageId === item._id;
 
     if (isSystem) {
       return (
@@ -991,6 +1136,37 @@ export const ChatRoomScreen: React.FC = () => {
             </TouchableOpacity>
           )}
 
+          {/* Voice note */}
+          {isAudioMsg && (
+            <TouchableOpacity
+              style={styles.audioContainer}
+              activeOpacity={0.8}
+              onPress={() => handlePlayAudio(item)}
+            >
+              <View style={[styles.audioPlayBtn, isOwn && styles.audioPlayBtnOwn]}>
+                <Ionicons
+                  name={isPlayingThis ? "pause" : "play"}
+                  size={18}
+                  color={isOwn ? "#D81E5B" : "#fff"}
+                />
+              </View>
+              <View style={styles.audioBody}>
+                <View style={styles.audioTrack}>
+                  <View
+                    style={[
+                      styles.audioTrackFill,
+                      isOwn && styles.audioTrackFillOwn,
+                      { width: `${Math.round((isPlayingThis ? playbackProgress : 0) * 100)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.audioDuration, isOwn ? styles.ownText : styles.otherText]}>
+                  {item.content || "Voice note"}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           {/* Document */}
           {isDoc && (
             <TouchableOpacity
@@ -1020,7 +1196,7 @@ export const ChatRoomScreen: React.FC = () => {
           )}
 
           {/* Plain text */}
-          {!isImage && !isDoc && !isDeleted && (
+          {!isImage && !isDoc && !isAudioMsg && !isDeleted && (
             <Text style={[styles.msgText, isOwn ? styles.ownText : styles.otherText]}>
               {item.content}
             </Text>
@@ -1292,7 +1468,7 @@ export const ChatRoomScreen: React.FC = () => {
           </View>
         )}
 
-        {/* ── Input area or locked footer ── */}
+        {/* ── Input area, recording bar, or locked footer ── */}
         {isLocked ? (
           <View style={[styles.lockedFooter, { paddingBottom: insets.bottom + 8 }]}>
             <Ionicons name="lock-closed" size={16} color="#999" />
@@ -1301,6 +1477,25 @@ export const ChatRoomScreen: React.FC = () => {
                 ? "Chat locked — tap Unlock to reopen"
                 : "This chat is read-only"}
             </Text>
+          </View>
+        ) : isRecording ? (
+          <View style={[styles.recordingBar, { paddingBottom: insets.bottom + 8 }]}>
+            <TouchableOpacity
+              onPress={cancelRecording}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="trash-outline" size={24} color="#EF4444" />
+            </TouchableOpacity>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingTimer}>{formatDuration(recordingDuration)}</Text>
+            <Text style={styles.recordingHint}>Recording voice note…</Text>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={stopAndSendRecording}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="checkmark-circle" size={36} color="#10B981" />
+            </TouchableOpacity>
           </View>
         ) : (
           <View
@@ -1328,16 +1523,19 @@ export const ChatRoomScreen: React.FC = () => {
               multiline
               maxLength={1000}
             />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                (!inputText.trim() || sending) && styles.sendButtonDisabled,
-              ]}
-              onPress={handleSendMessage}
-              disabled={!inputText.trim() || sending}
-            >
-              <Ionicons name={editingMessage ? "checkmark" : "send"} size={20} color="#fff" />
-            </TouchableOpacity>
+            {inputText.trim() || editingMessage ? (
+              <TouchableOpacity
+                style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+                onPress={handleSendMessage}
+                disabled={!inputText.trim() || sending}
+              >
+                <Ionicons name={editingMessage ? "checkmark" : "send"} size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.sendButton} onPress={startRecording}>
+                <Ionicons name="mic" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </KeyboardAvoidingView>
@@ -1459,6 +1657,13 @@ function dedupeMessages(msgs: IMessage[]): IMessage[] {
   const seen = new Map<string, IMessage>();
   for (const m of msgs) seen.set(m._id, m);
   return Array.from(seen.values());
+}
+
+/** Format seconds as m:ss, e.g. 75 → "1:15" */
+function formatDuration(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
 }
 
 const styles = StyleSheet.create({
@@ -1643,6 +1848,37 @@ const styles = StyleSheet.create({
   docName: { fontSize: 13, fontWeight: "600", flexWrap: "wrap" },
   docTap: { fontSize: 11, marginTop: 2 },
 
+  audioContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 170,
+    maxWidth: 220,
+  },
+  audioPlayBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFF0F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  audioPlayBtnOwn: { backgroundColor: "rgba(255,255,255,0.25)" },
+  audioBody: { flex: 1 },
+  audioTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  audioTrackFill: {
+    height: 3,
+    backgroundColor: "#D81E5B",
+  },
+  audioTrackFillOwn: { backgroundColor: "#fff" },
+  audioDuration: { fontSize: 12, fontWeight: "600" },
+
   inputContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -1677,6 +1913,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sendButtonDisabled: { backgroundColor: "#CCC" },
+  recordingBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+    gap: 10,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#EF4444",
+  },
+  recordingTimer: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111",
+    fontVariant: ["tabular-nums"],
+  },
+  recordingHint: { fontSize: 13, color: "#999" },
   lockedFooter: {
     flexDirection: "row",
     alignItems: "center",

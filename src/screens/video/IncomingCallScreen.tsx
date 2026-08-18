@@ -35,6 +35,7 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
     conversationId,
     videoRequestId,
     callType = 'video',
+    autoAction,
   } = route.params;
   const isVoiceCall = callType === 'audio';
 
@@ -46,6 +47,17 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
   const vibrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // Opened via a notification action button (e.g. iOS lock-screen
+    // Accept/Decline) — run it immediately, skip the ringing UI entirely.
+    if (autoAction === 'decline') {
+      handleDecline();
+      return;
+    }
+    if (autoAction === 'accept') {
+      handleAccept();
+      return;
+    }
+
     // Start ringtone and vibration
     startRingtone();
     startVibration();

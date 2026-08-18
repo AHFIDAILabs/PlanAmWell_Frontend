@@ -68,6 +68,10 @@ export type AppStackParamList = {
     conversationId?: string;
     videoRequestId?: string;
     callType?: 'audio' | 'video';
+    // Set when opened via a notification action button (iOS lock-screen
+    // Accept/Decline) — tells IncomingCallScreen to run that action
+    // immediately on mount instead of waiting for a tap inside the app.
+    autoAction?: 'accept' | 'decline';
   };
 
   ChatRoomScreen: {
