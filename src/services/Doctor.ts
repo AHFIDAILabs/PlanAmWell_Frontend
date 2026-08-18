@@ -478,12 +478,18 @@ export const getDoctorImageUri = (doctor: IDoctor): string => {
     if (typeof doctor.profileImage === 'string' && doctor.profileImage) {
         return doctor.profileImage;
     }
-    
-    if (doctor.doctorImage) {
+
+    // doctorImage is only ever a resolved {imageUrl, secure_url} object when the
+    // backend nested-populates it — if a caller forgot to, it's still just the
+    // raw ObjectId string, and img.imageUrl etc. would be undefined. Fall
+    // through to the UI Avatars placeholder in that case instead of returning
+    // an empty string (which renders as a blank/missing image).
+    if (doctor.doctorImage && typeof doctor.doctorImage === 'object') {
         const img = doctor.doctorImage as any;
-        return img.imageUrl || img.secure_url || img.url || '';
+        const url = img.imageUrl || img.secure_url || img.url;
+        if (url) return url;
     }
-    
+
     // Fallback to UI Avatars
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctor.firstName} ${doctor.lastName}`)}&background=D81E5B&color=fff`;
 };

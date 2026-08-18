@@ -44,7 +44,11 @@ export async function setupCallNotificationChannel(): Promise<void> {
     name: 'Incoming Calls',
     importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
-    sound: 'default',
+    // Bundled asset (app.config.ts expo-notifications `sounds`), not the
+    // system default — same file as the in-call ringtone and the
+    // foreground-app notification channel, for consistent ring sound
+    // whether the app is open, backgrounded, or fully killed.
+    sound: 'incoming_call',
     vibration: true,
     vibrationPattern: [0, 250, 250, 250],
   });
@@ -148,11 +152,19 @@ export function registerForegroundCallHandler(): () => void {
 
 /**
  * Notifee action-press handling. Decline is fully handled right here — no
- * need to open the app. Accept / default tap just dismiss the notification;
- * the app launches (via the action's launchActivity, or default press
- * behaviour) and App.tsx's initial-notification check takes it from there.
+ * need to open the app. Accept / default tap need to navigate to
+ * IncomingCallScreen once the app is in the foreground — `onNavigate` is
+ * App.tsx's handleNavigationFromData, passed in so this service doesn't need
+ * a direct dependency on the navigation ref.
+ *
+ * This covers "app was backgrounded (not killed), user taps the
+ * notification" — the app resumes and this foreground-event listener fires.
+ * The *cold-start* (fully killed) case is separate — see
+ * getInitialCallNotificationData() below, checked once on mount in App.tsx.
  */
-export function registerNotifeeEventHandlers(): () => void {
+export function registerNotifeeEventHandlers(
+  onNavigate: (data: IncomingCallData) => void
+): () => void {
   notifee.onBackgroundEvent(async ({ type, detail }) => {
     const data = detail.notification?.data as IncomingCallData | undefined;
     if (!data?.appointmentId) return;
@@ -173,6 +185,7 @@ export function registerNotifeeEventHandlers(): () => void {
       (type === EventType.ACTION_PRESS && detail.pressAction?.id === 'accept')
     ) {
       dismissIncomingCallNotification();
+      onNavigate(data);
     }
   });
 }

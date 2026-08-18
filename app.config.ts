@@ -23,6 +23,11 @@ plugins: [
     {
       icon: './src/assets/plan.png',
       color: '#D81E5B',
+      // Bundled into android/app/src/main/res/raw as "incoming_call" (no
+      // extension) — referenced by that name from both the expo-notifications
+      // channel setup and notifee's channel setup, so the ring sound is
+      // consistent and works fully offline (no third-party CDN dependency).
+      sounds: ['./src/assets/sounds/incoming_call.wav'],
     },
   ],
   '@react-native-firebase/app',

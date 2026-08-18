@@ -66,7 +66,9 @@ class PushNotificationService {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#10B981',
-        sound: 'default',
+        // Bundled asset (app.config.ts expo-notifications `sounds`), not the
+        // system default — matches the in-call ringtone.
+        sound: 'incoming_call',
         enableVibrate: true,
         showBadge: true,
         enableLights: true,

@@ -177,7 +177,7 @@ function AppContent() {
     if (!isAuthenticated || Platform.OS !== "android") return;
 
     const unsubscribeForegroundMessages = registerForegroundCallHandler();
-    const unsubscribeNotifeeEvents = registerNotifeeEventHandlers();
+    const unsubscribeNotifeeEvents = registerNotifeeEventHandlers(handleNavigationFromData);
 
     return () => {
       unsubscribeForegroundMessages();

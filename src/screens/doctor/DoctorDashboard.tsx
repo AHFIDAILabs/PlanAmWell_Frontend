@@ -310,14 +310,32 @@ export default function DoctorDashboardScreen({ navigation }: any) {
         throw new Error(response?.message || 'Failed to check call status');
       }
 
-      const { isActive, callStatus, callType } = response.data;
+      const { isActive, callStatus, callType, canJoin, minutesUntilCanJoin } = response.data;
 
       if (isActive === true) {
         console.log('✅ Call is active (status:', callStatus, '), joining...');
         navigateToCall(callType || 'video');
+      } else if (canJoin === false) {
+        // Backend's generateVideoToken enforces this same 15-minute window —
+        // check it here too so the doctor gets a clear message instead of a
+        // raw 400 from startCall.
+        console.log('⏳ Too early to start call —', minutesUntilCanJoin, 'minute(s) remaining');
+        Alert.alert(
+          'Too Early to Start',
+          minutesUntilCanJoin
+            ? `You can start this call ${minutesUntilCanJoin} minute(s) before the scheduled time.`
+            : 'This call is not available to start yet.',
+          [
+            { text: 'OK', style: 'cancel' },
+            {
+              text: 'View Appointment',
+              onPress: () => openAppointmentModal(appointment),
+            },
+          ]
+        );
       } else {
         console.log('ℹ️ Call not active (status:', callStatus, '), showing options...');
-        
+
         Alert.alert(
           'Start Video Call?',
           `This will start the video consultation with ${

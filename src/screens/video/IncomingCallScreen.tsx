@@ -90,13 +90,6 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
   }, []);
 
   const startRingtone = async () => {
-    // Fallback chain — try each URL until one loads successfully
-    const RINGTONE_URLS = [
-      'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
-      'https://www.soundjay.com/phone/phone-ringing-01a.mp3',
-      'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg',
-    ];
-
     try {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
@@ -106,27 +99,19 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
         playThroughEarpieceAndroid: false,
       });
 
-      let loaded = false;
-      for (const url of RINGTONE_URLS) {
-        try {
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: url },
-            { isLooping: true, volume: 1.0, shouldPlay: true }
-          );
-          soundRef.current = sound;
-          console.log('🔔 Ringtone playing:', url);
-          loaded = true;
-          break;
-        } catch {
-          console.warn('⚠️ Ringtone URL failed, trying next:', url);
-        }
-      }
-
-      if (!loaded) {
-        console.warn('⚠️ All ringtone URLs failed — vibration only');
-      }
+      // Bundled locally — the previous implementation depended on three
+      // third-party CDN URLs (mixkit.co, soundjay.com, actions.google.com)
+      // over the network, which is why the screen was appearing with no
+      // sound: those loads were silently failing. A bundled asset has no
+      // network dependency and always loads.
+      const { sound } = await Audio.Sound.createAsync(
+        require('../../assets/sounds/incoming_call.wav'),
+        { isLooping: true, volume: 1.0, shouldPlay: true }
+      );
+      soundRef.current = sound;
+      console.log('🔔 Ringtone playing (bundled asset)');
     } catch (error) {
-      console.error('❌ Failed to configure audio:', error);
+      console.error('❌ Failed to play ringtone:', error);
     }
   };
 
