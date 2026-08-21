@@ -132,9 +132,15 @@ export const MyAppointmentsScreen: React.FC = () => {
   };
 
   // Socket listeners
+  // Retries attaching until the socket is actually available instead of
+  // bailing once at mount time — the socket can still be mid-handshake when
+  // this screen mounts (more likely under pilot-scale connection latency),
+  // and this effect's deps rarely change, so a one-shot bail meant these
+  // listeners could simply never attach for the rest of the session.
   useEffect(() => {
-    const socket = socketService.getSocket();
-    if (!socket) return;
+    let cancelled = false;
+    let attachedSocket: ReturnType<typeof socketService.getSocket> = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     const handleCallEnded = (data: { appointmentId: string; callDuration?: number; endedBy?: string }) => {
       setAppointments((prev) =>
@@ -193,27 +199,52 @@ export const MyAppointmentsScreen: React.FC = () => {
       );
     };
 
-    socket.on("call-ended", handleCallEnded);
-    socket.on("call-started", handleCallStarted);
-    socket.on("call-ringing", handleCallRinging);
-    socket.on("appointment-updated", handleAppointmentUpdated);
+    const attach = (socket: NonNullable<ReturnType<typeof socketService.getSocket>>) => {
+      if (cancelled || attachedSocket) return;
+      attachedSocket = socket;
+      socket.on("call-ended", handleCallEnded);
+      socket.on("call-started", handleCallStarted);
+      socket.on("call-ringing", handleCallRinging);
+      socket.on("appointment-updated", handleAppointmentUpdated);
+    };
+
+    const existing = socketService.getSocket();
+    if (existing) {
+      attach(existing);
+    } else {
+      pollTimer = setInterval(() => {
+        const sock = socketService.getSocket();
+        if (sock) {
+          if (pollTimer) clearInterval(pollTimer);
+          attach(sock);
+        }
+      }, 500);
+    }
 
     return () => {
-      socket.off("call-ended", handleCallEnded);
-      socket.off("call-started", handleCallStarted);
-      socket.off("call-ringing", handleCallRinging);
-      socket.off("appointment-updated", handleAppointmentUpdated);
+      cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (attachedSocket) {
+        attachedSocket.off("call-ended", handleCallEnded);
+        attachedSocket.off("call-started", handleCallStarted);
+        attachedSocket.off("call-ringing", handleCallRinging);
+        attachedSocket.off("appointment-updated", handleAppointmentUpdated);
+      }
     };
   }, [selectedAppointment]);
 
-  // Join rooms
+  // Join rooms — depends on the actual set of appointment IDs, not just the
+  // count. A refetch that swaps one appointment for another (e.g. one
+  // completes as a new one appears) keeps `.length` unchanged, which used to
+  // mean the old room was never left and the new one never joined.
+  const appointmentIdsKey = appointments.map((a) => a._id).filter(Boolean).sort().join(",");
   useEffect(() => {
     if (appointments.length === 0) return;
     appointments.forEach((appt) => appt._id && socketService.joinAppointment(appt._id));
     return () => {
       appointments.forEach((appt) => appt._id && socketService.leaveAppointment(appt._id));
     };
-  }, [appointments.length]);
+  }, [appointmentIdsKey]);
 
   useFocusEffect(
     useCallback(() => {
@@ -222,16 +253,21 @@ export const MyAppointmentsScreen: React.FC = () => {
   );
 
   useEffect(() => {
+    // Reads appointmentsRef (kept in sync separately) instead of depending on
+    // `appointments` directly — that array gets a new reference on every
+    // socket-driven update (call-started/ringing/ended), which was tearing
+    // down and restarting this interval before its 15s ever elapsed under
+    // active-call traffic, effectively starving this safety-net poll.
     const interval = setInterval(() => {
       const now = new Date();
-      const relevantAppointments = appointments.filter((appt) => {
+      const relevantAppointments = appointmentsRef.current.filter((appt) => {
         const diffMinutes = (appt.scheduledAt.getTime() - now.getTime()) / 60000;
         return appt.status === "confirmed" && diffMinutes <= 15 && diffMinutes > -120 && appt.callStatus !== "ended";
       });
       if (relevantAppointments.length > 0) fetchAppointments();
     }, 15000);
     return () => clearInterval(interval);
-  }, [appointments]);
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);

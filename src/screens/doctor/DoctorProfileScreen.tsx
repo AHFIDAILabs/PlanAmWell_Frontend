@@ -103,19 +103,24 @@ export default function DoctorProfileScreen() {
 
   // ─── Pick image ───────────────────────────────────────────────
   const pickImage = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Toast.show({ type: "error", text1: "Permission denied", text2: "Please enable photo library access." });
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.6,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setPickedAvatarUri(result.assets[0].uri);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Toast.show({ type: "error", text1: "Permission denied", text2: "Please enable photo library access." });
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.6,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setPickedAvatarUri(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      console.error("❌ Image picker failed:", error);
+      Toast.show({ type: "error", text1: "Could not open image picker", text2: error?.message });
     }
   };
 

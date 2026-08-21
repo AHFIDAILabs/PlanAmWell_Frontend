@@ -21,7 +21,8 @@ import {
   UpdateUserData
 } from '../services/User';
 import { IUser, AuthEntity } from '../types/backendType';
-import { registerPushToken, removePushToken } from '../services/Auth';
+import { registerPushToken, removePushToken, registerFcmToken } from '../services/Auth';
+import { getFcmToken } from '../services/callNotificationService';
 import { AxiosError } from 'axios';
 import { getExpoPushToken } from './usePushToken';
 import { jwtDecode } from 'jwt-decode';
@@ -379,6 +380,18 @@ useEffect(() => {
           }
         } catch (pushError) {
           console.error('[useAuth] Failed to register push token:', pushError);
+        }
+
+        // Register raw FCM device token — separate delivery path used only
+        // to wake incoming-call ringing when the app is backgrounded/killed.
+        try {
+          const fcmToken = await getFcmToken();
+          if (fcmToken) {
+            await registerFcmToken(fcmToken, response.token);
+            console.log('[useAuth] FCM token registered');
+          }
+        } catch (fcmError) {
+          console.error('[useAuth] Failed to register FCM token:', fcmError);
         }
 
         userLoadedRef.current = true;

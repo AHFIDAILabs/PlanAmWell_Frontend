@@ -86,31 +86,36 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ visible, onClose })
     };
 
     const handleImagePick = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-        if (status !== 'granted') {
-            Alert.alert('Permission required', 'Please grant media library access to select a profile picture.');
-            return;
-        }
+            if (status !== 'granted') {
+                Alert.alert('Permission required', 'Please grant media library access to select a profile picture.');
+                return;
+            }
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images, 
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.7,
-        });
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.7,
+            });
 
-        if (!result.canceled) {
-            const newUri = result.assets[0].uri;
-            console.log('📷 New image selected:', newUri);
-            
-            setFormData(prev => ({
-                ...prev,
-                userImageUri: newUri,
-                imageChanged: true,
-            }));
-            
-            Toast.show({ type: 'success', text1: 'Image selected' });
+            if (!result.canceled) {
+                const newUri = result.assets[0].uri;
+                console.log('📷 New image selected:', newUri);
+
+                setFormData(prev => ({
+                    ...prev,
+                    userImageUri: newUri,
+                    imageChanged: true,
+                }));
+
+                Toast.show({ type: 'success', text1: 'Image selected' });
+            }
+        } catch (error: any) {
+            console.error('❌ Image picker failed:', error);
+            Toast.show({ type: 'error', text1: 'Could not open image picker', text2: error?.message });
         }
     };
 

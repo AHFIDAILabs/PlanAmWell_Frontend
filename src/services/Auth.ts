@@ -468,6 +468,41 @@ export async function registerPushToken(token: string, authToken: string): Promi
 }
 
 /**
+ * Register raw FCM device token — separate from the Expo push token, used
+ * only to wake background/foreground call-ringing handlers.
+ */
+export async function registerFcmToken(token: string, authToken: string): Promise<boolean> {
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/register-fcm-token`,
+      { token },
+      { headers: { Authorization: `Bearer ${authToken}` } }
+    );
+    return !!response.data.success;
+  } catch (error) {
+    console.error('[Auth] Failed to register FCM token:', error);
+    return false;
+  }
+}
+
+/**
+ * Remove raw FCM device token (on logout)
+ */
+export async function removeFcmToken(token: string, authToken: string): Promise<boolean> {
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/remove-fcm-token`,
+      { token },
+      { headers: { Authorization: `Bearer ${authToken}` } }
+    );
+    return !!response.data.success;
+  } catch (error) {
+    console.error('[Auth] Failed to remove FCM token:', error);
+    return false;
+  }
+}
+
+/**
  * Remove Expo push token (on logout)
  */
 export async function removePushToken(token: string, authToken: string): Promise<boolean> {

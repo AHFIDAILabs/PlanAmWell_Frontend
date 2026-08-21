@@ -174,7 +174,15 @@ class SocketService {
 
     this.socket.on('disconnect', (reason) => {
       console.log('🔌 Socket.IO disconnected. Reason:', reason);
-      if (reason === 'io server disconnect' || reason === 'transport close') {
+      // Only 'io server disconnect' needs manual intervention — that's the
+      // one reason Socket.IO's own `reconnection: true` won't auto-retry
+      // (the server explicitly ended the connection, e.g. an expired auth
+      // token). Every other reason (transport close, ping timeout, network
+      // blips) is already handled automatically by the client, reusing this
+      // SAME socket object — scheduleReconnect() used to also fire for
+      // 'transport close', which forced a full client teardown+recreate for
+      // something the client was already about to fix on its own.
+      if (reason === 'io server disconnect') {
         this.scheduleReconnect();
       }
     });
@@ -214,7 +222,13 @@ class SocketService {
     });
 
     this.socket.io.on('reconnect_failed', () => {
-      console.error('❌ All reconnection attempts failed');
+      // Socket.IO's own built-in reconnection (reconnectionAttempts: 5,
+      // backing off up to reconnectionDelayMax) has now exhausted itself on
+      // this object. At this point there's nothing left to preserve, so a
+      // full fresh connection is the right last resort — same as if the app
+      // had never connected before.
+      console.error('❌ All built-in reconnection attempts failed — falling back to a fresh connection');
+      this.connect();
     });
   }
 
@@ -346,10 +360,70 @@ class SocketService {
     };
   }
 
-  async reconnect() {
+  /**
+   * Reconnects the EXISTING socket object in place, rather than tearing it
+   * down and building a new one (which is what disconnect()+connect() used
+   * to do here). That distinction matters: any screen holding a captured
+   * socket reference — most importantly VideoCallScreen, which holds one for
+   * an entire call's duration — would silently stop receiving events the
+   * moment the underlying object was replaced, with no visible error.
+   *
+   * socket.io-client fully supports calling `.connect()` again on an
+   * already-constructed, currently-disconnected instance: every listener
+   * registered via `.on()` (both the ones this service attaches in
+   * setupListeners()/onNotification(), and any a screen attached directly on
+   * the socket it captured) stays attached. No re-registration needed.
+   */
+  async reconnect(maxWaitTime = 15000): Promise<boolean> {
     console.log('🔄 Manual reconnection requested');
-    this.disconnect();
-    await this.connect(15000); // Wait up to 15 seconds for reconnection
+
+    if (!this.socket) {
+      // Nothing to preserve — this is a first connection or the socket was
+      // fully torn down via disconnect() (e.g. logout), so a fresh client is
+      // correct here.
+      return this.connect(maxWaitTime);
+    }
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    if (this.socket.connected) {
+      console.log('✅ Socket already connected');
+      return true;
+    }
+
+    try {
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      if (!token) {
+        console.log('❌ No token found — cannot reconnect');
+        return false;
+      }
+      // Refresh in case the token rotated since the last connection — this
+      // matters especially for 'io server disconnect', which often happens
+      // because the old token expired.
+      this.socket.auth = { token };
+    } catch (err) {
+      console.error('❌ Failed to refresh token before reconnect:', err);
+    }
+
+    return new Promise((resolve) => {
+      const timeoutHandle = setTimeout(() => {
+        this.socket?.off('connect', onConnect);
+        console.error('❌ Reconnection timeout after', maxWaitTime, 'ms');
+        resolve(false);
+      }, maxWaitTime);
+
+      const onConnect = () => {
+        clearTimeout(timeoutHandle);
+        this.socket?.off('connect', onConnect);
+        resolve(true);
+      };
+
+      this.socket!.once('connect', onConnect);
+      this.socket!.connect();
+    });
   }
 
   getSocket(): Socket | null {

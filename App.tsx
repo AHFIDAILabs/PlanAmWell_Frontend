@@ -21,12 +21,23 @@ import {
   registerForegroundCallHandler,
   registerNotifeeEventHandlers,
   getInitialCallNotificationData,
+  getFcmToken,
+  registerFcmTokenRefreshListener,
 } from "./src/services/callNotificationService";
 import * as SecureStore from "expo-secure-store";
 import axios from "axios";
-import { TOKEN_KEY } from "./src/services/Auth";
+import { TOKEN_KEY, setupAxiosInterceptors, registerFcmToken } from "./src/services/Auth";
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
+
+// Registered on the shared `axios` default instance at module load — every
+// service in the app imports plain `axios`, so this one call covers all of
+// them. Must run before any component gets a chance to make a request, which
+// module-load time guarantees (a useEffect would not — it fires after first
+// render, by which point other mount effects may already be mid-request).
+// This was previously defined but never actually called anywhere, so no
+// request in the app auto-refreshed an expired token or retried on 401.
+setupAxiosInterceptors();
 
 /* ================= Notification Handler ================= */
 Notifications.setNotificationHandler({
@@ -107,6 +118,7 @@ function AppContent() {
         channelName:    data.channelName,
         conversationId: data.conversationId,
         videoRequestId: data.videoRequestId,
+        callType:       data.callType,
       });
     };
 
@@ -141,9 +153,28 @@ function AppContent() {
       // NOTE: setNavigationRef is called in NavigationContainer.onReady to avoid
       // a timing race where navigationRef.current is still null here.
 
-      // Register device push token
-      const token = await pushNotificationService.registerForPushNotifications();
-      if (token) await sendPushTokenToBackend(token);
+      // Register device push token. Not wrapped in try/catch previously —
+      // this call posted to a route that doesn't exist on the backend
+      // (`/api/v1/users/push-token`; the real one is `/api/v1/auth/register-push-token`),
+      // so it threw on every launch and silently aborted everything below it
+      // in this function, including the Android notifee permission/channel
+      // setup a few lines down — a direct cause of calls never ringing.
+      try {
+        const token = await pushNotificationService.registerForPushNotifications();
+        if (token) await sendPushTokenToBackend(token);
+      } catch (err) {
+        console.error("[App] Failed to register Expo push token:", err);
+      }
+
+      // Raw FCM device token — separate delivery path, only used to wake
+      // incoming-call ringing when the app is backgrounded/killed.
+      try {
+        const fcmToken = await getFcmToken();
+        const authToken = await SecureStore.getItemAsync(TOKEN_KEY);
+        if (fcmToken && authToken) await registerFcmToken(fcmToken, authToken);
+      } catch (err) {
+        console.error("[App] Failed to register FCM token:", err);
+      }
 
       // Full-screen incoming-call notifications (Android only — this is the
       // notifee + RNFirebase Messaging layer that rings even when the app is
@@ -178,10 +209,16 @@ function AppContent() {
 
     const unsubscribeForegroundMessages = registerForegroundCallHandler();
     const unsubscribeNotifeeEvents = registerNotifeeEventHandlers(handleNavigationFromData);
+    const unsubscribeFcmRefresh = registerFcmTokenRefreshListener((refreshedToken) => {
+      SecureStore.getItemAsync(TOKEN_KEY).then((authToken) => {
+        if (authToken) registerFcmToken(refreshedToken, authToken).catch(() => {});
+      });
+    });
 
     return () => {
       unsubscribeForegroundMessages();
       unsubscribeNotifeeEvents();
+      unsubscribeFcmRefresh();
     };
   }, [isAuthenticated]);
 
@@ -191,8 +228,8 @@ function AppContent() {
     if (!authToken) return;
 
     await axios.post(
-      `${SERVER_URL}/api/v1/users/push-token`,
-      { pushToken },
+      `${SERVER_URL}/api/v1/auth/register-push-token`,
+      { token: pushToken },
       { headers: { Authorization: `Bearer ${authToken}` } }
     );
   };

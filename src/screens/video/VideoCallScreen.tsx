@@ -109,13 +109,13 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const [isConnected,   setIsConnected]   = useState(false);
   const [isConnecting,  setIsConnecting]  = useState(true);   // loading until init done
   const [isMuted,       setIsMuted]       = useState(false);
-  const [isVideoOff,    setIsVideoOff]    = useState(false);
   const [isSpeakerOn,   setIsSpeakerOn]  = useState(true);
   const [callDuration,  setCallDuration]  = useState(0);
   // Starts as whatever the call was requested as, but can flip to 'video' mid-call
   // if either side switches their camera on (WhatsApp-style silent upgrade).
   const [callMode,      setCallMode]      = useState<'audio' | 'video'>(callType);
-  const [isUpgrading,   setIsUpgrading]   = useState(false);
+  // Covers both directions of the bidirectional video<->voice switch below.
+  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
 
   const isVoiceCall = callMode === 'audio';
 
@@ -243,6 +243,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
       socket.off('webrtc-offer');
       socket.off('webrtc-answer');
       socket.off('webrtc-ice-candidate');
+      socket.off('webrtc-call-mode-changed');
     }
 
     socketService.leaveAppointment(appointmentId);
@@ -487,10 +488,23 @@ export default function VideoCallScreen({ route, navigation }: any) {
         }
       };
 
-      activeSocket.on('webrtc-ready',         handlePeerReady);
-      activeSocket.on('webrtc-offer',         handleOffer);
-      activeSocket.on('webrtc-answer',        handleAnswer);
-      activeSocket.on('webrtc-ice-candidate', handleIceCandidate);
+      // ── Other side flipped video<->voice: sync our own UI to match ────────
+      // Renegotiation (handleOffer/handleAnswer above) carries the actual
+      // media change; this just tells us which layout to show, since we
+      // can't reliably detect a *removed* remote track the way ontrack lets
+      // us detect an added one.
+      const handleCallModeChanged = (payload: any) => {
+        const mode = payload?.callMode;
+        if (mode === 'audio' || mode === 'video') {
+          safeSetState(setCallMode, mode);
+        }
+      };
+
+      activeSocket.on('webrtc-ready',              handlePeerReady);
+      activeSocket.on('webrtc-offer',               handleOffer);
+      activeSocket.on('webrtc-answer',              handleAnswer);
+      activeSocket.on('webrtc-ice-candidate',       handleIceCandidate);
+      activeSocket.on('webrtc-call-mode-changed',   handleCallModeChanged);
 
       // 10. Announce readiness; retry every 5 s until WebRTC is connected.
       const emitReady = () => {
@@ -541,13 +555,6 @@ export default function VideoCallScreen({ route, navigation }: any) {
     setIsMuted(!track.enabled);
   };
 
-  const toggleVideo = () => {
-    const track = localStreamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-    track.enabled = !track.enabled;
-    setIsVideoOff(!track.enabled);
-  };
-
   const toggleSpeaker = async () => {
     const next = !isSpeakerOn;
     setIsSpeakerOn(next);
@@ -570,11 +577,11 @@ export default function VideoCallScreen({ route, navigation }: any) {
   };
 
   const handleUpgradeToVideo = async () => {
-    if (!isVoiceCall || isUpgrading || !isConnected) return;
+    if (!isVoiceCall || isSwitchingMode || !isConnected) return;
     const pc = pcRef.current;
     if (!pc) return;
 
-    setIsUpgrading(true);
+    setIsSwitchingMode(true);
     try {
       const granted = await requestCameraPermission();
       if (!granted) {
@@ -604,7 +611,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
       // link is already live.
       const offer = await (pc as any).createOffer();
       await pc.setLocalDescription(offer);
-      socketService.getSocket()?.emit('webrtc-offer', { appointmentId, offer });
+      const socket = socketService.getSocket();
+      socket?.emit('webrtc-offer', { appointmentId, offer });
+      // Explicit UI-sync signal alongside the implicit ontrack detection the
+      // other side already has — a race-safety net in case the track takes
+      // a moment to actually arrive.
+      socket?.emit('webrtc-call-mode-changed', { appointmentId, callMode: 'video' });
       console.log('📤 renegotiation webrtc-offer sent (voice → video upgrade)');
 
       safeSetState(setCallMode, 'video');
@@ -612,7 +624,46 @@ export default function VideoCallScreen({ route, navigation }: any) {
       console.error('❌ Upgrade to video failed:', e);
       Alert.alert('Could not switch to video', e?.message || 'Please try again.');
     } finally {
-      if (isMountedRef.current) setIsUpgrading(false);
+      if (isMountedRef.current) setIsSwitchingMode(false);
+    }
+  };
+
+  // ── Video → voice downgrade ─────────────────────────────────────────────
+  // Mirrors the upgrade path above: removes the video track and renegotiates.
+  // Unlike an *added* track (which ontrack detects implicitly), a *removed*
+  // track has no equally reliable implicit signal in react-native-webrtc, so
+  // this also emits an explicit webrtc-call-mode-changed event the other
+  // side listens for to flip its own UI back to the voice layout.
+  const handleDowngradeToVoice = async () => {
+    if (isVoiceCall || isSwitchingMode || !isConnected) return;
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    setIsSwitchingMode(true);
+    try {
+      const videoTrack = localStreamRef.current?.getVideoTracks()[0];
+      if (videoTrack) {
+        const sender = pc.getSenders().find((s: any) => s.track?.id === videoTrack.id);
+        if (sender) {
+          try { pc.removeTrack(sender); } catch (e) { console.warn('⚠️ removeTrack failed:', e); }
+        }
+        localStreamRef.current?.removeTrack(videoTrack);
+        videoTrack.stop();
+      }
+
+      const offer = await (pc as any).createOffer();
+      await pc.setLocalDescription(offer);
+      const socket = socketService.getSocket();
+      socket?.emit('webrtc-offer', { appointmentId, offer });
+      socket?.emit('webrtc-call-mode-changed', { appointmentId, callMode: 'audio' });
+      console.log('📤 renegotiation webrtc-offer sent (video → voice downgrade)');
+
+      safeSetState(setCallMode, 'audio');
+    } catch (e: any) {
+      console.error('❌ Downgrade to voice failed:', e);
+      Alert.alert('Could not switch to voice', e?.message || 'Please try again.');
+    } finally {
+      if (isMountedRef.current) setIsSwitchingMode(false);
     }
   };
 
@@ -703,7 +754,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
           )}
 
           {/* Local picture-in-picture */}
-          {!isVideoOff && localStream ? (
+          {localStream ? (
             <View style={styles.localVideoContainer}>
               <RTCView
                 streamURL={localStream.toURL()}
@@ -746,9 +797,9 @@ export default function VideoCallScreen({ route, navigation }: any) {
             <TouchableOpacity
               style={styles.controlButton}
               onPress={handleUpgradeToVideo}
-              disabled={isUpgrading || !isConnected}
+              disabled={isSwitchingMode || !isConnected}
             >
-              {isUpgrading ? (
+              {isSwitchingMode ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Ionicons name="videocam" size={26} color={isConnected ? '#fff' : '#666'} />
@@ -757,11 +808,16 @@ export default function VideoCallScreen({ route, navigation }: any) {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={[styles.controlButton, isVideoOff && styles.controlButtonActive]}
-              onPress={toggleVideo}
+              style={styles.controlButton}
+              onPress={handleDowngradeToVoice}
+              disabled={isSwitchingMode || !isConnected}
             >
-              <Ionicons name={isVideoOff ? 'videocam-off' : 'videocam'} size={26} color={isVideoOff ? '#EF4444' : '#fff'} />
-              <Text style={styles.controlLabel}>Video</Text>
+              {isSwitchingMode ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="call" size={26} color={isConnected ? '#fff' : '#666'} />
+              )}
+              <Text style={styles.controlLabel}>Voice</Text>
             </TouchableOpacity>
           )}
 

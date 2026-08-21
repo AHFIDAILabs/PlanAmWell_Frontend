@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
+  ActivityIndicator,
 } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,7 +21,7 @@ import { RFValue } from "react-native-responsive-fontsize";
 import { AppStackParamList } from "../../types/App";
 import { IDoctor } from "../../types/backendType";
 import { CompleteProfileModal } from "../../components/profile/CompleteProfileModal";
-import { validateProfile  } from "../../services/Appointment";
+import { validateProfile, getBookedSlots } from "../../services/Appointment";
 import { familyMemberService, IFamilyMember } from "../../services/familyMemberService";
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "BookAppointmentScreen">;
@@ -73,18 +74,43 @@ export const BookAppointmentScreen: React.FC = () => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedSlot,   setSelectedSlot]   = useState<string | null>(null);
+  const [isProceeding,  setIsProceeding]    = useState(false);
 
-  // Recompute time slots whenever the selected date changes
+  // Recompute time slots whenever the selected date changes — then hide any
+  // slot another patient has already booked. The backend's unique index is
+  // the real guarantee against double-booking; this is just so a patient
+  // doesn't pick a slot only to be told it's gone at payment time.
   useEffect(() => {
     setSelectedSlot(null);
     setSelectedTime(null);
     if (!selectedDate) { setAvailableSlots([]); return; }
     const info = getDayAvailability(selectedDate, doctor.availability);
-    if (info) {
-      setAvailableSlots(generateTimeSlots(info.from, info.to, info.slotDuration));
-    } else {
-      setAvailableSlots([]);
-    }
+    if (!info) { setAvailableSlots([]); return; }
+
+    const allSlots = generateTimeSlots(info.from, info.to, info.slotDuration);
+    setAvailableSlots(allSlots);
+
+    let cancelled = false;
+    const dayStart = new Date(selectedDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    getBookedSlots(doctor._id, dayStart, dayEnd).then((booked) => {
+      if (cancelled || booked.length === 0) return;
+      setAvailableSlots((prev) =>
+        prev.filter((hhmm) => {
+          const slotStart = slotToDate(selectedDate, hhmm).getTime();
+          return !booked.some((b) => {
+            const bStart = new Date(b.scheduledAt).getTime();
+            const bEnd = bStart + (b.duration || 30) * 60000;
+            return slotStart >= bStart && slotStart < bEnd;
+          });
+        })
+      );
+    });
+
+    return () => { cancelled = true; };
   }, [selectedDate]);
   const [reason, setReason]                 = useState("");
   const [notes, setNotes]                   = useState("");
@@ -144,6 +170,7 @@ export const BookAppointmentScreen: React.FC = () => {
     notes: string,
     shareUserInfo: boolean,
   ) => {
+    setIsProceeding(true);
     try {
       // Dry-run: call the appointment endpoint early so we can surface the
       // PROFILE_INCOMPLETE error before the user even hits payment.
@@ -170,10 +197,13 @@ export const BookAppointmentScreen: React.FC = () => {
         text1: "Something went wrong",
         text2: data?.message ?? err?.message ?? "Please try again.",
       });
+    } finally {
+      setIsProceeding(false);
     }
   };
 
   const handleProceed = () => {
+    if (isProceeding) return;
     if (!selectedDate || !selectedTime) {
       return Toast.show({ type: "error", text1: "Select a date and time" });
     }
@@ -221,6 +251,24 @@ export const BookAppointmentScreen: React.FC = () => {
       setPendingPayload(null);
     }
   };
+
+  // Guards a nav-state edge case (deep link, stale/restored nav state,
+  // fast back-tap during a screen transition) where this screen is reached
+  // without a doctor param — every hook above must still run unconditionally,
+  // so this check has to come after them, not before.
+  if (!doctor?._id) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#D81E5B" />
+          <Text style={styles.errorText}>We couldn't find that doctor's details.</Text>
+          <TouchableOpacity style={styles.errorButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.errorButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -410,8 +458,17 @@ export const BookAppointmentScreen: React.FC = () => {
         </View>
 
         {/* ── CTA ───────────────────────────────────────────────────────── */}
-        <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed} activeOpacity={0.85}>
-          <Ionicons name="lock-closed" size={18} color="#fff" style={{ marginRight: 8 }} />
+        <TouchableOpacity
+          style={[styles.proceedBtn, isProceeding && { opacity: 0.7 }]}
+          onPress={handleProceed}
+          activeOpacity={0.85}
+          disabled={isProceeding}
+        >
+          {isProceeding ? (
+            <ActivityIndicator color="#fff" style={{ marginRight: 8 }} />
+          ) : (
+            <Ionicons name="lock-closed" size={18} color="#fff" style={{ marginRight: 8 }} />
+          )}
           <Text style={styles.proceedBtnText}>Proceed to Payment</Text>
         </TouchableOpacity>
 
@@ -454,6 +511,11 @@ const styles = StyleSheet.create({
   screen:    { flex: 1, backgroundColor: "#fff" },
   headerBg:  { position: "absolute", top: 0, width: "100%", height: 200 },
   container: { padding: 20, paddingTop: 16, paddingBottom: 40 },
+
+  errorContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  errorText: { fontSize: RFValue(15), color: "#444", textAlign: "center", marginTop: 12, marginBottom: 20 },
+  errorButton: { backgroundColor: "#D81E5B", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  errorButtonText: { color: "#fff", fontWeight: "700", fontSize: RFValue(14) },
 
   backBtn: { marginBottom: 12 },
   title:   { fontSize: RFValue(26), fontWeight: "800", color: "#222", marginBottom: 4 },

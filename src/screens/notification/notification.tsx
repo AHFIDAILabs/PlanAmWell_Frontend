@@ -1,5 +1,5 @@
 // Enhanced NotificationsScreen.tsx - FULLY TYPED & FIXED DATES
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -75,6 +75,10 @@ export const NotificationsScreen = () => {
   const [appointments, setAppointments] = useState<IAppointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [activeCallAlerts, setActiveCallAlerts] = useState<Set<string>>(new Set());
+  // Tracks the auto-dismiss timeout per alert so it can be cleared on
+  // unmount — otherwise it fires later and calls setActiveCallAlerts on a
+  // screen the user has already navigated away from.
+  const alertTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const currentRole = isDoctor() ? 'doctor' : 'user';
 
@@ -134,14 +138,33 @@ export const NotificationsScreen = () => {
         { cancelable: false }
       );
 
-      setTimeout(() => removeActiveCallAlert(appointmentId), 30000);
+      const timeoutHandle = setTimeout(() => removeActiveCallAlert(appointmentId), 30000);
+      alertTimeoutsRef.current.set(appointmentId, timeoutHandle);
     };
 
     socketService.onNotification('patient-rejoin-call', handleRejoinCall);
     return () => socketService.offNotification('patient-rejoin-call', handleRejoinCall);
   }, [currentRole, activeCallAlerts, navigation]);
 
+  // Separate, unmount-only cleanup for pending alert timeouts — this effect's
+  // dependency array is intentionally empty. The socket-listener effect above
+  // re-registers whenever `activeCallAlerts` changes (including from inside
+  // its own handler), so a cleanup tied to that effect would clear timeouts
+  // for OTHER still-pending alerts every time a new one comes in, not just on
+  // true unmount.
+  useEffect(() => {
+    return () => {
+      alertTimeoutsRef.current.forEach((handle) => clearTimeout(handle));
+      alertTimeoutsRef.current.clear();
+    };
+  }, []);
+
   const removeActiveCallAlert = (id: string) => {
+    const handle = alertTimeoutsRef.current.get(id);
+    if (handle) {
+      clearTimeout(handle);
+      alertTimeoutsRef.current.delete(id);
+    }
     setActiveCallAlerts((prev) => {
       const newSet = new Set(prev);
       newSet.delete(id);

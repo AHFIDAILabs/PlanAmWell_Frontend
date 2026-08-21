@@ -136,15 +136,31 @@ export default function FindAClinicScreen() {
         return;
       }
       setLocationPermission("granted");
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+
+      // getCurrentPositionAsync can hang or time out indoors / on a cold GPS
+      // fix — race it against a timeout and fall back to the last known
+      // position (cached, near-instant, and accurate enough for "find
+      // nearby clinics") rather than failing the whole flow outright.
+      let loc: Location.LocationObject | null = null;
+      try {
+        loc = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("location-timeout")), 15000)
+          ),
+        ]);
+      } catch {
+        loc = await Location.getLastKnownPositionAsync();
+      }
+
+      if (!loc) throw new Error("no-location-available");
+
       const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
       setUserCoords(coords);
       setMode("gps");
       await loadNearby(coords, radius);
     } catch {
-      setError("Could not get your location. Try searching by city instead.");
+      setError("Could not get your location. Make sure location services are turned on, or search by city instead.");
       setLocationPermission("denied");
       setMode("city");
       setLoading(false);

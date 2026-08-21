@@ -1,5 +1,5 @@
 // screens/PaymentScreen.tsx
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -29,12 +29,21 @@ export const PaymentScreen: React.FC = () => {
   const route      = useRoute<PaymentRouteProps>();
   const navigation = useNavigation<any>();
 
-  const { doctor, scheduledAt, reason, notes, shareUserInfo } = route.params;
+  // route.params could plausibly be absent (deep link, stale/restored nav
+  // state) — guard the whole object, not just individual fields.
+  const { doctor, scheduledAt, reason, notes, shareUserInfo } = route.params || ({} as any);
 
   const [step, setStep]           = useState<PaymentStep>("summary");
   const [creatingAppt, setCreatingAppt] = useState(false);
+  const [slotTaken, setSlotTaken] = useState(false);
 
-  const scheduledDate = new Date(scheduledAt);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  const scheduledDate = scheduledAt ? new Date(scheduledAt) : new Date();
 
   const formatDateTime = (d: Date) =>
     d.toLocaleString("en-US", {
@@ -46,19 +55,24 @@ export const PaymentScreen: React.FC = () => {
     });
 
   // ── Simulate payment then create appointment ──────────────────────────────
+  // Guarded against the Android hardware back button (or any other unmount)
+  // firing mid-flow — the appointment/payment call itself always completes
+  // (it's already in flight, and stopping it wouldn't undo anything server
+  // side), but we must not call a state setter after this screen is gone.
   const handlePay = async () => {
     // Step 1: show processing spinner
     setStep("processing");
 
     // Simulate network delay (replace with real Paystack call later)
     await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
 
     try {
       setCreatingAppt(true);
 
       // Step 2: Create appointment (payment is considered "paid" / simulated)
       await createAppointment({
-        doctorId: (doctor as IDoctor)._id,
+        doctorId: (doctor as IDoctor)?._id,
         scheduledAt: scheduledDate,
         // Duration is no longer chosen by patient — set a sensible default
         duration: 30,
@@ -70,12 +84,15 @@ export const PaymentScreen: React.FC = () => {
         paymentStatus: "paid",
       });
 
-      setStep("success");
+      if (isMountedRef.current) setStep("success");
     } catch (error: any) {
       console.error("[Payment] Appointment creation failed:", error);
-      setStep("failed");
+      if (isMountedRef.current) {
+        setSlotTaken(error?.response?.data?.code === "SLOT_TAKEN");
+        setStep("failed");
+      }
     } finally {
-      setCreatingAppt(false);
+      if (isMountedRef.current) setCreatingAppt(false);
     }
   };
 
@@ -92,6 +109,22 @@ export const PaymentScreen: React.FC = () => {
       routes: [{ name: "MyAppointments" }],
     });
   };
+
+  // Guards a nav-state edge case (deep link, stale/restored nav state) where
+  // this screen is reached without its expected params.
+  if (!doctor?._id || !scheduledAt) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.centeredContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#D81E5B" />
+          <Text style={styles.successSubtitle}>We couldn't find your booking details.</Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleGoHome}>
+            <Text style={styles.primaryBtnText}>Go to Home</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // ── Processing screen ─────────────────────────────────────────────────────
   if (step === "processing") {
@@ -149,13 +182,23 @@ export const PaymentScreen: React.FC = () => {
         <LinearGradient colors={["#FFEBEE", "#fff"]} style={StyleSheet.absoluteFill} />
         <View style={styles.centeredContainer}>
           <Ionicons name="close-circle" size={80} color="#F44336" />
-          <Text style={styles.successTitle}>Payment Failed</Text>
-          <Text style={styles.successSubtitle}>
-            Something went wrong. Your card was not charged.
+          <Text style={styles.successTitle}>
+            {slotTaken ? "Slot No Longer Available" : "Payment Failed"}
           </Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => setStep("summary")}>
-            <Text style={styles.primaryBtnText}>Try Again</Text>
-          </TouchableOpacity>
+          <Text style={styles.successSubtitle}>
+            {slotTaken
+              ? "Someone else just booked this time. Please choose another time — you haven't been charged."
+              : "Something went wrong. Your card was not charged."}
+          </Text>
+          {slotTaken ? (
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+              <Text style={styles.primaryBtnText}>Choose Another Time</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => setStep("summary")}>
+              <Text style={styles.primaryBtnText}>Try Again</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleGoHome}>
             <Text style={styles.secondaryBtnText}>Go to Home</Text>
           </TouchableOpacity>

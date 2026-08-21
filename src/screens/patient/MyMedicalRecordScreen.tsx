@@ -264,6 +264,7 @@ export function MyMedicalRecordScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"record" | "access">("record");
   const [downloading, setDownloading] = useState(false);
+  const [respondingIds, setRespondingIds] = useState<Set<string>>(new Set());
 
   const load = async () => {
     try {
@@ -284,12 +285,20 @@ export function MyMedicalRecordScreen() {
   useEffect(() => { load(); }, []);
 
   const handleRespond = async (requestId: string, approve: boolean) => {
+    if (respondingIds.has(requestId)) return; // guard against double-tap (Approve+Deny or same button twice)
+    setRespondingIds((prev) => new Set(prev).add(requestId));
     try {
       await respondToAccessRequest(requestId, approve);
       Toast.show({ type: "success", text1: approve ? "Access granted." : "Access denied." });
       load();
     } catch (err: any) {
       Toast.show({ type: "error", text1: "Failed to respond", text2: err.message });
+    } finally {
+      setRespondingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(requestId);
+        return next;
+      });
     }
   };
 
@@ -443,10 +452,18 @@ export function MyMedicalRecordScreen() {
                   </View>
                   {req.status === "pending" && (
                     <View style={mStyles.requestActions}>
-                      <TouchableOpacity style={mStyles.denyBtn} onPress={() => handleRespond(req._id, false)}>
+                      <TouchableOpacity
+                        style={[mStyles.denyBtn, respondingIds.has(req._id) && { opacity: 0.6 }]}
+                        onPress={() => handleRespond(req._id, false)}
+                        disabled={respondingIds.has(req._id)}
+                      >
                         <Text style={mStyles.denyBtnText}>Deny</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={mStyles.approveBtn} onPress={() => handleRespond(req._id, true)}>
+                      <TouchableOpacity
+                        style={[mStyles.approveBtn, respondingIds.has(req._id) && { opacity: 0.6 }]}
+                        onPress={() => handleRespond(req._id, true)}
+                        disabled={respondingIds.has(req._id)}
+                      >
                         <Text style={mStyles.approveBtnText}>Approve</Text>
                       </TouchableOpacity>
                     </View>

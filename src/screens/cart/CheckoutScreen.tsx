@@ -1,5 +1,5 @@
 // screens/cart/CheckoutScreen.tsx
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -186,49 +186,21 @@ const CheckoutScreen = () => {
   }, [user, isAnonymous]);
 
 
-  useEffect(() => {
-  const fetchDeliveryFee = async () => {
-    if (!formData.state || !formData.lga) {
+  // Both effects below (debounced form-field changes, and the immediate
+  // pre-fill-from-profile fetch) hit the same endpoint and both call
+  // setDeliveryFee. Without a "latest request wins" guard, two in-flight
+  // requests for different state/lga pairs can resolve out of order and
+  // leave deliveryFee showing a stale value for a location the user isn't
+  // even checking out to anymore. feeRequestIdRef fixes that.
+  const feeRequestIdRef = useRef(0);
+
+  const fetchDeliveryFeeFor = useCallback(async (state: string, lga: string) => {
+    if (!state || !lga) {
+      feeRequestIdRef.current += 1;
       setDeliveryFee(0);
       return;
     }
-    setFetchingFee(true);
-    try {
-    // In CheckoutScreen.tsx fetchDeliveryFee:
-const res = await axios.get(
-  `${process.env.EXPO_PUBLIC_SERVER_URL}/api/v1/checkout/delivery-fee`,
-  {
-    params: { state: formData.state, lga: formData.lga, _t: Date.now() },
-    headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
-  }
-);
-console.log("[CheckoutScreen] Delivery fee response:", JSON.stringify(res.data));
-setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
-      setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
-    } catch {
-      setDeliveryFee(0);
-    } finally {
-      setFetchingFee(false);
-    }
-  };
-
-  // Debounce — wait 800ms after user stops typing
-  const timer = setTimeout(fetchDeliveryFee, 800);
-  return () => clearTimeout(timer);
-}, [formData.state, formData.lga]);
-
-
-
-// useEffect to trigger for the existing state/lga for delivery fee 
-useEffect(() => {
-  // Re-fetch fee when user profile pre-fills state/lga
-  if (!user) return;
-  const prefs = user.preferences as any;
-  const state = user.state || prefs?.state || "";
-  const lga = user.lga || prefs?.lga || "";
-  if (!state || !lga) return;
-
-  const fetchFee = async () => {
+    const requestId = ++feeRequestIdRef.current;
     setFetchingFee(true);
     try {
       const res = await axios.get(
@@ -238,17 +210,34 @@ useEffect(() => {
           headers: userToken ? { Authorization: `Bearer ${userToken}` } : {},
         }
       );
-      console.log("[CheckoutScreen] Pre-fill fee response:", JSON.stringify(res.data));
+      if (feeRequestIdRef.current !== requestId) return; // superseded by a newer request
+      console.log("[CheckoutScreen] Delivery fee response:", JSON.stringify(res.data));
       setDeliveryFee(res.data?.data?.deliveryFee ?? 0);
     } catch {
-      setDeliveryFee(0);
+      if (feeRequestIdRef.current === requestId) setDeliveryFee(0);
     } finally {
-      setFetchingFee(false);
+      if (feeRequestIdRef.current === requestId) setFetchingFee(false);
     }
-  };
+  }, [userToken]);
 
-  fetchFee();
-}, [user]); // ← fires when user loads, using their saved state/lga
+  useEffect(() => {
+    // Debounce — wait 800ms after user stops typing
+    const timer = setTimeout(() => {
+      fetchDeliveryFeeFor(formData.state, formData.lga);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [formData.state, formData.lga, fetchDeliveryFeeFor]);
+
+  // Re-fetch fee when the user profile pre-fills state/lga — fires once
+  // when user loads, using their saved state/lga.
+  useEffect(() => {
+    if (!user) return;
+    const prefs = user.preferences as any;
+    const state = user.state || prefs?.state || "";
+    const lga = user.lga || prefs?.lga || "";
+    if (!state || !lga) return;
+    fetchDeliveryFeeFor(state, lga);
+  }, [user, fetchDeliveryFeeFor]);
 
   const totalAmount =
     cart?.items?.reduce(

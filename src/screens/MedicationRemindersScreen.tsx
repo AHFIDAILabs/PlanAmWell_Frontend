@@ -115,6 +115,7 @@ export default function MedicationRemindersScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [timePickerIndex, setTimePickerIndex] = useState<number | null>(null);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   // ── Load ──
   const loadReminders = useCallback(async () => {
@@ -204,6 +205,8 @@ export default function MedicationRemindersScreen() {
 
   // ── Toggle active ──
   const handleToggle = useCallback(async (reminder: Reminder) => {
+    if (togglingIds.has(reminder._id)) return; // guard against rapid re-toggling
+    setTogglingIds(prev => new Set(prev).add(reminder._id));
     try {
       const res = await axios.patch(`${BASE}/${reminder._id}/toggle`);
       const updated: Reminder = res.data.data;
@@ -211,8 +214,14 @@ export default function MedicationRemindersScreen() {
       await upsertNotifications(updated);
     } catch (_) {
       Alert.alert('Error', 'Could not update reminder.');
+    } finally {
+      setTogglingIds(prev => {
+        const next = new Set(prev);
+        next.delete(reminder._id);
+        return next;
+      });
     }
-  }, []);
+  }, [togglingIds]);
 
   // ── Delete ──
   const handleDelete = useCallback((reminder: Reminder) => {
@@ -250,6 +259,7 @@ export default function MedicationRemindersScreen() {
           <Switch
             value={item.isActive}
             onValueChange={() => handleToggle(item)}
+            disabled={togglingIds.has(item._id)}
             thumbColor={item.isActive ? item.color : '#ccc'}
             trackColor={{ false: '#ddd', true: item.color + '66' }}
           />
@@ -274,7 +284,7 @@ export default function MedicationRemindersScreen() {
         </TouchableOpacity>
       </View>
     </View>
-  ), [handleToggle, openEdit, handleDelete]);
+  ), [handleToggle, openEdit, handleDelete, togglingIds]);
 
   // ── Time picker trigger time ──
   const pickerInitialDate = (() => {

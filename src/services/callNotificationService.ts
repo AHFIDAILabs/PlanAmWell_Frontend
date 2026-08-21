@@ -16,7 +16,14 @@ import notifee, {
   AndroidVisibility,
   EventType,
 } from '@notifee/react-native';
-import { getMessaging, setBackgroundMessageHandler, onMessage } from '@react-native-firebase/messaging';
+import {
+  getMessaging,
+  setBackgroundMessageHandler,
+  onMessage,
+  getToken,
+  requestPermission,
+  onTokenRefresh,
+} from '@react-native-firebase/messaging';
 import { declineCallDirect } from '../hooks/useVideoCall';
 import { respondToVideoCall } from './Chat';
 
@@ -188,6 +195,30 @@ export function registerNotifeeEventHandlers(
       onNavigate(data);
     }
   });
+}
+
+/**
+ * Raw FCM device token — separate from the Expo push token. This is what
+ * the backend sends data-only messages to (see firebaseAdmin.ts) to wake
+ * registerBackgroundCallHandler/registerForegroundCallHandler above. Expo
+ * push tokens can't be used for this — Expo's relay never reaches RNFirebase's
+ * handlers.
+ */
+export async function getFcmToken(): Promise<string | null> {
+  try {
+    const messaging = getMessaging();
+    await requestPermission(messaging);
+    return await getToken(messaging);
+  } catch (error) {
+    console.error('[CallNotification] Failed to get FCM token:', error);
+    return null;
+  }
+}
+
+/** Keeps the backend's stored FCM token current if RNFirebase rotates it. */
+export function registerFcmTokenRefreshListener(onRefresh: (token: string) => void): () => void {
+  const messaging = getMessaging();
+  return onTokenRefresh(messaging, onRefresh);
 }
 
 /** Cold-start check — mirrors pushNotificationService.getInitialNotification(). */

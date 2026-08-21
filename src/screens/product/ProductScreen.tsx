@@ -95,7 +95,7 @@ export default function ProductsScreen() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
-        (p) => p.name.toLowerCase().includes(q) || p.manufacturerName?.toLowerCase().includes(q),
+        (p) => p.name?.toLowerCase().includes(q) || p.manufacturerName?.toLowerCase().includes(q),
       );
     }
     if (selectedCategory !== 'all') {

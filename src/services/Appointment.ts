@@ -463,3 +463,32 @@ export const validateProfile = async (): Promise<void> => {
       headers: { Authorization: `Bearer ${token}` },
     });
   };
+
+/**
+ * Already-booked appointment times for a doctor within [from, to). Used to
+ * hide slots other patients have already taken — the real, race-proof
+ * enforcement is a DB-level unique index on the backend; this is just the
+ * UX layer so users don't pick a slot only to find out it's gone.
+ */
+export interface IBookedSlot {
+  scheduledAt: string;
+  duration: number;
+}
+
+export const getBookedSlots = async (
+  doctorId: string,
+  from: Date,
+  to: Date
+): Promise<IBookedSlot[]> => {
+  try {
+    const response = await axios.get(`${API_URL}/booked-slots`, {
+      params: { doctorId, from: from.toISOString(), to: to.toISOString() },
+    });
+    return response.data?.data || [];
+  } catch (error: any) {
+    console.error('[AppointmentService] ❌ Failed to fetch booked slots:', error.response?.data || error.message);
+    // Fail open — worst case a taken slot is still shown and the backend's
+    // unique index catches it at booking time with a clear message.
+    return [];
+  }
+};

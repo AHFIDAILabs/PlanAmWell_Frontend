@@ -40,7 +40,7 @@ export default function AllDoctorsScreen({ navigation }: any) {
       list = list.filter(
         (doc) =>
           `${doc.firstName} ${doc.lastName}`.toLowerCase().includes(s) ||
-          doc.specialization.toLowerCase().includes(s)
+          doc.specialization?.toLowerCase().includes(s)
       );
     }
 
