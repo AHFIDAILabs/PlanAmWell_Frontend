@@ -23,6 +23,7 @@ import { IDoctor } from "../../types/backendType";
 import { CompleteProfileModal } from "../../components/profile/CompleteProfileModal";
 import { validateProfile, getBookedSlots } from "../../services/Appointment";
 import { familyMemberService, IFamilyMember } from "../../services/familyMemberService";
+import { getPlatformSettings, formatKobo } from "../../services/platformSettings";
 
 type DoctorRouteProps = RouteProp<AppStackParamList, "BookAppointmentScreen">;
 
@@ -59,9 +60,6 @@ function slotToDate(base: Date, hhmm: string): Date {
   return d;
 }
 
-// ── Placeholder rate ─────────────────────────────────────────────────────────
-export const CONSULTATION_RATE = 15000;
-export const CONSULTATION_RATE_LABEL = "₦15,000";
 
 export const BookAppointmentScreen: React.FC = () => {
   const route      = useRoute<DoctorRouteProps>();
@@ -75,6 +73,13 @@ export const BookAppointmentScreen: React.FC = () => {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedSlot,   setSelectedSlot]   = useState<string | null>(null);
   const [isProceeding,  setIsProceeding]    = useState(false);
+  const [feeLabel, setFeeLabel]             = useState("...");
+
+  useEffect(() => {
+    getPlatformSettings()
+      .then((s) => setFeeLabel(formatKobo(s.consultationFeeKobo, s.currency)))
+      .catch(() => setFeeLabel("—"));
+  }, []);
 
   // Recompute time slots whenever the selected date changes — then hide any
   // slot another patient has already booked. The backend's unique index is
@@ -291,7 +296,7 @@ export const BookAppointmentScreen: React.FC = () => {
             <Ionicons name="shield-checkmark" size={20} color="#D81E5B" />
             <Text style={styles.rateLabel}>Consultation Fee</Text>
           </View>
-          <Text style={styles.rateValue}>{CONSULTATION_RATE_LABEL}</Text>
+          <Text style={styles.rateValue}>{feeLabel}</Text>
         </View>
 
         {/* ── Date picker ───────────────────────────────────────────────── */}
@@ -454,7 +459,7 @@ export const BookAppointmentScreen: React.FC = () => {
           <Row icon="time" label="Time" value={selectedTime
             ? selectedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : "Not selected"} />
-          <Row icon="cash" label="Fee" value={CONSULTATION_RATE_LABEL} highlight />
+          <Row icon="cash" label="Fee" value={feeLabel} highlight />
         </View>
 
         {/* ── CTA ───────────────────────────────────────────────────────── */}

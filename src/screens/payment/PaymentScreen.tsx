@@ -14,11 +14,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { RFValue } from "react-native-responsive-fontsize";
 import Toast from "react-native-toast-message";
+import * as WebBrowser from "expo-web-browser";
 
 import { AppStackParamList } from "../../types/App";
-import { createAppointment } from "../../services/Appointment";
+import { createAppointment, initiateAppointmentPayment, getAppointmentPaymentStatus } from "../../services/Appointment";
 import { logEvent } from "../../services/analyticsService";
-import { CONSULTATION_RATE_LABEL } from "../appointments/BookAppointmentScreen";
+import { getPlatformSettings, formatKobo } from "../../services/platformSettings";
 import { IDoctor } from "../../types/backendType";
 
 type PaymentRouteProps = RouteProp<AppStackParamList, "PaymentScreen">;
@@ -37,11 +38,18 @@ export const PaymentScreen: React.FC = () => {
   const [step, setStep]           = useState<PaymentStep>("summary");
   const [creatingAppt, setCreatingAppt] = useState(false);
   const [slotTaken, setSlotTaken] = useState(false);
+  const [feeLabel, setFeeLabel]   = useState("...");
 
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    getPlatformSettings()
+      .then((s) => { if (isMountedRef.current) setFeeLabel(formatKobo(s.consultationFeeKobo, s.currency)); })
+      .catch(() => { if (isMountedRef.current) setFeeLabel("—"); });
   }, []);
 
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : new Date();
@@ -55,42 +63,64 @@ export const PaymentScreen: React.FC = () => {
       minute: "2-digit",
     });
 
-  // ── Simulate payment then create appointment ──────────────────────────────
+  // ── Reserve the slot, then send the patient to a real hosted checkout ─────
   // Guarded against the Android hardware back button (or any other unmount)
-  // firing mid-flow — the appointment/payment call itself always completes
-  // (it's already in flight, and stopping it wouldn't undo anything server
-  // side), but we must not call a state setter after this screen is gone.
+  // firing mid-flow — once the appointment/payment calls are in flight they
+  // always complete server-side, but we must not call a state setter after
+  // this screen is gone.
   const handlePay = async () => {
-    // Step 1: show processing spinner
     setStep("processing");
-
-    // Simulate network delay (replace with real Paystack call later)
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    if (!isMountedRef.current) return;
 
     try {
       setCreatingAppt(true);
 
-      // Step 2: Create appointment (payment is considered "paid" / simulated)
-      await createAppointment({
+      // Step 1: reserve the slot — lands as status "awaiting-payment" with
+      // the fee snapshotted server-side, not sent by the client.
+      const appointment = await createAppointment({
         doctorId: (doctor as IDoctor)?._id,
         scheduledAt: scheduledDate,
-        // Duration is no longer chosen by patient — set a sensible default
         duration: 30,
         reason,
         notes,
         shareUserInfo,
-        // paymentReference will be wired here when real payment is integrated
-        paymentReference: `SIM_${Date.now()}`,
-        paymentStatus: "paid",
       });
+      if (!isMountedRef.current) return;
 
-      logEvent('appointment_booked', {
-        doctor_specialization: (doctor as IDoctor)?.specialization ?? 'unknown',
+      // Step 2: start payment against that reservation.
+      const redirectUrl = `planamwell://appointment-payment-complete?appointmentId=${appointment._id}`;
+      const { authorizationUrl } = await initiateAppointmentPayment(appointment._id!, redirectUrl);
+      if (!isMountedRef.current) return;
+
+      // Step 3: real hosted checkout, same pattern ConfirmOrderScreen.tsx
+      // already uses for pharmacy checkout.
+      await WebBrowser.openBrowserAsync(authorizationUrl, {
+        dismissButtonStyle: "close",
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
-      if (isMountedRef.current) setStep("success");
+      if (!isMountedRef.current) return;
+
+      // Step 4: the webhook is the real source of truth and may take a
+      // moment to land — poll a few times rather than trusting the browser
+      // simply closing as proof of anything.
+      let result: { status: string; paymentStatus: string } | null = null;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (!isMountedRef.current) return;
+        result = await getAppointmentPaymentStatus(appointment._id!);
+        if (result.paymentStatus !== "pending") break;
+      }
+      if (!isMountedRef.current) return;
+
+      if (result?.paymentStatus === "paid") {
+        logEvent('appointment_booked', {
+          doctor_specialization: (doctor as IDoctor)?.specialization ?? 'unknown',
+        });
+        setStep("success");
+      } else {
+        setStep("failed");
+      }
     } catch (error: any) {
-      console.error("[Payment] Appointment creation failed:", error);
+      console.error("[Payment] Failed:", error);
       if (isMountedRef.current) {
         setSlotTaken(error?.response?.data?.code === "SLOT_TAKEN");
         setStep("failed");
@@ -160,7 +190,7 @@ export const PaymentScreen: React.FC = () => {
 
           <View style={styles.successInfo}>
             <InfoRow icon="calendar" text={formatDateTime(scheduledDate)} />
-            <InfoRow icon="cash" text={`${CONSULTATION_RATE_LABEL} paid`} />
+            <InfoRow icon="cash" text={`${feeLabel} paid`} />
             <InfoRow
               icon="information-circle"
               text="You'll be notified once the doctor confirms. A chat room will open automatically."
@@ -239,7 +269,7 @@ export const PaymentScreen: React.FC = () => {
           <Text style={styles.cardTitle}>Payment Breakdown</Text>
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownLabel}>Consultation Fee</Text>
-            <Text style={styles.breakdownValue}>{CONSULTATION_RATE_LABEL}</Text>
+            <Text style={styles.breakdownValue}>{feeLabel}</Text>
           </View>
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownLabel}>Service Charge</Text>
@@ -247,11 +277,11 @@ export const PaymentScreen: React.FC = () => {
           </View>
           <View style={[styles.breakdownRow, styles.totalRow]}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{CONSULTATION_RATE_LABEL}</Text>
+            <Text style={styles.totalValue}>{feeLabel}</Text>
           </View>
         </View>
 
-        {/* ── Simulated payment method ───────────────────────────────────── */}
+        {/* ── Payment method ────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Payment Method</Text>
           <View style={styles.paymentMethodRow}>
@@ -259,8 +289,8 @@ export const PaymentScreen: React.FC = () => {
               <Ionicons name="card" size={24} color="#D81E5B" />
             </View>
             <View>
-              <Text style={styles.paymentMethodLabel}>Simulated Payment</Text>
-              <Text style={styles.paymentMethodSub}>Real payment will be wired here</Text>
+              <Text style={styles.paymentMethodLabel}>Secure Checkout</Text>
+              <Text style={styles.paymentMethodSub}>You'll complete payment on the next screen</Text>
             </View>
             <Ionicons name="checkmark-circle" size={22} color="#4CAF50" />
           </View>
@@ -282,7 +312,7 @@ export const PaymentScreen: React.FC = () => {
           activeOpacity={0.85}
         >
           <Ionicons name="lock-closed" size={18} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.payBtnText}>Pay {CONSULTATION_RATE_LABEL}</Text>
+          <Text style={styles.payBtnText}>Pay {feeLabel}</Text>
         </TouchableOpacity>
 
         <Text style={styles.disclaimer}>

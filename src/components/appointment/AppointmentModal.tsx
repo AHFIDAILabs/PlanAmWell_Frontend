@@ -7,7 +7,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { IAppointment, IDoctor } from "../../types/backendType";
 import { getDoctorImageUri } from "../../services/Doctor";
-import { CONSULTATION_RATE_LABEL } from "../../screens/appointments/BookAppointmentScreen";
+import { formatKobo } from "../../services/platformSettings";
 
 interface Props {
   appointment:      IAppointment | null;
@@ -141,11 +141,13 @@ export default function AppointmentModal({
             </View>
 
             {/* ── Consultation fee ── */}
-            <View style={styles.feeRow}>
-              <Ionicons name="cash-outline" size={18} color="#D81E5B" />
-              <Text style={styles.feeLabel}>Consultation Fee</Text>
-              <Text style={styles.feeValue}>{CONSULTATION_RATE_LABEL}</Text>
-            </View>
+            {appointment.amountKobo != null && (
+              <View style={styles.feeRow}>
+                <Ionicons name="cash-outline" size={18} color="#D81E5B" />
+                <Text style={styles.feeLabel}>Consultation Fee</Text>
+                <Text style={styles.feeValue}>{formatKobo(appointment.amountKobo, appointment.currency)}</Text>
+              </View>
+            )}
 
             {/* Doctor */}
             {doctor && (

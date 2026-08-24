@@ -15,8 +15,6 @@ export interface CreateAppointmentData {
   reason?: string;
   notes?: string;
   shareUserInfo?: boolean;
-  paymentReference? : string;
-paymentStatus?: "pending" | "paid" | "failed";
 }
 
 interface UpdateAppointmentData {
@@ -456,6 +454,31 @@ export const getAppointmentById = async (appointmentId: string) => {
   }
 };
 
+
+export const initiateAppointmentPayment = async (
+  appointmentId: string,
+  redirectUrl: string
+): Promise<{ authorizationUrl: string; reference: string }> => {
+  const token = await getAuthToken();
+  const response = await axios.post(
+    `${API_URL}/${appointmentId}/payment/initiate`,
+    { redirectUrl },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (response.data.success && response.data.data) return response.data.data;
+  throw new Error(response.data.message || 'Failed to start payment');
+};
+
+export const getAppointmentPaymentStatus = async (
+  appointmentId: string
+): Promise<{ status: string; paymentStatus: string }> => {
+  const token = await getAuthToken();
+  const response = await axios.get(`${API_URL}/${appointmentId}/payment/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.data.success && response.data.data) return response.data.data;
+  throw new Error(response.data.message || 'Failed to check payment status');
+};
 
 export const validateProfile = async (): Promise<void> => {
     const token = await getAuthToken(); // however your project exposes the token

@@ -1,26 +1,43 @@
 {
   "project_info": {
-    "project_number": "301131519555",
-    "project_id": "planamwell-29a05",
-    "storage_bucket": "planamwell-29a05.firebasestorage.app"
+    "project_number": "357562099421",
+    "project_id": "planamwell-2897d",
+    "storage_bucket": "planamwell-2897d.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:301131519555:android:8c78e4c558595b261826f6",
+        "mobilesdk_app_id": "1:357562099421:android:20a4f307371bbf92af1d34",
         "android_client_info": {
           "package_name": "com.planamwell.bundle"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "357562099421-3arlng9efmu9j1o2m44e6tg8ov8tpni6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyAKQ9zhv5SlGRKm6NvFfcMJPPo9uPhKi-4"
+          "current_key": "AIzaSyBVw_Z7oAcG6DNWwKsYjzKwXANGMoyxjbU"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "357562099421-3arlng9efmu9j1o2m44e6tg8ov8tpni6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "357562099421-ts15vf1jhev5bfuk8ntuv7d61c7o6vbb.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.AHFID.planamwell"
+              }
+            }
+          ]
         }
       }
     }

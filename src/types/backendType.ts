@@ -309,8 +309,9 @@ expiresAt?: Date;
   duration?: number;
 
   status:
-  | "pending" 
-  | "confirmed" 
+  | "awaiting-payment"
+  | "pending"
+  | "confirmed"
   | "in-progress" 
   | "completed" 
   | "cancelled" 
@@ -330,7 +331,10 @@ expiresAt?: Date;
   callQuality?: "excellent" | "good" | "fair" | "poor";
 
   paymentStatus?: "pending" | "paid" | "failed";
+  amountKobo?: number;
+  currency?: string;
   paymentReference?: string;
+  paymentProvider?: string;
 
   reason?: string;
   notes?: string;
