@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
-import { RouteProp, useRoute } from "@react-navigation/native";
+import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppStackParamList } from "../../types/App";
 import { useAuth } from "../../hooks/useAuth";
@@ -16,6 +17,7 @@ import { useOrderDetails } from "../../hooks/useOrderDetails";
 import { Ionicons } from "@expo/vector-icons";
 
 type RouteProps = RouteProp<AppStackParamList, "OrderDetailsScreen">;
+type NavigationProp = StackNavigationProp<AppStackParamList>;
 
 const DELIVERY_STEPS = ["pending", "shipped", "delivered"];
 
@@ -48,6 +50,7 @@ function DeliveryTracker({ status }: { status: string }) {
 
 export default function OrderDetailsScreen() {
   const { params } = useRoute<RouteProps>();
+  const navigation = useNavigation<NavigationProp>();
   const { userToken } = useAuth();
 
   const { order, loading, verifying, refresh } = useOrderDetails(
@@ -100,6 +103,25 @@ export default function OrderDetailsScreen() {
             {isPaid ? "Payment Confirmed" : "Awaiting Payment Confirmation"}
           </Text>
         </View>
+
+        {/* Complete Payment — the only way to resume an unpaid order used to
+            be re-adding everything to a cart and checking out again. This
+            reuses the same resume-capable initiatePayment endpoint the
+            payment-pending push notification now correctly routes to. */}
+        {order.paymentStatus === "pending" && (
+          <TouchableOpacity
+            style={styles.payBtn}
+            onPress={() =>
+              navigation.navigate("PaymentMethodScreen", {
+                orderId: order._id,
+                amount: order.total,
+              })
+            }
+          >
+            <Ionicons name="card-outline" size={18} color="#fff" />
+            <Text style={styles.payBtnText}>Complete Payment</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Verifying indicator */}
         {verifying && (
@@ -204,6 +226,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   verifyingText: { color: "#D81E5B", fontSize: 13 },
+  payBtn: {
+    backgroundColor: "#e65100",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  payBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   card: {
     backgroundColor: "#fff",
     padding: 16,

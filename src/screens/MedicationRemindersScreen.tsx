@@ -12,6 +12,7 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { logEvent } from '../services/analyticsService';
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 const BASE = `${SERVER_URL}/api/v1/medication-reminders`;
@@ -193,6 +194,7 @@ export default function MedicationRemindersScreen() {
         const res = await axios.post(BASE, payload);
         saved = res.data.data;
         setReminders(prev => [saved, ...prev]);
+        logEvent('medication_reminder_created');
       }
       await upsertNotifications(saved);
       setModalVisible(false);

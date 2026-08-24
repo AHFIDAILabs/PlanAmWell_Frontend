@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
@@ -19,6 +18,8 @@ import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../hooks/useAuth';
 import { RFValue } from 'react-native-responsive-fontsize';
+import { FormField } from '../../components/common/FormField';
+import { userRegisterSchema, doctorRegisterSchema, fieldErrors } from '../../validation/authSchemas';
 
 type Role = 'User' | 'Doctor';
 
@@ -62,6 +63,7 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
   const [doctorImageUri, setDoctorImageUri] = useState<string | undefined>();
   const [formData, setFormData] = useState<RegisterFormData>(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isLoading = loading || authLoading;
 
@@ -86,38 +88,18 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const validate = (): boolean => {
-    const { email, password, confirmPassword, name, firstName, lastName, specialization, licenseNumber, phone } = formData;
+    const schema = role === 'User' ? userRegisterSchema : doctorRegisterSchema;
+    const result = schema.safeParse(formData);
+    if (!result.success) {
+      setErrors(fieldErrors(result.error));
+      Toast.show({ type: 'error', text1: 'Please fix the highlighted fields' });
+      return false;
+    }
+    setErrors({});
 
-    if (!email.trim()) {
-      Toast.show({ type: 'error', text1: 'Email required' }); return false;
-    }
-    if (!password) {
-      Toast.show({ type: 'error', text1: 'Password required' }); return false;
-    }
-    if (password !== confirmPassword) {
-      Toast.show({ type: 'error', text1: 'Passwords do not match' }); return false;
-    }
-
-    if (role === 'User') {
-      if (!name.trim()) {
-        Toast.show({ type: 'error', text1: 'Full name required' }); return false;
-      }
-    } else {
-      if (!firstName.trim() || !lastName.trim()) {
-        Toast.show({ type: 'error', text1: 'First and last name required' }); return false;
-      }
-      if (!specialization.trim()) {
-        Toast.show({ type: 'error', text1: 'Specialization required' }); return false;
-      }
-      if (!licenseNumber.trim()) {
-        Toast.show({ type: 'error', text1: 'License number required' }); return false;
-      }
-      if (!phone.trim()) {
-        Toast.show({ type: 'error', text1: 'Phone number required for doctors' }); return false;
-      }
-      if (!doctorImageUri) {
-        Toast.show({ type: 'error', text1: 'Profile image required for doctors' }); return false;
-      }
+    if (role === 'Doctor' && !doctorImageUri) {
+      Toast.show({ type: 'error', text1: 'Profile image required for doctors' });
+      return false;
     }
 
     return true;
@@ -199,36 +181,36 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
 
             {/* ── Name field(s) ── */}
             {role === 'User' ? (
-              <Field icon="user" placeholder="Full Name" value={formData.name}
-                onChangeText={v => set('name', v)} editable={!isLoading} />
+              <FormField icon="user" placeholder="Full Name" value={formData.name}
+                onChangeText={v => set('name', v)} editable={!isLoading} error={errors.name} />
             ) : (
               <View style={s.row}>
-                <Field icon="user" placeholder="First Name" value={formData.firstName}
+                <FormField icon="user" placeholder="First Name" value={formData.firstName}
                   onChangeText={v => set('firstName', v)} editable={!isLoading}
-                  style={{ flex: 1, marginRight: 8 }} />
-                <Field placeholder="Last Name" value={formData.lastName}
+                  containerStyle={{ flex: 1, marginRight: 8 }} error={errors.firstName} />
+                <FormField placeholder="Last Name" value={formData.lastName}
                   onChangeText={v => set('lastName', v)} editable={!isLoading}
-                  style={{ flex: 1 }} />
+                  containerStyle={{ flex: 1 }} error={errors.lastName} />
               </View>
             )}
 
             {/* ── Email ── */}
-            <Field icon="mail" placeholder="Email Address" value={formData.email}
+            <FormField icon="mail" placeholder="Email Address" value={formData.email}
               onChangeText={v => set('email', v)} editable={!isLoading}
-              keyboardType="email-address" autoCapitalize="none" />
+              keyboardType="email-address" autoCapitalize="none" error={errors.email} />
 
             {/* ── Doctor-specific fields ── */}
             {role === 'Doctor' && (
               <>
                 {/* Phone is required for doctors (licensing / contact) */}
-                <Field icon="phone" placeholder="Phone Number" value={formData.phone}
+                <FormField icon="phone" placeholder="Phone Number" value={formData.phone}
                   onChangeText={v => set('phone', v)} editable={!isLoading}
-                  keyboardType="phone-pad" />
+                  keyboardType="phone-pad" error={errors.phone} />
 
-                <Field icon="shield" placeholder="Specialization" value={formData.specialization}
-                  onChangeText={v => set('specialization', v)} editable={!isLoading} />
-                <Field icon="file-text" placeholder="License Number" value={formData.licenseNumber}
-                  onChangeText={v => set('licenseNumber', v)} editable={!isLoading} />
+                <FormField icon="shield" placeholder="Specialization" value={formData.specialization}
+                  onChangeText={v => set('specialization', v)} editable={!isLoading} error={errors.specialization} />
+                <FormField icon="file-text" placeholder="License Number" value={formData.licenseNumber}
+                  onChangeText={v => set('licenseNumber', v)} editable={!isLoading} error={errors.licenseNumber} />
 
                 <TouchableOpacity
                   style={[s.imageBtn, doctorImageUri && s.imageBtnDone]}
@@ -252,34 +234,30 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
             )}
 
             {/* ── Password ── */}
-            <View style={s.inputBox}>
-              <Feather name="lock" size={RFValue(20)} style={s.icon} />
-              <TextInput
-                style={s.input}
-                placeholder="Password"
-                placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
-                value={formData.password}
-                onChangeText={v => set('password', v)}
-                editable={!isLoading}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(p => !p)} disabled={isLoading}>
-                <Feather name={showPassword ? 'eye-off' : 'eye'} size={RFValue(20)} style={s.icon} />
-              </TouchableOpacity>
-            </View>
+            <FormField
+              icon="lock"
+              placeholder="Password"
+              secureTextEntry={!showPassword}
+              value={formData.password}
+              onChangeText={v => set('password', v)}
+              editable={!isLoading}
+              error={errors.password}
+              rightElement={
+                <TouchableOpacity onPress={() => setShowPassword(p => !p)} disabled={isLoading}>
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={RFValue(20)} style={s.icon} />
+                </TouchableOpacity>
+              }
+            />
 
-            <View style={s.inputBox}>
-              <Feather name="lock" size={RFValue(20)} style={s.icon} />
-              <TextInput
-                style={s.input}
-                placeholder="Confirm Password"
-                placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
-                value={formData.confirmPassword}
-                onChangeText={v => set('confirmPassword', v)}
-                editable={!isLoading}
-              />
-            </View>
+            <FormField
+              icon="lock"
+              placeholder="Confirm Password"
+              secureTextEntry={!showPassword}
+              value={formData.confirmPassword}
+              onChangeText={v => set('confirmPassword', v)}
+              editable={!isLoading}
+              error={errors.confirmPassword}
+            />
 
             {/* ── Hint text ── */}
             {role === 'User' && (
@@ -313,33 +291,6 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable field component
 // ─────────────────────────────────────────────────────────────────────────────
-interface FieldProps {
-  icon?: any;
-  placeholder: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  editable?: boolean;
-  keyboardType?: any;
-  autoCapitalize?: any;
-  style?: object;
-}
-
-const Field = ({ icon, placeholder, value, onChangeText, editable, keyboardType, autoCapitalize, style }: FieldProps) => (
-  <View style={[s.inputBox, style]}>
-    {icon && <Feather name={icon} size={RFValue(20)} style={s.icon} />}
-    <TextInput
-      style={s.input}
-      placeholder={placeholder}
-      placeholderTextColor="#999"
-      value={value}
-      onChangeText={onChangeText}
-      editable={editable}
-      keyboardType={keyboardType}
-      autoCapitalize={autoCapitalize || 'words'}
-    />
-  </View>
-);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
@@ -363,14 +314,6 @@ const s = StyleSheet.create({
 
   row:          { flexDirection: 'row', width: '100%' },
 
-  inputBox: {
-    flexDirection: 'row', alignItems: 'center', width: '100%',
-    borderWidth: 1, borderColor: '#ddd', borderRadius: RFValue(8),
-    paddingHorizontal: RFValue(12),
-    paddingVertical: Platform.OS === 'ios' ? RFValue(12) : RFValue(8),
-    marginBottom: RFValue(14),
-  },
-  input:        { flex: 1, fontSize: RFValue(15), color: '#111', marginLeft: RFValue(8), paddingVertical: 0 },
   icon:         { color: '#999' },
 
   imageBtn: {

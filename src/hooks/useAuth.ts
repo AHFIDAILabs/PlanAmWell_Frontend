@@ -26,6 +26,7 @@ import { getFcmToken } from '../services/callNotificationService';
 import { AxiosError } from 'axios';
 import { getExpoPushToken } from './usePushToken';
 import { jwtDecode } from 'jwt-decode';
+import { logEvent, setAnalyticsUser, clearAnalyticsUser } from '../services/analyticsService';
 
 const HAS_SEEN_ONBOARDING = 'HAS_SEEN_ONBOARDING';
 
@@ -168,6 +169,7 @@ useEffect(() => {
       await removePushToken('', userToken);
     }
 
+    await clearAnalyticsUser();
     await logout();
     await resetAuthState();
   }, [userToken, resetAuthState]);
@@ -335,6 +337,7 @@ useEffect(() => {
 
         if (response) {
           await completeOnboarding();
+          logEvent('sign_up', { role });
           console.log(`[useAuth] ${role} registered successfully`);
           return response;
         }
@@ -397,6 +400,11 @@ useEffect(() => {
         userLoadedRef.current = true;
         await completeOnboarding();
 
+        if (response.user?._id) {
+          setAnalyticsUser(response.user._id, role);
+        }
+        logEvent('login', { role });
+
         console.log(`[useAuth] ${role} logged in successfully`);
         return response.user;
       } catch (err) {
@@ -450,7 +458,12 @@ useEffect(() => {
           setIsAuthenticated(true);
           
           if (res.user) setUser(res.user);
-          
+
+          if (res.user?._id) {
+            setAnalyticsUser(res.user._id, 'User');
+          }
+          logEvent('sign_up', { role: 'User' });
+
           userLoadedRef.current = true;
           await completeOnboarding();
 

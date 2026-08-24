@@ -12,6 +12,7 @@ import { useAuth } from '../../hooks/useAuth';
 import * as WebBrowser from 'expo-web-browser';
 import axios from 'axios';
 import { AppStackParamList } from '../../types/App';
+import { logEvent } from '../../services/analyticsService';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 
@@ -54,6 +55,8 @@ export default function ConfirmOrderScreen() {
     }
 
     if (!checkoutUrl) throw new Error("No checkout URL returned");
+
+    logEvent('order_placed', { item_count: items.length });
 
     await WebBrowser.openBrowserAsync(checkoutUrl, {
       dismissButtonStyle: 'close',

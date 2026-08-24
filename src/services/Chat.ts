@@ -1,6 +1,7 @@
 // services/Chat.ts
 import axios from "axios";
 import { IConversation, IMessage, IVideoCallRequest } from "../types/backendType";
+import { logEvent } from "./analyticsService";
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 const BASE_URL = `${SERVER_URL}/api/v1/chat`;
@@ -50,7 +51,10 @@ export const sendMessage = async (
       `${BASE_URL}/conversation/${conversationId}/message`,
       { content, messageType, mediaUrl, ...(replyTo ? { replyTo } : {}) }
     );
-    if (response.data.success) return response.data.data;
+    if (response.data.success) {
+      logEvent('chat_message_sent', { message_type: messageType });
+      return response.data.data;
+    }
     return null;
   } catch (error: any) {
     console.error("[Chat] Failed to send message:", error.response?.data || error.message);

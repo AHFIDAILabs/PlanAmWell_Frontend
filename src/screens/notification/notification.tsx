@@ -228,8 +228,14 @@ if (notification.type === 'order') {
   const metaType = notification.metadata?.type;
 
   if (metaType === 'payment_pending') {
-    // Navigate to ConfirmOrder or OrderDetails depending on state
-    navigation.navigate('OrderDetailsScreen', { orderId });
+    // The order is still unpaid — send the user straight to the payment
+    // screen (already wired to resume an existing order via initiatePayment,
+    // not just fresh checkouts) rather than order details, which has no way
+    // to complete payment from.
+    navigation.navigate('PaymentMethodScreen', {
+      orderId,
+      amount: notification.metadata?.amount,
+    });
     return;
   }
 

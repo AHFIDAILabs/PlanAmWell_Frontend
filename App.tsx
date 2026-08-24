@@ -27,6 +27,7 @@ import {
 import * as SecureStore from "expo-secure-store";
 import axios from "axios";
 import { TOKEN_KEY, setupAxiosInterceptors, registerFcmToken } from "./src/services/Auth";
+import { logScreenView } from "./src/services/analyticsService";
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 
@@ -87,6 +88,7 @@ function AppContent() {
   const { darkMode } = useTheme();
   const { isAuthenticated } = useAuth();
   const navigationRef = useRef<any>(null);
+  const prevRouteNameRef = useRef<string | undefined>(undefined);
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
 
@@ -291,10 +293,20 @@ function AppContent() {
           break;
 
         case "order":
-          navigationRef.current.navigate("PaymentMethodScreen", {
-            orderId: data.orderId,
-            amount: data.amount,
-          });
+          // Only the payment-pending reminder should land on the payment
+          // screen — every other order push (placed/confirmed/shipped/
+          // delivered/cancelled) also carries type "order" and should go to
+          // order details instead, not send the user to pay again.
+          if (data.notificationSubType === "payment_pending") {
+            navigationRef.current.navigate("PaymentMethodScreen", {
+              orderId: data.orderId,
+              amount: data.amount,
+            });
+          } else {
+            navigationRef.current.navigate("OrderDetailsScreen", {
+              orderId: data.orderId,
+            });
+          }
           break;
 
         case "doctor":
@@ -355,6 +367,14 @@ function AppContent() {
               onReady={() => {
                 if (navigationRef.current) {
                   pushNotificationService.setNavigationRef(navigationRef.current);
+                  prevRouteNameRef.current = navigationRef.current.getCurrentRoute?.()?.name;
+                }
+              }}
+              onStateChange={() => {
+                const currentRouteName = navigationRef.current?.getCurrentRoute?.()?.name;
+                if (currentRouteName && currentRouteName !== prevRouteNameRef.current) {
+                  logScreenView(currentRouteName);
+                  prevRouteNameRef.current = currentRouteName;
                 }
               }}
             >

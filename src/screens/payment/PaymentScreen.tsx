@@ -17,6 +17,7 @@ import Toast from "react-native-toast-message";
 
 import { AppStackParamList } from "../../types/App";
 import { createAppointment } from "../../services/Appointment";
+import { logEvent } from "../../services/analyticsService";
 import { CONSULTATION_RATE_LABEL } from "../appointments/BookAppointmentScreen";
 import { IDoctor } from "../../types/backendType";
 
@@ -84,6 +85,9 @@ export const PaymentScreen: React.FC = () => {
         paymentStatus: "paid",
       });
 
+      logEvent('appointment_booked', {
+        doctor_specialization: (doctor as IDoctor)?.specialization ?? 'unknown',
+      });
       if (isMountedRef.current) setStep("success");
     } catch (error: any) {
       console.error("[Payment] Appointment creation failed:", error);

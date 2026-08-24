@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,6 +15,8 @@ import { Feather } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '../../hooks/useAuth';
 import { RFValue } from 'react-native-responsive-fontsize';
+import { FormField } from '../../components/common/FormField';
+import { loginSchema, fieldErrors } from '../../validation/authSchemas';
 
 type Role = 'User' | 'Doctor';
 
@@ -26,13 +27,16 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
   const [role, setRole] = useState<Role>('User');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const isLoading = loading || authLoading;
 
   const handleLoginPress = async () => {
-    if (!email || !password) {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter both email and password.' });
+    const result = loginSchema.safeParse({ email, password });
+    if (!result.success) {
+      setErrors(fieldErrors(result.error));
       return;
     }
+    setErrors({});
 
     setLoading(true);
     try {
@@ -101,35 +105,31 @@ const LoginScreen = ({ navigation }: { navigation: any }) => {
               ))}
             </View>
 
-            <View style={styles.inputContainer}>
-              <Feather name="mail" size={RFValue(20)} style={styles.icon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your email"
-                placeholderTextColor="#999"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-                editable={!isLoading}
-              />
-            </View>
+            <FormField
+              icon="mail"
+              placeholder="Enter your email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+              editable={!isLoading}
+              error={errors.email}
+            />
 
-            <View style={styles.inputContainer}>
-              <Feather name="lock" size={RFValue(20)} style={styles.icon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your password"
-                placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-                editable={!isLoading}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(p => !p)} disabled={isLoading}>
-                <Feather name={showPassword ? 'eye-off' : 'eye'} size={RFValue(20)} style={styles.icon} />
-              </TouchableOpacity>
-            </View>
+            <FormField
+              icon="lock"
+              placeholder="Enter your password"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              editable={!isLoading}
+              error={errors.password}
+              rightElement={
+                <TouchableOpacity onPress={() => setShowPassword(p => !p)} disabled={isLoading}>
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={RFValue(20)} style={styles.icon} />
+                </TouchableOpacity>
+              }
+            />
 
             <TouchableOpacity style={styles.button} onPress={handleLoginPress} disabled={isLoading}>
               {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Continue</Text>}
@@ -173,25 +173,6 @@ const styles = StyleSheet.create({
   roleSwitchActive: { backgroundColor: '#D81E5B', borderColor: '#2196F3' },
   roleSwitchText: { fontSize: RFValue(16), color: '#666', fontWeight: '500' },
   roleSwitchTextActive: { color: '#fff', fontWeight: '600' },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: RFValue(8),
-    paddingHorizontal: RFValue(10),
-    paddingVertical: Platform.OS === 'ios' ? RFValue(12) : RFValue(8),
-    marginBottom: RFValue(15),
-  },
-  input: {
-    flex: 1,
-    fontSize: RFValue(16),
-    color: '#000',
-    lineHeight: RFValue(20),
-    paddingVertical: 0,
-    marginLeft: RFValue(10),
-  },
   icon: { color: '#666' },
   button: {
     width: '100%',

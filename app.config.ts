@@ -32,6 +32,7 @@ plugins: [
   ],
   '@react-native-firebase/app',
   '@react-native-firebase/messaging',
+  '@react-native-firebase/analytics',
   './src/plugins/withCallNotifications',
   [
     'expo-location',

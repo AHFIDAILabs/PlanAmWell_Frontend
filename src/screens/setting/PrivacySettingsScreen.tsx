@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { Shield, Lock, EyeOff, Trash2, Download, Cookie } from "lucide-react-native";
+import { Shield, Lock, EyeOff, Trash2, Download, Cookie, Activity } from "lucide-react-native";
 import Header from "../../components/home/header";
 import { SafeAreaView } from "react-native-safe-area-context";
 import BottomBar from "../../components/common/BottomBar";
@@ -25,6 +25,7 @@ import { AppStackParamList } from "../../types/App";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { TOKEN_KEY } from "../../services/Auth";
+import { getAnalyticsConsent, setAnalyticsConsent } from "../../services/analyticsService";
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 
@@ -32,12 +33,22 @@ const PrivacySettingsScreen: React.FC = () => {
   const [showActivity, setShowActivity] = useState(true);
   const [personalization, setPersonalization] = useState(true);
   const [dataShare, setDataShare] = useState(false);
+  const [analyticsConsent, setAnalyticsConsentState] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   const { handleLogout } = useAuth();
   const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
+
+  useEffect(() => {
+    getAnalyticsConsent().then(setAnalyticsConsentState);
+  }, []);
+
+  const handleAnalyticsToggle = async (enabled: boolean) => {
+    setAnalyticsConsentState(enabled);
+    await setAnalyticsConsent(enabled);
+  };
 
   const openDeleteModal = () => {
     setPassword("");
@@ -93,6 +104,16 @@ const PrivacySettingsScreen: React.FC = () => {
         {/* Privacy Controls */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Privacy Controls</Text>
+
+          <ToggleItem
+            title="Share Anonymous Usage Data"
+            icon={<Activity size={20} />}
+            value={analyticsConsent}
+            onToggle={handleAnalyticsToggle}
+          />
+          <Text style={styles.hintText}>
+            Helps us understand which features are useful. Never includes your messages, appointments, or health information.
+          </Text>
 
           <ToggleItem
             title="Show Activity Status"
@@ -251,6 +272,7 @@ const MenuItem: React.FC<MenuProps> = ({ title, icon, highlighted, onPress }) =>
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F7F7F7", padding: 16 },
+  hintText: { fontSize: 12, color: "#8A8A8A", marginTop: -6, marginBottom: 8, lineHeight: 16 },
   card: {
     backgroundColor: "#FFF",
     borderRadius: 16,

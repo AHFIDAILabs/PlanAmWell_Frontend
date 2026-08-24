@@ -25,6 +25,7 @@ import {
 } from 'react-native-webrtc';
 import { useVideoCall, VideoTokenResponse } from '../../hooks/useVideoCall';
 import socketService from '../../services/socketService';
+import { logEvent } from '../../services/analyticsService';
 
 // ── Fallback ICE servers used only when the backend fetch fails ──────────────
 // The app always tries GET /api/v1/video/ice-servers first so TURN credentials
@@ -248,6 +249,8 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
     socketService.leaveAppointment(appointmentId);
 
+    logEvent('call_ended', { call_type: callMode, duration_seconds: callDuration });
+
     // Stop local media tracks
     localStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
     localStreamRef.current  = null;
@@ -366,6 +369,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
 
       isInitiatorRef.current = data.isInitiator;
       console.log(`📞 Call session: channel=${data.channelName}, isInitiator=${data.isInitiator}, callStatus=${data.callStatus}`);
+      logEvent('call_started', { call_type: callType, is_initiator: data.isInitiator });
 
       // 7. Capture local mic (+ camera, for video calls)
       const stream = await mediaDevices.getUserMedia({
