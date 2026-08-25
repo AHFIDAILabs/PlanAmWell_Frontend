@@ -104,6 +104,12 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const callEndedHandlerRef    = useRef<((d: any) => void) | null>(null);
   const callDeclinedHandlerRef = useRef<((d: any) => void) | null>(null);
 
+  // Ring-out for the caller — this screen never actually played any tone
+  // while "Calling…"/"Waiting for X…" was showing, on either voice or video
+  // calls. Reuses the same bundled asset IncomingCallScreen already plays
+  // for the receiving side (no new asset to source/bundle).
+  const ringbackSoundRef = useRef<Audio.Sound | null>(null);
+
   // ── State ────────────────────────────────────────────────────────────────
   const [localStream,   setLocalStream]   = useState<MediaStream | null>(null);
   const [remoteStream,  setRemoteStream]  = useState<MediaStream | null>(null);
@@ -156,6 +162,31 @@ export default function VideoCallScreen({ route, navigation }: any) {
       });
     } catch (e) {
       console.warn('⚠️ Audio mode error:', e);
+    }
+  };
+
+  const startRingback = async () => {
+    if (ringbackSoundRef.current) return;
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../../assets/sounds/incoming_call.wav'),
+        { isLooping: true, volume: 1.0, shouldPlay: true }
+      );
+      ringbackSoundRef.current = sound;
+    } catch (e) {
+      console.warn('⚠️ Ringback playback failed:', e);
+    }
+  };
+
+  const stopRingback = async () => {
+    const sound = ringbackSoundRef.current;
+    if (!sound) return;
+    ringbackSoundRef.current = null;
+    try {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+    } catch (e) {
+      console.warn('⚠️ Failed to stop ringback:', e);
     }
   };
 
@@ -230,6 +261,8 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const cleanup = async () => {
     if (hasCleanedUpRef.current) return;
     hasCleanedUpRef.current = true;
+
+    stopRingback();
 
     // Clear timers
     if (readyIntervalRef.current)  { clearInterval(readyIntervalRef.current);  readyIntervalRef.current  = null; }
@@ -550,6 +583,23 @@ export default function VideoCallScreen({ route, navigation }: any) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Only the initiator hears a ring-out — the receiving side sees the same
+  // "waiting to connect" UI after accepting, but shouldn't hear a tone
+  // implying it's dialing out. isConnecting gates this until initCall has
+  // actually determined isInitiatorRef, matching when the calling/waiting UI
+  // itself first becomes visible.
+  useEffect(() => {
+    if (!isConnecting && isInitiatorRef.current && !remoteStream) {
+      startRingback();
+    } else {
+      stopRingback();
+    }
+    return () => {
+      stopRingback();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnecting, remoteStream]);
 
   // ── Controls ─────────────────────────────────────────────────────────────
   const toggleMute = () => {

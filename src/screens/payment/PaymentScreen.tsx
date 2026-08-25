@@ -39,6 +39,14 @@ export const PaymentScreen: React.FC = () => {
   const [creatingAppt, setCreatingAppt] = useState(false);
   const [slotTaken, setSlotTaken] = useState(false);
   const [feeLabel, setFeeLabel]   = useState("...");
+  // Real payment (provider checkout) is off until PAYMENT_ENABLED is flipped
+  // on server-side once real provider keys exist — see appointmentController.
+  // Until then every booking is simulated here exactly like it was before
+  // the real-payment work: a brief fake delay, then the appointment is
+  // created directly with no gateway involved and no way to land on a
+  // payment-failed screen. A ref (not state) since it's only read inside
+  // handlePay, and must reflect whatever was true when a booking started.
+  const paymentEnabledRef = useRef(false);
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -48,7 +56,11 @@ export const PaymentScreen: React.FC = () => {
 
   useEffect(() => {
     getPlatformSettings()
-      .then((s) => { if (isMountedRef.current) setFeeLabel(formatKobo(s.consultationFeeKobo, s.currency)); })
+      .then((s) => {
+        if (!isMountedRef.current) return;
+        setFeeLabel(formatKobo(s.consultationFeeKobo, s.currency));
+        paymentEnabledRef.current = s.paymentEnabled;
+      })
       .catch(() => { if (isMountedRef.current) setFeeLabel("—"); });
   }, []);
 
@@ -71,11 +83,49 @@ export const PaymentScreen: React.FC = () => {
   const handlePay = async () => {
     setStep("processing");
 
+    if (!paymentEnabledRef.current) {
+      // Simulated path — no gateway involved at all, matching the original
+      // pre-real-payment behavior. A short fake delay so the screen doesn't
+      // just flash past, then the appointment is created directly and lands
+      // as "pending" (server-side, since PAYMENT_ENABLED is off) with the
+      // doctor already notified. Nothing here can produce a payment-failed
+      // screen — a booking failure below just means the create call itself
+      // errored (e.g. the slot was taken).
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!isMountedRef.current) return;
+
+      try {
+        setCreatingAppt(true);
+        await createAppointment({
+          doctorId: (doctor as IDoctor)?._id,
+          scheduledAt: scheduledDate,
+          duration: 30,
+          reason,
+          notes,
+          shareUserInfo,
+        });
+        if (!isMountedRef.current) return;
+        logEvent('appointment_booked', {
+          doctor_specialization: (doctor as IDoctor)?.specialization ?? 'unknown',
+        });
+        setStep("success");
+      } catch (error: any) {
+        console.error("[Booking] Failed:", error);
+        if (isMountedRef.current) {
+          setSlotTaken(error?.response?.data?.code === "SLOT_TAKEN");
+          setStep("failed");
+        }
+      } finally {
+        if (isMountedRef.current) setCreatingAppt(false);
+      }
+      return;
+    }
+
     try {
       setCreatingAppt(true);
 
-      // Step 1: reserve the slot — lands as status "awaiting-payment" with
-      // the fee snapshotted server-side, not sent by the client.
+      // Real path (once PAYMENT_ENABLED is on) — reserve the slot, which
+      // lands as "awaiting-payment" server-side.
       const appointment = await createAppointment({
         doctorId: (doctor as IDoctor)?._id,
         scheduledAt: scheduledDate,
@@ -86,22 +136,22 @@ export const PaymentScreen: React.FC = () => {
       });
       if (!isMountedRef.current) return;
 
-      // Step 2: start payment against that reservation.
+      // Start payment against that reservation.
       const redirectUrl = `planamwell://appointment-payment-complete?appointmentId=${appointment._id}`;
       const { authorizationUrl } = await initiateAppointmentPayment(appointment._id!, redirectUrl);
       if (!isMountedRef.current) return;
 
-      // Step 3: real hosted checkout, same pattern ConfirmOrderScreen.tsx
-      // already uses for pharmacy checkout.
+      // Real hosted checkout, same pattern ConfirmOrderScreen.tsx already
+      // uses for pharmacy checkout.
       await WebBrowser.openBrowserAsync(authorizationUrl, {
         dismissButtonStyle: "close",
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
       if (!isMountedRef.current) return;
 
-      // Step 4: the webhook is the real source of truth and may take a
-      // moment to land — poll a few times rather than trusting the browser
-      // simply closing as proof of anything.
+      // The webhook is the real source of truth and may take a moment to
+      // land — poll a few times rather than trusting the browser simply
+      // closing as proof of anything.
       let result: { status: string; paymentStatus: string } | null = null;
       for (let attempt = 0; attempt < 6; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -289,8 +339,8 @@ export const PaymentScreen: React.FC = () => {
               <Ionicons name="card" size={24} color="#D81E5B" />
             </View>
             <View>
-              <Text style={styles.paymentMethodLabel}>Secure Checkout</Text>
-              <Text style={styles.paymentMethodSub}>You'll complete payment on the next screen</Text>
+              <Text style={styles.paymentMethodLabel}>Simulated Payment</Text>
+              <Text style={styles.paymentMethodSub}>Real payment will be wired here</Text>
             </View>
             <Ionicons name="checkmark-circle" size={22} color="#4CAF50" />
           </View>

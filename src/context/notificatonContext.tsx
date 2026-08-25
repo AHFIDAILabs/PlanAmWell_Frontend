@@ -5,11 +5,11 @@ import React, {
   ReactNode,
   useEffect,
   useCallback,
-  useRef,
 } from "react";
 import { useNotificationsAPI } from "../hooks/useNotificationsAPI";
 import { INotification } from "../types/backendType";
 import socketService from "../services/socketService";
+import pushNotificationService from "../services/pushNotificationService";
 
 type FilterType = "all" | "unread";
 
@@ -54,9 +54,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
   const [filter, setFilter] = useState<FilterType>("all");
   const [isSocketConnected, setIsSocketConnected] = useState(false);
-  
-  // ✅ Use ref to track if socket is initialized
-  const socketInitialized = useRef(false);
 
   const filteredNotifications =
     filter === "all"
@@ -113,6 +110,22 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     [setNotifications]
   );
 
+  // Real-time incoming-call ringing — was previously only wired in App.tsx,
+  // gated behind that component's OWN separate useAuth() instance's
+  // isAuthenticated flag. useAuth() has no shared state across call sites
+  // (plain useState, no context/store), so a login performed through
+  // LoginScreen's own useAuth() instance never propagated to App.tsx's copy
+  // unless the whole app was restarted — meaning a patient/doctor who logged
+  // in during the current app session (not a fresh cold start) never got
+  // this listener registered at all, and never saw an incoming call ring in
+  // over the socket. Registered here instead, alongside the other listeners
+  // this provider already keeps alive via the token-driven reconnect loop
+  // below, independent of any auth-hook instance.
+  const handleCallRinging = useCallback((data: any) => {
+    console.log("📞 [Context] call-ringing received:", data);
+    pushNotificationService.navigateToIncomingCall(data);
+  }, []);
+
   // Handle socket connection status changes
   const handleConnect = useCallback(() => {
     console.log("🟢 [Context] Socket connected");
@@ -139,73 +152,81 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     await fetchUnreadCount();
   }, [fetchNotifications, fetchUnreadCount, filter]);
 
-  // ✅ CRITICAL FIX: Socket.IO setup - only run ONCE on mount
+  // Registers listeners once at mount — appListeners persist across
+  // reconnects regardless of whether the connect attempt below succeeds. The
+  // actual connection is driven purely by token presence (via
+  // socketService.connect() re-reading SecureStore each call), not by any
+  // isAuthenticated flag: this provider mounts once at app boot, often
+  // before login has even started, and every screen's login/register call
+  // goes through its own separate useAuth() instance with no shared state to
+  // react to — so instead of trying to detect "the user just logged in", the
+  // poller below just keeps retrying connect() until it succeeds, which
+  // naturally picks up a freshly-issued token the moment one exists.
   useEffect(() => {
-    if (socketInitialized.current) {
-      console.log("⚠️ Socket already initialized, skipping...");
-      return;
-    }
-
     console.log("🔌 [Context] Initializing socket connection...");
-    socketInitialized.current = true;
 
-    const initSocket = async () => {
+    socketService.onNotification("notification", handleNewNotification);
+    socketService.onNotification("patient-rejoin-call", handleNewNotification);
+    socketService.onNotification("call-ended", handleCallEnded);
+    socketService.onNotification("call-ringing", handleCallRinging);
+    socketService.onNotification("connect", handleConnect);
+    socketService.onNotification("disconnect", handleDisconnect);
+    socketService.onNotification("connected", handleConnected);
+
+    const attemptConnect = async () => {
       try {
-        await socketService.connect();
-        const connected = socketService.isConnected();
+        const connected = await socketService.connect();
         setIsSocketConnected(connected);
-        
         console.log(`🔌 [Context] Socket connection status: ${connected}`);
 
-        // ✅ Register all socket event listeners
-        socketService.onNotification("notification", handleNewNotification);
-        socketService.onNotification("patient-rejoin-call", handleNewNotification);
-        socketService.onNotification("call-ended", handleCallEnded);
-        socketService.onNotification("connect", handleConnect);
-        socketService.onNotification("disconnect", handleDisconnect);
-        socketService.onNotification("connected", handleConnected);
-
-        console.log("✅ [Context] All socket listeners registered");
+        if (connected) {
+          // Resync immediately once the socket is actually up — don't rely
+          // solely on the "connect" listener above, since it's attached from
+          // inside connect()'s own success handler and so only fires on a
+          // LATER reconnect, never on the connection that just happened. A
+          // notification created in the gap between login and this resolving
+          // (e.g. right after registering, while a cold Render instance is
+          // still waking up) would otherwise sit unseen until a manual pull.
+          fetchNotifications(filter);
+          fetchUnreadCount();
+        }
       } catch (error) {
         console.error("❌ [Context] Socket initialization failed:", error);
         setIsSocketConnected(false);
       }
     };
 
-    initSocket();
+    attemptConnect();
 
-    // ✅ Polling to check connection status (fallback)
+    // ✅ Keeps retrying connect() (not just checking status) until it
+    // succeeds — this is what actually picks up a token that didn't exist
+    // yet on the first attempt (fresh login/registration), and also serves
+    // as the fallback resync for a drop/reconnect the listeners above miss.
     const interval = setInterval(() => {
-      const connected = socketService.isConnected();
-      setIsSocketConnected((prev) => {
-        if (prev !== connected) {
-          console.log(`🔄 [Context] Connection status changed: ${connected}`);
-          if (connected) {
-            // Refresh notifications on reconnect
-            fetchNotifications(filter);
-            fetchUnreadCount();
-          }
-        }
-        return connected;
-      });
+      if (socketService.isConnected()) {
+        setIsSocketConnected(true);
+        return;
+      }
+      attemptConnect();
     }, 5000);
 
-    // ✅ Cleanup function - only runs on unmount
     return () => {
       console.log("🧹 [Context] Cleaning up socket listeners");
       clearInterval(interval);
-      
+
       socketService.offNotification("notification", handleNewNotification);
       socketService.offNotification("patient-rejoin-call", handleNewNotification);
       socketService.offNotification("call-ended", handleCallEnded);
+      socketService.offNotification("call-ringing", handleCallRinging);
       socketService.offNotification("connect", handleConnect);
       socketService.offNotification("disconnect", handleDisconnect);
       socketService.offNotification("connected", handleConnected);
-      
-      // Don't disconnect socket here - let it persist across navigation
-      // socketService.disconnect();
+
+      // Don't disconnect socket here - let it persist across navigation.
+      // App.tsx owns the actual connect()/disconnect() lifecycle tied to
+      // login state; this effect only manages listeners + resync.
     };
-  }, []); // ✅ Empty dependencies - only run once
+  }, []);
 
   // Re-fetch on filter change
   useEffect(() => {

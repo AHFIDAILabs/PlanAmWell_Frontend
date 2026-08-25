@@ -97,50 +97,29 @@ function AppContent() {
     checkForOTAUpdate();
   }, []);
 
-  /* ============ SOCKET INIT + GLOBAL CALL-RINGING LISTENER ============ */
+  /* ============ SOCKET CONNECT/DISCONNECT LIFECYCLE ============ */
+  // The "call-ringing" listener that used to live here was removed — it was
+  // gated behind THIS component's own isAuthenticated (from its own
+  // independent useAuth() call), which only reflects a token found at this
+  // component's OWN mount time. useAuth() has no state shared across call
+  // sites, so a login performed via LoginScreen's separate useAuth()
+  // instance never flipped this one, silently leaving incoming calls
+  // unhandled for anyone who logged in during the current app session rather
+  // than restarting the app. It's now registered in NotificationProvider
+  // (src/context/notificatonContext.tsx), whose connection is driven by
+  // token presence rather than any auth-hook instance.
   useEffect(() => {
-    let socket: any = null;
-
-    const handleCallRinging = (data: any) => {
-      console.log("📞 Global call-ringing received:", data);
-      if (!navigationRef.current || !data?.appointmentId) return;
-
-      // Don't navigate if already on IncomingCall or VideoCallScreen
-      const currentRoute = navigationRef.current.getCurrentRoute?.();
-      if (
-        currentRoute?.name === "IncomingCall" ||
-        currentRoute?.name === "VideoCallScreen"
-      ) return;
-
-      navigationRef.current.navigate("IncomingCall", {
-        appointmentId:  data.appointmentId,
-        callerName:     data.callerName    || "Incoming Call",
-        callerImage:    data.callerImage,
-        callerType:     data.callerType,
-        channelName:    data.channelName,
-        conversationId: data.conversationId,
-        videoRequestId: data.videoRequestId,
-        callType:       data.callType,
-      });
-    };
-
     const initSocket = async () => {
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
       if (token && isAuthenticated) {
         await socketService.connect();
         console.log("✅ Socket connected");
-        // Register global call-ringing listener AFTER socket is connected
-        socket = socketService.getSocket();
-        if (socket) {
-          socket.on("call-ringing", handleCallRinging);
-        }
       }
     };
 
     initSocket();
 
     return () => {
-      if (socket) socket.off("call-ringing", handleCallRinging);
       socketService.disconnect();
       console.log("🔌 Socket disconnected");
     };

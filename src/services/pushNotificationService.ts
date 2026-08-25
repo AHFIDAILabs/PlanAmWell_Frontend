@@ -22,6 +22,38 @@ class PushNotificationService {
     this.navigationRef = ref;
   }
 
+  // Real-time counterpart to the push-notification-triggered navigation
+  // below — called from notificatonContext.tsx's socket "call-ringing"
+  // listener, so a call rings in immediately while the app is foregrounded
+  // rather than waiting on a push notification round-trip. Kept here (not
+  // duplicated) since this service already owns navigationRef and the exact
+  // "don't double-navigate if already on the call screen" guard.
+  navigateToIncomingCall(data: {
+    appointmentId?: string;
+    callerName?: string;
+    callerImage?: string;
+    callerType?: string;
+    channelName?: string;
+    conversationId?: string;
+    videoRequestId?: string;
+    callType?: string;
+  }) {
+    if (!this.navigationRef || !data?.appointmentId) return;
+    const currentRoute = (this.navigationRef as any).getCurrentRoute?.();
+    if (currentRoute?.name === 'IncomingCall' || currentRoute?.name === 'VideoCallScreen') return;
+
+    (this.navigationRef.navigate as any)('IncomingCall', {
+      appointmentId: data.appointmentId,
+      callerName: data.callerName || 'Incoming Call',
+      callerImage: data.callerImage,
+      callerType: data.callerType,
+      channelName: data.channelName,
+      conversationId: data.conversationId,
+      videoRequestId: data.videoRequestId,
+      callType: data.callType,
+    });
+  }
+
   configure() {
     if (Platform.OS === 'android') {
       this.setupAndroidChannels();

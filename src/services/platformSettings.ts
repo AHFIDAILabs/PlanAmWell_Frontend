@@ -7,6 +7,7 @@ const API_URL = `${SERVER_URL}/api/v1/platform-settings`;
 export interface PlatformSettings {
   consultationFeeKobo: number;
   currency: string;
+  paymentEnabled: boolean;
 }
 
 // A flat, rarely-changing fee — a plain module-level cache avoids re-fetching

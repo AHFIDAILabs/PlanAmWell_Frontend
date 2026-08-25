@@ -333,7 +333,10 @@ export const ChatRoomScreen: React.FC = () => {
 
     const handleVideoRequest = (data: { conversationId: string }) => {
       if (data.conversationId !== conversationIdRef.current) return;
-      loadConversation().then(() => setVideoRequestModal(true));
+      // Reload picks up the new activeVideoRequest; the effect watching
+      // conversation.activeVideoRequest (below) is what actually routes to
+      // IncomingCallScreen — no need to touch videoRequestModal here too.
+      loadConversation();
     };
 
     const handleVideoResponse = (data: {
@@ -476,17 +479,41 @@ export const ChatRoomScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [conversation?.activeVideoRequest]);
 
+  // Tracks the last incoming request we've already navigated for, so this
+  // effect re-firing (e.g. an unrelated conversation refresh) doesn't
+  // re-trigger navigation to a screen that's already open for the same call.
+  const handledIncomingRequestIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!conversation?.activeVideoRequest) return;
     const request = conversation.activeVideoRequest;
     if (request.status !== "pending") return;
     if (String(request.requestedBy) === String(currentUserId)) {
       setOutgoingVideoRequest(request);
-    } else {
-      setIncomingVideoRequest(request);
-      setVideoRequestModal(true);
+      return;
     }
-  }, [conversation?.activeVideoRequest, currentUserId]);
+
+    // Previously showed a silent inline modal here — no ringtone, no
+    // vibration, and invisible entirely unless the recipient happened to
+    // already be sitting in this exact chat screen. Route through the same
+    // full-screen IncomingCallScreen a direct appointment-page call uses
+    // (it already supports this — see its conversationId/videoRequestId
+    // handling in handleAccept) so a chat-initiated call rings and is
+    // visible from anywhere in the app, not just this one screen.
+    const requestId = request._id ?? null;
+    if (requestId && handledIncomingRequestIdRef.current !== requestId) {
+      handledIncomingRequestIdRef.current = requestId;
+      navigation.navigate("IncomingCall", {
+        appointmentId,
+        callerName: otherParticipantName,
+        callerImage: otherParticipantImage,
+        callerType: isDoctor ? "User" : "Doctor",
+        conversationId: conversation._id,
+        videoRequestId: requestId,
+        callType: request.callType,
+      });
+    }
+  }, [conversation?.activeVideoRequest, currentUserId, appointmentId, otherParticipantName, otherParticipantImage, isDoctor, navigation]);
 
   // ─── End Appointment ──────────────────────────────────────────────────────────
   const handleEndAppointment = () => {
