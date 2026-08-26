@@ -20,6 +20,7 @@ import { StackScreenProps } from '@react-navigation/stack';
 import { AppStackParamList } from '../../types/App';
 import { respondToVideoCall } from '../../services/Chat';
 import { useVideoCall } from '../../hooks/useVideoCall';
+import socketService from '../../services/socketService';
 import Toast  from 'react-native-toast-message';
 
 // ✅ Fixed: Use proper StackScreenProps type
@@ -83,8 +84,25 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
       handleDecline();
     }, 60000);
 
+    // The caller cancelling mid-ring, or this same user answering on
+    // another session (WhatsApp-style "answered elsewhere"), both arrive as
+    // call-cancelled — dismiss immediately instead of ringing the full 60s.
+    const socket = socketService.getSocket();
+    const handleCancelled = (data: { appointmentId: string }) => {
+      if (data.appointmentId !== appointmentId) return;
+      cleanup();
+      clearTimeout(timeout);
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('HomeScreen');
+      }
+    };
+    socket?.on('call-cancelled', handleCancelled);
+
     return () => {
       clearTimeout(timeout);
+      socket?.off('call-cancelled', handleCancelled);
       cleanup();
     };
   }, []);
@@ -181,7 +199,7 @@ export default function IncomingCallScreen({ route, navigation }: IncomingCallSc
         // Chat-based request: notify the requester via the video-call-response event
         await respondToVideoCall(conversationId, videoRequestId, false);
       } else {
-        // Appointment-based call: reset callStatus and emit call-declined to initiator
+        // Appointment-based call: reset callStatus and emit call-cancelled to initiator
         await declineCall(appointmentId);
       }
     } catch (error) {

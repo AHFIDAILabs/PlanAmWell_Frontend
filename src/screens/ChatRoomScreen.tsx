@@ -432,7 +432,7 @@ export const ChatRoomScreen: React.FC = () => {
     socket.on("new-message", handleNewMessage);
     socket.on("typing-indicator", handleTyping);
     socket.on("messages-read", handleMessagesRead);
-    socket.on("video-call-request", handleVideoRequest);
+    socket.on("incoming-call", handleVideoRequest);
     socket.on("video-call-response", handleVideoResponse);
     socket.on("appointment-ended", handleAppointmentEnded);
     socket.on("conversation-unlocked", handleConversationUnlocked);
@@ -443,7 +443,7 @@ export const ChatRoomScreen: React.FC = () => {
       socket.off("new-message", handleNewMessage);
       socket.off("typing-indicator", handleTyping);
       socket.off("messages-read", handleMessagesRead);
-      socket.off("video-call-request", handleVideoRequest);
+      socket.off("incoming-call", handleVideoRequest);
       socket.off("video-call-response", handleVideoResponse);
       socket.off("appointment-ended", handleAppointmentEnded);
       socket.off("conversation-unlocked", handleConversationUnlocked);

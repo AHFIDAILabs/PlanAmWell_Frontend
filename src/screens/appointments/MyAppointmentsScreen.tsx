@@ -204,7 +204,7 @@ export const MyAppointmentsScreen: React.FC = () => {
       attachedSocket = socket;
       socket.on("call-ended", handleCallEnded);
       socket.on("call-started", handleCallStarted);
-      socket.on("call-ringing", handleCallRinging);
+      socket.on("incoming-call", handleCallRinging);
       socket.on("appointment-updated", handleAppointmentUpdated);
     };
 
@@ -227,7 +227,7 @@ export const MyAppointmentsScreen: React.FC = () => {
       if (attachedSocket) {
         attachedSocket.off("call-ended", handleCallEnded);
         attachedSocket.off("call-started", handleCallStarted);
-        attachedSocket.off("call-ringing", handleCallRinging);
+        attachedSocket.off("incoming-call", handleCallRinging);
         attachedSocket.off("appointment-updated", handleAppointmentUpdated);
       }
     };

@@ -75,7 +75,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
   const userImage   = route.params?.userImage   || 'https://placehold.co/200x200';
   const doctorImage = route.params?.doctorImage || 'https://placehold.co/200x200';
 
-  const { startCall, endCall, getIceServers } = useVideoCall();
+  const { startCall, endCall, cancelCall, getIceServers } = useVideoCall();
 
   // ── Refs (survive re-renders, never cause re-renders) ────────────────────
   const pcRef               = useRef<RTCPeerConnection | null>(null);
@@ -272,7 +272,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
     const socket = socketService.getSocket();
     if (socket) {
       if (callEndedHandlerRef.current)    socket.off('call-ended',           callEndedHandlerRef.current);
-      if (callDeclinedHandlerRef.current) socket.off('call-declined',        callDeclinedHandlerRef.current);
+      if (callDeclinedHandlerRef.current) socket.off('call-cancelled',       callDeclinedHandlerRef.current);
       socket.off('webrtc-ready');
       socket.off('webrtc-offer');
       socket.off('webrtc-answer');
@@ -372,12 +372,20 @@ export default function VideoCallScreen({ route, navigation }: any) {
         );
       };
 
-      const handleCallDeclined = (data: { appointmentId: string }) => {
+      const handleCallDeclined = (data: { appointmentId: string; reason?: string }) => {
         if (data.appointmentId !== appointmentId) return;
+        // "answered-elsewhere" targets this same user's OTHER sessions when
+        // THEY are the one answering a ring — not relevant to the caller's
+        // own screen, which never rings anywhere else. Ignore it here.
+        if (data.reason === 'answered-elsewhere') return;
         selfEndedRef.current = true;
+        const title = data.reason === 'no-answer' ? 'No Answer' : 'Call Declined';
+        const message = data.reason === 'no-answer'
+          ? `${name} didn't answer.`
+          : `${name} declined the call.`;
         Alert.alert(
-          'Call Declined',
-          `${name} declined the call.`,
+          title,
+          message,
           [{
             text: 'OK',
             onPress: async () => {
@@ -392,7 +400,7 @@ export default function VideoCallScreen({ route, navigation }: any) {
       callEndedHandlerRef.current    = handleCallEnded;
       callDeclinedHandlerRef.current = handleCallDeclined;
       activeSocket.on('call-ended',    handleCallEnded);
-      activeSocket.on('call-declined', handleCallDeclined);
+      activeSocket.on('call-cancelled', handleCallDeclined);
 
       // 6. Register with the backend — get channel name and initiator flag.
       //    startCall throws a human-readable string on any non-network error.
@@ -722,6 +730,17 @@ export default function VideoCallScreen({ route, navigation }: any) {
   };
 
   const handleEndCall = () => {
+    // Still ringing out, nobody has answered yet — nothing to confirm, just
+    // stop ringing (both locally and for the other side, via cancelCall so
+    // their IncomingCallScreen dismisses immediately instead of ringing the
+    // full 60s after we've already backed out).
+    if (isInitiatorRef.current && !remoteStream) {
+      selfEndedRef.current = true;
+      cancelCall(appointmentId);
+      cleanup().then(() => navigation.goBack());
+      return;
+    }
+
     Alert.alert('End Call', 'Are you sure you want to end the call?', [
       { text: 'Cancel', style: 'cancel' },
       {

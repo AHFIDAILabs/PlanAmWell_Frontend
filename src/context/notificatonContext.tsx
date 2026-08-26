@@ -122,7 +122,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   // this provider already keeps alive via the token-driven reconnect loop
   // below, independent of any auth-hook instance.
   const handleCallRinging = useCallback((data: any) => {
-    console.log("📞 [Context] call-ringing received:", data);
+    console.log("📞 [Context] incoming-call received:", data);
     pushNotificationService.navigateToIncomingCall(data);
   }, []);
 
@@ -168,7 +168,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     socketService.onNotification("notification", handleNewNotification);
     socketService.onNotification("patient-rejoin-call", handleNewNotification);
     socketService.onNotification("call-ended", handleCallEnded);
-    socketService.onNotification("call-ringing", handleCallRinging);
+    socketService.onNotification("incoming-call", handleCallRinging);
     socketService.onNotification("connect", handleConnect);
     socketService.onNotification("disconnect", handleDisconnect);
     socketService.onNotification("connected", handleConnected);
@@ -217,7 +217,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       socketService.offNotification("notification", handleNewNotification);
       socketService.offNotification("patient-rejoin-call", handleNewNotification);
       socketService.offNotification("call-ended", handleCallEnded);
-      socketService.offNotification("call-ringing", handleCallRinging);
+      socketService.offNotification("incoming-call", handleCallRinging);
       socketService.offNotification("connect", handleConnect);
       socketService.offNotification("disconnect", handleDisconnect);
       socketService.offNotification("connected", handleConnected);

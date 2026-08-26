@@ -135,6 +135,26 @@ export const useVideoCall = () => {
   const declineCall = useCallback(declineCallDirect, []);
 
   /**
+   * Cancel a call THIS user is still ringing out on (before the other side
+   * has answered) — lets the receiver's IncomingCallScreen dismiss instantly
+   * via call-cancelled instead of ringing the full 60s after the caller has
+   * already backed out. Never throws.
+   */
+  const cancelCall = useCallback(async (appointmentId: string): Promise<void> => {
+    try {
+      const headers = await getAuthHeader();
+      await axios.post(
+        `${API_URL}/cancel`,
+        { appointmentId },
+        { headers: { ...headers, "Content-Type": "application/json" }, timeout: 8000 }
+      );
+      console.log(`📵 cancelCall sent for appointment ${appointmentId}`);
+    } catch (err: any) {
+      console.warn("⚠️ cancelCall failed (non-fatal):", err.message);
+    }
+  }, []);
+
+  /**
    * Fetch ICE server config from the backend.
    * Falls back to hardcoded defaults if the server is unreachable so calls
    * still work even if this request times out.
@@ -214,6 +234,7 @@ export const useVideoCall = () => {
     startCall,
     endCall,
     declineCall,
+    cancelCall,
     getCallStatus,
     getIceServers,
     reportCallIssue,
