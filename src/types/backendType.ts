@@ -59,7 +59,15 @@ export interface IDoctor {
     contactNumber?: string;
     availability?: Record<string, any>;
     ratings?: number;
+    reviewCount?: number;
+    // Distinct patients from completed appointments — computed fresh
+    // server-side, not a maintained counter (backend/src/services/doctorStats.ts).
+    patientCount?: number;
     reviews?: Array<{ userId: string; rating: number; comment: string }>;
+    // ISO string — computed server-side, not cached with the rest of the
+    // profile since it depends on live booking state. Null/undefined means
+    // nothing opens up in the lookahead window.
+    nextAvailable?: string | null;
     status: "submitted" | "reviewing" | "approved" | "rejected";
     profileComplete?: boolean;
 }

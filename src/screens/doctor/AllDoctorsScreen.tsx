@@ -17,6 +17,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { useDoctors } from "../../hooks/useDoctor";
 import BottomBar from "../../components/common/BottomBar";
 
+// Real, server-computed next open slot (backend/src/services/doctorAvailability.ts)
+// — replaces a previous hardcoded "Mon, Oct 25, 9:00 AM" shown for every
+// doctor regardless of reality.
+function formatNextAvailable(iso?: string | null): string {
+  if (!iso) return "No upcoming slots";
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const isToday = date.toDateString() === now.toDateString();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow = date.toDateString() === tomorrow.toDateString();
+  if (isToday) return `Today, ${time}`;
+  if (isTomorrow) return `Tomorrow, ${time}`;
+  return `${date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${time}`;
+}
+
 export default function AllDoctorsScreen({ navigation }: any) {
   const { doctors, loading, error } = useDoctors();
   const [search, setSearch] = useState("");
@@ -77,10 +94,7 @@ export default function AllDoctorsScreen({ navigation }: any) {
       : { uri: "https://placehold.co/150x150?text=No+Image" };
 
    const handleBookPress = () => {
-  // Add a console.log here to see what 'item' actually contains
-  console.log("Navigating with Doctor:", item);
-
-  navigation.navigate("BookAppointmentScreen", { 
+  navigation.navigate("BookAppointmentScreen", {
     doctor: {
       ...item,
       _id: item._id || item.id // Ensure we catch both naming conventions
@@ -106,10 +120,10 @@ export default function AllDoctorsScreen({ navigation }: any) {
             <View style={styles.ratingRow}>
               <Ionicons name="star" size={14} color="#FFA500" />
               <Text style={styles.ratingText}>{item.ratings?.toFixed(1) || "N/A"}</Text>
-              <Text style={styles.reviewCount}>({item.reviewCount || 0} reviews)</Text>
+              <Text style={styles.reviewCount}>({item.reviewCount ?? 0} reviews)</Text>
             </View>
             <Text style={styles.availability}>
-              Next available: {item.nextAvailable || "Mon, Oct 25, 9:00 AM"}
+              Next available: {formatNextAvailable(item.nextAvailable)}
             </Text>
           </View>
         </View>
@@ -167,8 +181,12 @@ export default function AllDoctorsScreen({ navigation }: any) {
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
                 <Ionicons name="search-outline" size={64} color="#ccc" />
-                <Text style={styles.noResultsText}>No doctors match your search</Text>
-                <Text style={styles.noResultsSubtext}>Try adjusting your search criteria</Text>
+                <Text style={styles.noResultsText}>
+                  {error ? "Couldn't load doctors" : "No doctors match your search"}
+                </Text>
+                <Text style={styles.noResultsSubtext}>
+                  {error ?? "Try adjusting your search criteria"}
+                </Text>
               </View>
             )}
           />

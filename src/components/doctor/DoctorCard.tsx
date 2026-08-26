@@ -17,6 +17,7 @@ interface DoctorCardProps {
   specialty: string;
   avatar: number | { uri: string };
   rating?: number;
+  reviewCount?: number;
   onPress?: () => void;
   online?: boolean;
 }
@@ -30,7 +31,8 @@ export default function DoctorCard({
   specialty,
   avatar,
   onPress,
-  rating = 4.7,
+  rating = 0,
+  reviewCount,
   online = true,
 }: DoctorCardProps) {
   const { darkMode } = useTheme();
@@ -104,6 +106,9 @@ export default function DoctorCard({
         >
           <Feather name="star" size={14} color="#D81E5B" />
           <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+          {reviewCount !== undefined && (
+            <Text style={styles.reviewCountText}>({reviewCount})</Text>
+          )}
         </View>
       </Animated.View>
     </TouchableOpacity>
@@ -202,5 +207,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
     color: "#D81E5B",
+  },
+
+  reviewCountText: {
+    marginLeft: 3,
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    color: "#D81E5B99",
   },
 });

@@ -33,6 +33,13 @@ type DoctorRouteProps = RouteProp<AppStackParamList, "DoctorScreen">;
 const STAR_COLOR = "#F59E0B";
 const PINK = "#D81E5B";
 
+// Real, server-computed distinct-patient count (backend/src/services/doctorStats.ts)
+// — replaces a hardcoded "1.2k" shown for every doctor regardless of reality.
+function formatPatientCount(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return String(count);
+}
+
 function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
     <View style={{ flexDirection: "row", gap: 2 }}>
@@ -154,7 +161,7 @@ export const DoctorScreen: React.FC = () => {
             <Text style={styles.statLabel}>Years</Text>
           </View>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>1.2k</Text>
+            <Text style={styles.statValue}>{formatPatientCount(doctor.patientCount ?? 0)}</Text>
             <Text style={styles.statLabel}>Patients</Text>
           </View>
           <View style={styles.stat}>

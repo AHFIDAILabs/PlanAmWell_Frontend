@@ -15,7 +15,10 @@ import { CartContext } from "../../context/CartContext";
 import BottomBar from "../../components/common/BottomBar";
 import { formatMessageTime, formatFullDateTime } from "../../utils/timeFormat";
 
-const WHATSAPP_BUSINESS_NUMBER = "+2348012345678";
+// Same real support number web's Help page and Ask AmWell AI WhatsApp
+// handoff use (web/src/app/help/page.tsx) — this was a placeholder number
+// that never actually reached anyone.
+const WHATSAPP_BUSINESS_NUMBER = "+2349168767784";
 const WHATSAPP_GREETING = "Hello, I need help with my health needs";
 
 export default function AmWellChatModal({ navigation }: { navigation: any }) {

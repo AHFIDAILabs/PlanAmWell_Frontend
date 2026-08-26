@@ -146,22 +146,29 @@ export const ConsultationHistoryScreen: React.FC = () => {
     });
   };
 
+  // A call sets status to "in-progress" the moment it starts ringing and it
+  // stays there until the doctor explicitly ends the appointment — this
+  // previously matched no tab at all (only "confirmed" counted as upcoming,
+  // and past didn't include it either), so an in-progress appointment just
+  // disappeared from this screen. Same fix as web's provider/appointments
+  // and app/appointments pages.
+  const ACTIVE_STATUSES = new Set(["confirmed", "confirmed-upcoming", "about-to-start", "in-progress"]);
+  const TERMINAL_STATUSES = new Set(["completed", "call-ended", "cancelled", "rejected", "expired"]);
+
   const getFilteredAppointments = () => {
     const now = new Date();
     switch (activeTab) {
       case "upcoming":
         return appointments.filter(
-          (a) => a.status === "confirmed" && a.scheduledAt >= now
+          (a) => a.status === "in-progress" || (ACTIVE_STATUSES.has(a.status) && a.scheduledAt >= now)
         );
       case "pending":
         return appointments.filter((a) => a.status === "pending");
       case "past":
         return appointments.filter(
           (a) =>
-            a.status === "completed" ||
-            a.status === "cancelled" ||
-            a.status === "rejected" ||
-            (a.status === "confirmed" && a.scheduledAt < now)
+            TERMINAL_STATUSES.has(a.status) ||
+            (a.status !== "in-progress" && ACTIVE_STATUSES.has(a.status) && a.scheduledAt < now)
         );
       default:
         return [];
@@ -180,6 +187,10 @@ export const ConsultationHistoryScreen: React.FC = () => {
         return { color: "#9E9E9E", icon: "close-circle-outline", label: "Cancelled" };
       case "completed":
         return { color: "#607D8B", icon: "checkmark-done-circle", label: "Completed" };
+      case "in-progress":
+        return { color: "#4F46E5", icon: "radio-button-on", label: "In Progress" };
+      case "expired":
+        return { color: "#9E9E9E", icon: "close-circle-outline", label: "Expired" };
       default:
         return { color: "#757575", icon: "help-circle", label: status };
     }

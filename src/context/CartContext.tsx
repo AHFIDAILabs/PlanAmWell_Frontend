@@ -65,6 +65,16 @@ const refreshCart = async () => {
   }
 };
 
+  // Previously only ever fetched reactively (after add/remove, or opening
+  // the cart modal) — a cold app start with items already in the cart from
+  // a prior session left `cart` null (and the BottomBar badge showing 0)
+  // until the user happened to touch cart-related UI first.
+  useEffect(() => {
+    const cartId = user?._id ?? authSessionId ?? guestSessionId;
+    if (cartId) refreshCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id, authSessionId, guestSessionId]);
+
 const addProduct = async (product: IProduct) => {
   const cartId = getCartId();
   if (!cartId) {

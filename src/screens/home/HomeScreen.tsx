@@ -142,6 +142,7 @@ const DoctorSection = () => {
                                 specialty={item.specialization}
                                 avatar={{ uri: imageUri }}
                                 rating={item.ratings}
+                                reviewCount={item.reviewCount}
                                 onPress={() => navigation.navigate('DoctorScreen' as any, { doctor: item })}
                             />
                         </View>
@@ -150,10 +151,7 @@ const DoctorSection = () => {
                 contentContainerStyle={styles.doctorListContainer}
             />
             {error && (
-                <Text style={[
-                    error.includes('mock profiles') ? styles.infoText : styles.errorText,
-                    darkMode && (error.includes('mock profiles') ? styles.infoTextDark : styles.errorTextDark)
-                ]}>
+                <Text style={[styles.errorText, darkMode && styles.errorTextDark]}>
                     {error}
                 </Text>
             )}
@@ -297,15 +295,6 @@ const styles = StyleSheet.create({
     },
     noDataTextDark: {
         color: '#B0B0B0', 
-    },
-    infoText: {
-        textAlign: 'center',
-        color: '#ffc107', 
-        marginTop: 10,
-        fontSize: 12,
-    },
-    infoTextDark: {
-        color: '#FFE082', 
     },
     errorText: {
         textAlign: 'center',

@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../hooks/useAuth";
 import { IDoctor, IAppointment } from "../../types/backendType";
 import { getDoctorAppointments, updateAppointment } from "../../services/Appointment";
+import { getUserConversations } from "../../services/Chat";
 import { updateDoctorAvailabilityService, fetchMyDoctorProfile } from "../../services/Doctor";
 import { useTheme } from "../../context/ThemeContext";
 import { useNotifications } from "../../context/notificatonContext"; // ✅ Import the context
@@ -74,7 +75,22 @@ export default function DoctorDashboardScreen({ navigation }: any) {
     
     fetchAppointments();
     fetchAvailability();
+    fetchMessagesCount();
   }, [authLoading, doctorUser]);
+
+  // messagesCount was previously a dead useState(0) — never updated after
+  // init, so the "Messages" stat card (and the bottom bar badge) always
+  // showed 0 regardless of actual unread messages. Sum unread counts across
+  // conversations the same way ConversationsListScreen already does per row.
+  const fetchMessagesCount = async () => {
+    try {
+      const conversations = await getUserConversations();
+      const total = conversations.reduce((sum, c) => sum + (c.unreadCount?.doctor ?? 0), 0);
+      setMessagesCount(total);
+    } catch (error) {
+      console.error("[DoctorDashboard] Failed to load messages count:", error);
+    }
+  };
 
   const handleViewSwitch = (view: 'dashboard' | 'home') => {
   if (view === 'home') {
@@ -133,6 +149,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
     setRefreshing(true);
     await Promise.all([
       fetchAppointments(),
+      fetchMessagesCount(),
       refreshNotifications() // ✅ Refresh notifications from context
     ]);
     setRefreshing(false);
@@ -923,7 +940,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   role={"doctor"}
 />
 
-      <DoctorBottomBar activeRoute="DoctorDashboardScreen" messagesCount={0} />
+      <DoctorBottomBar activeRoute="DoctorDashboardScreen" messagesCount={messagesCount} />
     </SafeAreaView>
   );
 }

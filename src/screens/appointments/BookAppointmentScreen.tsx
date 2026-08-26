@@ -37,7 +37,15 @@ function getDayAvailability(
   if (!availability) return null;
   const name = WEEKDAY_NAMES[date.getDay()];
   const slot = availability[name];
-  if (!slot?.from || !slot?.to) return null;
+  // `available` was never checked here — a day this screen's own editor
+  // toggled off still has its old from/to values sitting in the record (the
+  // editor only flips the boolean, it doesn't clear the times), so this was
+  // showing bookable slots on days the doctor marked unavailable. Checking
+  // `=== false` specifically (not just falsy) because web's editor uses a
+  // different convention — it omits a disabled day instead of writing
+  // `available: false` — so a day it considers open has no `available` key
+  // at all and must still pass here.
+  if (slot?.available === false || !slot?.from || !slot?.to) return null;
   return { from: slot.from, to: slot.to, slotDuration: availability.slotDuration ?? 30 };
 }
 

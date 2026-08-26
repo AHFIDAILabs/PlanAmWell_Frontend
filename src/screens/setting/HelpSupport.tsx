@@ -25,8 +25,11 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { AppStackParamList } from "../../types/App";
 
 const SUPPORT_EMAIL = "support@planamwell.com";
-const SUPPORT_PHONE = "+2348000000000";
-const SUPPORT_WHATSAPP = "2348000000000"; // international format without +
+// Same real support number web's Help page and Ask AmWell AI WhatsApp
+// handoff use (web/src/app/help/page.tsx) — this was a placeholder number
+// that never actually reached anyone.
+const SUPPORT_PHONE = "+2349168767784";
+const SUPPORT_WHATSAPP = "2349168767784"; // international format without +
 
 const HelpSupportScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<AppStackParamList>>();
