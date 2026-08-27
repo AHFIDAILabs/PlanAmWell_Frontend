@@ -33,6 +33,10 @@ export type AppStackParamList = {
   ArticleDetailScreen: { slug: string };
   AllArticleScreen: undefined;
 
+  CommunityHubScreen: undefined;
+  CommunityEventDetailScreen: { eventId: string };
+  MyEventsScreen: undefined;
+
   DoctorDashScreen: undefined;
 
   BookAppointmentScreen: { doctor: IDoctor };

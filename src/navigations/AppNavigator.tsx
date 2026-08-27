@@ -28,6 +28,9 @@ import AllDoctorsScreen from "../screens/doctor/AllDoctorsScreen";
 import AllActivePartnerScreen from "../screens/partner/AllActivePartnerScreen";
 import ArticleDetailScreen from "../screens/advocacy/articleDetailScreen";
 import AllArticlesScreen from "../screens/advocacy/AllContentScreen";
+import CommunityHubScreen from "../screens/community/CommunityHubScreen";
+import CommunityEventDetailScreen from "../screens/community/CommunityEventDetailScreen";
+import MyEventsScreen from "../screens/community/MyEventsScreen";
 import { NotificationsScreen } from "../screens/notification/notification";
 // Add these imports at the top
 import { ChatRoomScreen } from "../screens/ChatRoomScreen";
@@ -168,6 +171,9 @@ export default function AppNavigator() {
       {/* Advocacy */}
       <RootStack.Screen name="ArticleDetailScreen" component={ArticleDetailScreen} />
       <RootStack.Screen name="AllArticleScreen" component={AllArticlesScreen} />
+      <RootStack.Screen name="CommunityHubScreen" component={CommunityHubScreen} />
+      <RootStack.Screen name="CommunityEventDetailScreen" component={CommunityEventDetailScreen} />
+      <RootStack.Screen name="MyEventsScreen" component={MyEventsScreen} />
 
       {/* Partners */}
       <RootStack.Screen

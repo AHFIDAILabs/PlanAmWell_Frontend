@@ -1,6 +1,8 @@
 import React from 'react';
-import { ScrollView, View, StyleSheet, ActivityIndicator, Text, FlatList, Dimensions } from 'react-native';
+import { ScrollView, View, StyleSheet, ActivityIndicator, Text, FlatList, Dimensions, TouchableOpacity } from 'react-native';
 import { useRoute, useNavigation, NavigationProp } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import Header from '../../components/home/header';
 import AskAmWellCard from '../../components/AskAmWellSection/AskAmWellCard';
 import SectionHeader from '../../components/common/SectionHeader';
@@ -217,7 +219,28 @@ export default function HomeScreen() {
 
                 <ProductSection navigation={navigation} /> 
 
-                <DoctorSection /> 
+                <DoctorSection />
+
+                <TouchableOpacity
+                    style={styles.communityPromo}
+                    activeOpacity={0.9}
+                    onPress={() => navigation.navigate('CommunityHubScreen' as never)}
+                >
+                    <LinearGradient
+                        colors={['#D81E5B', '#0058A4']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.communityPromoGradient}
+                    >
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.communityPromoTitle}>Community Hub</Text>
+                            <Text style={styles.communityPromoSubtitle}>
+                                Support groups, workshops & Q&amp;A sessions — join with a chosen name.
+                            </Text>
+                        </View>
+                        <Ionicons name="people-circle-outline" size={40} color="rgba(255,255,255,0.85)" />
+                    </LinearGradient>
+                </TouchableOpacity>
 
                 <AdvocacyCarousel />
 
@@ -250,9 +273,31 @@ const styles = StyleSheet.create({
         paddingTop: 60,
     },
     fullContainerDark: {
-        backgroundColor: '#0A0A0A', 
+        backgroundColor: '#0A0A0A',
     },
-    
+    communityPromo: {
+        marginTop: 20,
+        borderRadius: 20,
+        overflow: 'hidden',
+    },
+    communityPromoGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 18,
+        gap: 14,
+    },
+    communityPromoTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    communityPromoSubtitle: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.85)',
+        marginTop: 4,
+        lineHeight: 17,
+    },
+
     doctorSectionWrapper: {
         marginBottom: 32,
         paddingHorizontal: 0,

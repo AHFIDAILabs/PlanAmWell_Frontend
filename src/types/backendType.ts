@@ -589,3 +589,40 @@ export interface IClinic {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// ── Community Hub ────────────────────────────────────────────────────────────
+// Kept in sync by hand with backend/src/models/Event.ts (EVENT_BANNER_PRESETS)
+// and web/src/lib/types.ts.
+export type EventBannerPreset = "support-circle" | "workshop" | "qa-session" | "wellness" | "celebration";
+
+export interface ICommunityEvent {
+  _id: string;
+  title: string;
+  description: string;
+  category?: string;
+  startsAt: string;
+  endsAt?: string;
+  location?: string;
+  isVirtual: boolean;
+  capacity?: number;
+  isActive: boolean;
+  bannerImage?: { url: string } | null;
+  bannerPreset?: EventBannerPreset | null;
+  // Aggregate count only — never attendee identities.
+  rsvpCount?: number;
+  // Only present on the single-event fetch, and only ever the viewer's own
+  // RSVP — never anyone else's.
+  myRsvp?: IEventRsvp | null;
+}
+
+export interface IEventRsvp {
+  _id: string;
+  eventId: string;
+  userId: string;
+  chosenName: string;
+  reminderOptIn: boolean;
+  status: "going" | "cancelled";
+}
+
+// GET /events/mine/rsvps populates eventId with the full event.
+export type IMyEventRsvp = Omit<IEventRsvp, "eventId"> & { eventId: ICommunityEvent };

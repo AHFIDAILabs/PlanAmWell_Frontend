@@ -32,6 +32,7 @@ const PRIMARY_TABS = [
 const MORE_ITEMS = [
     { name: "My Chat",    icon: "message-circle", route: "ConversationsListScreen" },
     { name: "Schedule",  icon: "calendar",        route: "MyAppointments" },
+    { name: "Community", icon: "heart",           route: "CommunityHubScreen" },
     { name: "Alerts",    icon: "bell",            route: "NotificationsScreen" },
     { name: "Profile",   icon: "user",            route: "ProfileScreen" },
     { name: "Partners",  icon: "users",           route: "AllActivePartnerScreen" },
