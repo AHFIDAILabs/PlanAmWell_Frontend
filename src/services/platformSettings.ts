@@ -8,6 +8,9 @@ export interface PlatformSettings {
   consultationFeeKobo: number;
   currency: string;
   paymentEnabled: boolean;
+  // Order/pharmacy payments — independently toggleable from consultation
+  // payments (paymentEnabled above), see backend paymentController.
+  orderPaymentEnabled: boolean;
 }
 
 // A flat, rarely-changing fee — a plain module-level cache avoids re-fetching

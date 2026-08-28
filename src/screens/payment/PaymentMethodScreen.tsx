@@ -1,20 +1,28 @@
+// screens/payment/PaymentMethodScreen.tsx
+//
+// Despite the filename (kept as-is to avoid a wider rename across the
+// navigator/notification-handler/linking config that all reference this
+// route by name), this is no longer a "pick a saved card" screen — there
+// never was a way to add one, and the card that was "selected" was never
+// even sent to the backend. Real checkout is fully hosted by whatever
+// processor is behind checkoutUrl (the partner in production, or our own
+// simulated page — see backend paymentController.ts), which shows its own
+// payment-method picker. This screen just confirms the order and starts
+// that hosted checkout, exactly like ConfirmOrderScreen.tsx already does
+// for a fresh order.
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
-import { Feather } from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
 import { StackNavigationProp } from "@react-navigation/stack";
+import { Ionicons } from "@expo/vector-icons";
+import Toast from "react-native-toast-message";
+import * as WebBrowser from "expo-web-browser";
 
 import { useAuth } from "../../hooks/useAuth";
+import { useOrderDetails } from "../../hooks/useOrderDetails";
 import { paymentService } from "../../services/payment";
+import { getPlatformSettings } from "../../services/platformSettings";
 import { AppStackParamList } from "../../types/App";
 
 type NavigationProp = StackNavigationProp<AppStackParamList>;
@@ -24,255 +32,184 @@ const PaymentMethodScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<PaymentRouteProp>();
   const { userToken } = useAuth();
-
   const { orderId, amount } = route.params;
 
-  const [methods, setMethods] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
-
-  /* ───────────────────────── Fetch methods ───────────────────────── */
-
-  const fetchPaymentMethods = async () => {
-    try {
-      const res = await paymentService.getPaymentMethods(userToken!);
-      const data = res.data ?? [];
-
-      setMethods(data);
-
-      const defaultMethod = data.find((m: any) => m.isDefault);
-      if (defaultMethod) {
-        setSelectedMethodId(defaultMethod._id);
-      }
-    } catch (err) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to load payment methods",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { order, loading } = useOrderDetails(orderId, userToken!);
+  const [simulated, setSimulated] = useState(true);
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
-    fetchPaymentMethods();
+    getPlatformSettings()
+      .then((s) => setSimulated(!s.orderPaymentEnabled))
+      .catch(() => setSimulated(true));
   }, []);
 
-  /* ───────────────────────── Actions ───────────────────────── */
-
-  const makeDefault = async (id: string) => {
-    try {
-      await paymentService.setDefaultPaymentMethod(userToken!, id);
-      Toast.show({ type: "success", text1: "Default updated" });
-      fetchPaymentMethods();
-    } catch {
-      Toast.show({ type: "error", text1: "Failed to update default" });
-    }
-  };
-
-  const deleteMethod = (id: string) => {
-    Alert.alert(
-      "Delete Payment Method",
-      "Are you sure you want to remove this payment method?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await paymentService.deletePaymentMethod(userToken!, id);
-              Toast.show({ type: "success", text1: "Payment method removed" });
-              fetchPaymentMethods();
-            } catch {
-              Toast.show({ type: "error", text1: "Failed to delete method" });
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const handlePay = async () => {
-    if (!selectedMethodId) {
-      Toast.show({
-        type: "info",
-        text1: "Select a payment method",
-      });
-      return;
-    }
-
-    setProcessing(true);
+    setPaying(true);
     try {
-      const res = await paymentService.initiatePayment(userToken!, {
-        orderId,
-        paymentMethod: "card",
+      const res = await paymentService.initiatePayment(userToken!, orderId);
+      const checkoutUrl = res?.data?.checkoutUrl;
+      if (!checkoutUrl) throw new Error("No checkout URL returned");
+
+      await WebBrowser.openBrowserAsync(checkoutUrl, {
+        dismissButtonStyle: "close",
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
 
-      const checkoutUrl = res?.data?.checkoutUrl;
-      if (!checkoutUrl) throw new Error("No checkout URL");
-
-      navigation.navigate("WebViewScreen", { url: checkoutUrl });
+      // OrderDetailsScreen's own useOrderDetails hook re-verifies against
+      // the backend on mount, so it always reflects the real outcome
+      // whether or not the checkout page's own redirect (which lands here
+      // via the planamwell://order-complete deep link) fired first.
+      navigation.replace("OrderDetailsScreen", { orderId });
     } catch (err: any) {
       Toast.show({
         type: "error",
         text1: "Payment failed",
-        text2: err.message,
+        text2: err?.response?.data?.message || err.message,
       });
     } finally {
-      setProcessing(false);
+      setPaying(false);
     }
   };
 
-  /* ───────────────────────── Render Item ───────────────────────── */
-
-  const renderItem = ({ item }: { item: any }) => {
-    const isSelected = selectedMethodId === item._id;
-
-    return (
-      <TouchableOpacity
-        style={[styles.cardItem, isSelected && styles.selectedCard]}
-        onPress={() => setSelectedMethodId(item._id)}
-      >
-        <View style={styles.cardLeft}>
-          <View style={styles.cardIcon} />
-          <View>
-            <Text style={styles.cardNumber}>
-              •••• •••• •••• {item.last4}
-            </Text>
-            {item.expiryMonth && item.expiryYear && (
-              <Text style={styles.cardExpiry}>
-                Expires {item.expiryMonth}/{item.expiryYear}
-              </Text>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.cardRight}>
-          {item.isDefault && (
-            <View style={styles.defaultBadge}>
-              <Text style={styles.defaultText}>Default</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => makeDefault(item._id)}
-          >
-            <Feather name="edit-2" size={18} color="#666" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => deleteMethod(item._id)}
-          >
-            <Feather name="trash-2" size={18} color="#666" />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  /* ───────────────────────── UI ───────────────────────── */
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#D81E5B" />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={methods}
-        keyExtractor={(item) => item._id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        ListFooterComponent={
-          <TouchableOpacity
-            style={styles.addNewBtn}
-            // onPress={() => navigation.navigate("AddPaymentMethodScreen")}
-          >
-            <Text style={styles.addNewText}>Add New Payment Method</Text>
-          </TouchableOpacity>
-        }
-      />
-
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.payBtn}
-          onPress={handlePay}
-          disabled={processing}
-        >
-          {processing ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.payText}>Pay ₦{amount}</Text>
-          )}
+    <SafeAreaView style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={26} color="#333" />
         </TouchableOpacity>
-      </View>
-    </View>
+        <Text style={styles.title}>Confirm & Pay</Text>
+        <Text style={styles.subtitle}>Complete payment to finish this order</Text>
+
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#D81E5B" />
+          </View>
+        ) : (
+          <>
+            {order && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Order Summary</Text>
+                <Text style={styles.orderNumber}>
+                  #{order.orderNumber?.slice(0, 8)?.toUpperCase()}
+                </Text>
+                {order.items?.map((item: any, idx: number) => (
+                  <View key={idx} style={styles.row}>
+                    <Text style={styles.itemName} numberOfLines={1}>
+                      {item.name} × {item.qty}
+                    </Text>
+                    <Text style={styles.itemPrice}>₦{Number(item.price).toLocaleString()}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.card}>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Total to pay</Text>
+                <Text style={styles.totalValue}>₦{Number(order?.total ?? amount).toLocaleString()}</Text>
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Payment Method</Text>
+              <View style={styles.paymentMethodRow}>
+                <View style={styles.cardIconBox}>
+                  <Ionicons name="card" size={24} color="#D81E5B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.paymentMethodLabel}>
+                    {simulated ? "Simulated Payment" : "Secure Hosted Checkout"}
+                  </Text>
+                  <Text style={styles.paymentMethodSub}>
+                    {simulated
+                      ? "Test mode — no real money is charged"
+                      : "You'll choose card, bank, or USSD on the next screen"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.payBtn} onPress={handlePay} disabled={paying}>
+              {paying ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="lock-closed" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.payBtnText}>Pay ₦{Number(order?.total ?? amount).toLocaleString()}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
-/* ───────────────────────── Styles ───────────────────────── */
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9F9F9" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  listContent: { padding: 20 },
-  cardItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 15,
-    backgroundColor: "#FFF",
+  screen: { flex: 1, backgroundColor: "#F9FAFB" },
+  container: { padding: 20, paddingBottom: 40 },
+  backBtn: { marginBottom: 12 },
+  title: { fontSize: 24, fontWeight: "800", color: "#222", marginBottom: 4 },
+  subtitle: { fontSize: 13, color: "#888", marginBottom: 24 },
+  loadingBox: { paddingVertical: 60, alignItems: "center" },
+
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  orderNumber: { fontSize: 12, color: "#999", marginBottom: 12 },
+  row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8, gap: 12 },
+  itemName: { flex: 1, fontSize: 14, color: "#444" },
+  itemPrice: { fontSize: 14, color: "#333", fontWeight: "600" },
+
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  totalLabel: { fontSize: 15, fontWeight: "700", color: "#222" },
+  totalValue: { fontSize: 20, fontWeight: "800", color: "#D81E5B" },
+
+  paymentMethodRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  cardIconBox: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "#EEE",
-  },
-  selectedCard: {
-    borderColor: "#D81E5B",
-    backgroundColor: "#FFF5F8",
-  },
-  cardLeft: { flexDirection: "row", alignItems: "center" },
-  cardIcon: { width: 32, height: 20, borderRadius: 4, backgroundColor: "#CCC" },
-  cardNumber: { fontSize: 16, fontWeight: "600" },
-  cardExpiry: { fontSize: 12, color: "#888" },
-  cardRight: { flexDirection: "row", alignItems: "center" },
-  defaultBadge: {
-    backgroundColor: "#FFE6EC",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    marginRight: 10,
-  },
-  defaultText: { fontSize: 10, fontWeight: "700", color: "#D81E5B" },
-  actionBtn: { marginLeft: 10 },
-  addNewBtn: {
-    backgroundColor: "#D81E5B",
-    paddingVertical: 15,
-    borderRadius: 12,
+    backgroundColor: "#FFF0F6",
+    justifyContent: "center",
     alignItems: "center",
   },
-  addNewText: { color: "#FFF", fontWeight: "700" },
-  footer: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#EEE",
-    backgroundColor: "#FFF",
-  },
+  paymentMethodLabel: { fontSize: 14, fontWeight: "600", color: "#333" },
+  paymentMethodSub: { fontSize: 12, color: "#AAA", marginTop: 2 },
+
   payBtn: {
     backgroundColor: "#D81E5B",
-    paddingVertical: 15,
-    borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 20,
+    marginTop: 4,
+    shadowColor: "#D81E5B",
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  payText: { color: "#FFF", fontWeight: "700" },
+  payBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
 
 export default PaymentMethodScreen;
