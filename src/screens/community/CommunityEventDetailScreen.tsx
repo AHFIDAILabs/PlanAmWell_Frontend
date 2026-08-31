@@ -11,12 +11,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
+  Share,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 import * as WebBrowser from "expo-web-browser";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { getEventById, rsvpToEvent, cancelRsvp, initiateEventTicketPayment } from "../../services/Community";
 import { ICommunityEvent } from "../../types/backendType";
 import { EventBanner } from "../../components/community/EventBanner";
@@ -38,6 +42,58 @@ function buildReferralUrl(registrationUrl: string, referralCode?: string): strin
   } catch {
     return registrationUrl;
   }
+}
+
+// The public, non-gated web page (web/src/app/events/[id]/page.tsx) — the
+// only event URL that works for a recipient who isn't already signed in,
+// unlike anything under /app/community which requires a session.
+function publicEventUrl(eventId: string): string {
+  return `https://planamwell.com/events/${eventId}`;
+}
+
+function toIcsDate(iso: string): string {
+  return new Date(iso).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+}
+
+// RFC 5545 §3.3.11 — backslash-escape these four characters, and turn real
+// newlines into the literal two-character sequence "\n".
+function escapeIcsText(text: string): string {
+  return text.replace(/[\\,;]/g, (m) => `\\${m}`).replace(/\n/g, "\\n");
+}
+
+function eventEndIso(event: ICommunityEvent): string {
+  return event.endsAt ?? new Date(new Date(event.startsAt).getTime() + 60 * 60 * 1000).toISOString();
+}
+
+function buildIcs(event: ICommunityEvent, publicUrl: string): string {
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//PlanAmWell//Community Hub//EN",
+    "BEGIN:VEVENT",
+    `UID:${event._id}@planamwell.com`,
+    `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
+    `DTSTART:${toIcsDate(event.startsAt)}`,
+    `DTEND:${toIcsDate(eventEndIso(event))}`,
+    `SUMMARY:${escapeIcsText(event.title)}`,
+    `DESCRIPTION:${escapeIcsText(event.description)}`,
+    `LOCATION:${escapeIcsText(event.isVirtual ? "Online" : event.location ?? "In person")}`,
+    `URL:${publicUrl}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+  return lines.join("\r\n");
+}
+
+function buildGoogleCalendarUrl(event: ICommunityEvent, publicUrl: string): string {
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.title,
+    dates: `${toIcsDate(event.startsAt)}/${toIcsDate(eventEndIso(event))}`,
+    details: `${event.description}\n\n${publicUrl}`,
+    location: event.isVirtual ? "Online" : event.location ?? "",
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
 export default function CommunityEventDetailScreen() {
@@ -151,6 +207,54 @@ export default function CommunityEventDetailScreen() {
     } finally {
       setCancelling(false);
     }
+  }
+
+  async function handleShareEvent() {
+    if (!event) return;
+    try {
+      const url = publicEventUrl(event._id);
+      await Share.share(
+        Platform.OS === "ios"
+          ? { title: event.title, url, message: event.title }
+          : { title: event.title, message: `${event.title}\n${url}` }
+      );
+    } catch {
+      // User dismissed the share sheet — nothing to do.
+    }
+  }
+
+  async function shareIcsFile() {
+    if (!event) return;
+    const url = publicEventUrl(event._id);
+    try {
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Toast.show({ type: "error", text1: "Sharing isn't available on this device" });
+        return;
+      }
+      const fileUri = `${FileSystem.cacheDirectory}${event._id}.ics`;
+      await FileSystem.writeAsStringAsync(fileUri, buildIcs(event, url));
+      await Sharing.shareAsync(fileUri, {
+        mimeType: "text/calendar",
+        UTI: "com.apple.ical.ics",
+        dialogTitle: "Add to Calendar",
+      });
+    } catch {
+      Toast.show({ type: "error", text1: "Could not create calendar file" });
+    }
+  }
+
+  async function handleAddToCalendar() {
+    if (!event) return;
+    const url = publicEventUrl(event._id);
+    Alert.alert("Add to Calendar", undefined, [
+      {
+        text: "Google Calendar",
+        onPress: () => WebBrowser.openBrowserAsync(buildGoogleCalendarUrl(event, url)),
+      },
+      { text: "Apple / Outlook (.ics)", onPress: shareIcsFile },
+      { text: "Cancel", style: "cancel" },
+    ]);
   }
 
   if (loading) {
@@ -297,6 +401,17 @@ export default function CommunityEventDetailScreen() {
               </Text>
             </>
           )}
+
+          <View style={styles.shareRow}>
+            <TouchableOpacity style={styles.shareButton} onPress={handleShareEvent}>
+              <Ionicons name="share-outline" size={16} color="#0058A4" />
+              <Text style={styles.shareButtonText}>Share</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.shareButton} onPress={handleAddToCalendar}>
+              <Ionicons name="calendar-outline" size={16} color="#0058A4" />
+              <Text style={styles.shareButtonText}>Add to Calendar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -435,6 +550,18 @@ const styles = StyleSheet.create({
   registerButtonText: { color: "#0058A4", fontSize: 14, fontWeight: "700" },
   registerHint: { fontSize: 12, color: "#999", marginTop: 8, lineHeight: 16 },
   ticketHint: { fontSize: 12, color: "#666", marginTop: 12, lineHeight: 16 },
+  shareRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  shareButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#0058A4",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  shareButtonText: { color: "#0058A4", fontSize: 13, fontWeight: "600" },
 
   modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   modalBackdrop: { ...StyleSheet.absoluteFillObject },
