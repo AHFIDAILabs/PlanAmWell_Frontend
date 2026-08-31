@@ -69,6 +69,11 @@ export default function CommunityHubScreen({ navigation }: any) {
             <Text style={styles.categoryBadgeText}>{item.category}</Text>
           </View>
         )}
+        {!!item.ticketPriceKobo && (
+          <View style={styles.ticketBadge}>
+            <Text style={styles.ticketBadgeText}>₦{(item.ticketPriceKobo / 100).toLocaleString()}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={1}>
@@ -166,6 +171,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   categoryBadgeText: { fontSize: 11, fontWeight: "700", color: "#111" },
+  ticketBadge: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "#D81E5B",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  ticketBadgeText: { fontSize: 11, fontWeight: "700", color: "#fff" },
   cardBody: { padding: 14 },
   cardTitle: { fontSize: 16, fontWeight: "700", color: "#111" },
   cardDescription: { fontSize: 13, color: "#666", marginTop: 4 },

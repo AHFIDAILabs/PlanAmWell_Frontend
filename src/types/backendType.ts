@@ -613,6 +613,15 @@ export interface ICommunityEvent {
   // Only present on the single-event fetch, and only ever the viewer's own
   // RSVP — never anyone else's.
   myRsvp?: IEventRsvp | null;
+  // ── Organizer & monetization ────────────────────────────────────────────
+  organizerName?: string;
+  // Organizer-owned page — opened via expo-web-browser, never a form we
+  // collect data through ourselves.
+  registrationUrl?: string;
+  referralCode?: string;
+  isPaidPlacement?: boolean;
+  // Undefined/0 = free event. When set, RSVP requires payment first.
+  ticketPriceKobo?: number;
 }
 
 export interface IEventRsvp {
@@ -621,7 +630,7 @@ export interface IEventRsvp {
   userId: string;
   chosenName: string;
   reminderOptIn: boolean;
-  status: "going" | "cancelled";
+  status: "going" | "cancelled" | "pending_payment";
 }
 
 // GET /events/mine/rsvps populates eventId with the full event.

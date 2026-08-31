@@ -28,13 +28,27 @@ export const rsvpToEvent = async (
   id: string,
   chosenName: string,
   reminderOptIn: boolean
-): Promise<{ success: boolean; message?: string }> => {
+): Promise<{ success: boolean; message?: string; requiresPayment?: boolean }> => {
   const headers = await getAuthHeader();
   try {
-    await axios.post(`${API_URL}/${id}/rsvp`, { chosenName, reminderOptIn }, { headers });
-    return { success: true };
+    const res = await axios.post(`${API_URL}/${id}/rsvp`, { chosenName, reminderOptIn }, { headers });
+    return { success: true, requiresPayment: !!res.data?.requiresPayment };
   } catch (err: any) {
     return { success: false, message: err.response?.data?.message || "Could not RSVP to this event." };
+  }
+};
+
+// Only for a ticketed event (Event.ticketPriceKobo set) — starts payment on
+// an existing pending_payment RSVP. Never called for a free event.
+export const initiateEventTicketPayment = async (
+  id: string
+): Promise<{ success: boolean; message?: string; checkoutUrl?: string }> => {
+  const headers = await getAuthHeader();
+  try {
+    const res = await axios.post(`${API_URL}/${id}/rsvp/pay`, {}, { headers });
+    return { success: true, checkoutUrl: res.data?.data?.checkoutUrl };
+  } catch (err: any) {
+    return { success: false, message: err.response?.data?.message || "Could not start payment." };
   }
 };
 

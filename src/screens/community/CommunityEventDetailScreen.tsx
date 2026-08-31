@@ -16,12 +16,29 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
-import { getEventById, rsvpToEvent, cancelRsvp } from "../../services/Community";
+import * as WebBrowser from "expo-web-browser";
+import { getEventById, rsvpToEvent, cancelRsvp, initiateEventTicketPayment } from "../../services/Community";
 import { ICommunityEvent } from "../../types/backendType";
 import { EventBanner } from "../../components/community/EventBanner";
 import { AppStackParamList } from "../../types/App";
 
 type DetailRouteProp = RouteProp<AppStackParamList, "CommunityEventDetailScreen">;
+
+function formatNaira(kobo: number): string {
+  return `₦${(kobo / 100).toLocaleString()}`;
+}
+
+function buildReferralUrl(registrationUrl: string, referralCode?: string): string {
+  try {
+    const url = new URL(registrationUrl);
+    url.searchParams.set("utm_source", "planamwell");
+    url.searchParams.set("utm_medium", "community_hub");
+    if (referralCode) url.searchParams.set("ref", referralCode);
+    return url.toString();
+  } catch {
+    return registrationUrl;
+  }
+}
 
 export default function CommunityEventDetailScreen() {
   const route = useRoute<DetailRouteProp>();
@@ -38,6 +55,8 @@ export default function CommunityEventDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,13 +77,32 @@ export default function CommunityEventDetailScreen() {
     }, [load])
   );
 
-  const rsvped = !!event?.myRsvp;
+  const isTicketed = !!event?.ticketPriceKobo;
+  const rsvpStatus = event?.myRsvp?.status;
+  const rsvped = rsvpStatus === "going";
+  const awaitingPayment = rsvpStatus === "pending_payment";
 
   function openRsvpModal() {
     setChosenName(event?.myRsvp?.chosenName ?? "");
     setReminderOptIn(event?.myRsvp?.reminderOptIn ?? false);
     setRsvpError(null);
     setShowRsvpModal(true);
+  }
+
+  async function startTicketPayment() {
+    setPaying(true);
+    setRsvpError(null);
+    const result = await initiateEventTicketPayment(eventId);
+    setPaying(false);
+    if (result.success && result.checkoutUrl) {
+      await WebBrowser.openBrowserAsync(result.checkoutUrl, {
+        dismissButtonStyle: "close",
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+      });
+      load();
+      return;
+    }
+    setRsvpError(result.message || "Could not start payment. Please try again.");
   }
 
   async function handleRsvp() {
@@ -76,12 +114,29 @@ export default function CommunityEventDetailScreen() {
     setRsvpError(null);
     const result = await rsvpToEvent(eventId, chosenName.trim(), reminderOptIn);
     setSaving(false);
-    if (result.success) {
-      setShowRsvpModal(false);
+    if (!result.success) {
+      setRsvpError(result.message || "Could not RSVP to this event.");
+      return;
+    }
+    setShowRsvpModal(false);
+    if (result.requiresPayment) {
+      load();
+      await startTicketPayment();
+    } else {
       Toast.show({ type: "success", text1: "You're RSVP'd!" });
       load();
-    } else {
-      setRsvpError(result.message || "Could not RSVP to this event.");
+    }
+  }
+
+  async function handleRegisterWithOrganizer() {
+    if (!event?.registrationUrl) return;
+    setRegistering(true);
+    try {
+      await WebBrowser.openBrowserAsync(buildReferralUrl(event.registrationUrl, event.referralCode), {
+        dismissButtonStyle: "close",
+      });
+    } finally {
+      setRegistering(false);
     }
   }
 
@@ -130,6 +185,11 @@ export default function CommunityEventDetailScreen() {
               <Text style={styles.categoryBadgeText}>{event.category}</Text>
             </View>
           )}
+          {isTicketed && (
+            <View style={styles.ticketBadge}>
+              <Text style={styles.ticketBadgeText}>{formatNaira(event.ticketPriceKobo!)}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.content}>
@@ -139,6 +199,7 @@ export default function CommunityEventDetailScreen() {
             </Text>
           )}
           <Text style={styles.title}>{event.title}</Text>
+          {event.organizerName && <Text style={styles.organizerText}>Hosted by {event.organizerName}</Text>}
 
           <View style={styles.metaGrid}>
             <View style={styles.metaItem}>
@@ -167,13 +228,39 @@ export default function CommunityEventDetailScreen() {
               You&apos;re RSVP&apos;d as <Text style={{ fontWeight: "700" }}>{event.myRsvp?.chosenName}</Text>.
             </Text>
           )}
+          {awaitingPayment && (
+            <Text style={styles.awaitingText}>
+              You started an RSVP but haven&apos;t completed payment yet — finish below to secure your spot.
+            </Text>
+          )}
+
+          {rsvpError && <Text style={styles.errorText}>{rsvpError}</Text>}
 
           <View style={styles.actionsRow}>
-            {rsvped ? (
+            {awaitingPayment ? (
               <>
-                <TouchableOpacity style={styles.outlineButton} onPress={openRsvpModal}>
-                  <Text style={styles.outlineButtonText}>Edit RSVP</Text>
+                <TouchableOpacity style={styles.primaryButton} onPress={startTicketPayment} disabled={paying}>
+                  {paying ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Complete Payment ({formatNaira(event.ticketPriceKobo!)})</Text>
+                  )}
                 </TouchableOpacity>
+                <TouchableOpacity style={styles.outlineButton} onPress={handleCancelRsvp} disabled={cancelling}>
+                  {cancelling ? (
+                    <ActivityIndicator size="small" color="#D81E5B" />
+                  ) : (
+                    <Text style={styles.outlineButtonText}>Cancel</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : rsvped ? (
+              <>
+                {!isTicketed && (
+                  <TouchableOpacity style={styles.outlineButton} onPress={openRsvpModal}>
+                    <Text style={styles.outlineButtonText}>Edit RSVP</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={styles.outlineButton} onPress={handleCancelRsvp} disabled={cancelling}>
                   {cancelling ? (
                     <ActivityIndicator size="small" color="#D81E5B" />
@@ -184,10 +271,32 @@ export default function CommunityEventDetailScreen() {
               </>
             ) : (
               <TouchableOpacity style={styles.primaryButton} onPress={openRsvpModal}>
-                <Text style={styles.primaryButtonText}>RSVP to this event</Text>
+                <Text style={styles.primaryButtonText}>
+                  {isTicketed ? `Get Ticket (${formatNaira(event.ticketPriceKobo!)})` : "RSVP to this event"}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
+
+          {event.registrationUrl && (
+            <>
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={handleRegisterWithOrganizer}
+                disabled={registering}
+              >
+                {registering ? (
+                  <ActivityIndicator size="small" color="#0058A4" />
+                ) : (
+                  <Text style={styles.registerButtonText}>Register with {event.organizerName || "organizer"}</Text>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.registerHint}>
+                Opens {event.organizerName || "the organizer"}&apos;s own registration page — we don&apos;t collect
+                or share your details there.
+              </Text>
+            </>
+          )}
         </View>
       </ScrollView>
 
@@ -195,7 +304,7 @@ export default function CommunityEventDetailScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowRsvpModal(false)} />
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>RSVP</Text>
+            <Text style={styles.modalTitle}>{isTicketed ? "Get Your Ticket" : "RSVP"}</Text>
 
             <Text style={styles.inputLabel}>Chosen name (pseudonym)</Text>
             <TextInput
@@ -211,6 +320,13 @@ export default function CommunityEventDetailScreen() {
               <Switch value={reminderOptIn} onValueChange={setReminderOptIn} trackColor={{ false: "#DDD", true: "#D81E5B" }} thumbColor="#fff" />
             </View>
 
+            {isTicketed && (
+              <Text style={styles.ticketHint}>
+                You&apos;ll be taken to payment ({formatNaira(event.ticketPriceKobo!)}) next — your spot is only
+                confirmed once payment completes.
+              </Text>
+            )}
+
             {rsvpError && <Text style={styles.errorText}>{rsvpError}</Text>}
 
             <View style={styles.modalActions}>
@@ -218,7 +334,11 @@ export default function CommunityEventDetailScreen() {
                 <Text style={styles.outlineButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.primaryButton} onPress={handleRsvp} disabled={saving}>
-                {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.primaryButtonText}>Confirm RSVP</Text>}
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>{isTicketed ? "Continue to Payment" : "Confirm RSVP"}</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -256,10 +376,21 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   categoryBadgeText: { fontSize: 12, fontWeight: "700", color: "#111" },
+  ticketBadge: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    backgroundColor: "#D81E5B",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  ticketBadgeText: { fontSize: 12, fontWeight: "700", color: "#fff" },
 
   content: { padding: 20 },
   goingText: { fontSize: 12, fontWeight: "700", color: "#0058A4" },
   title: { fontSize: 22, fontWeight: "700", color: "#111", marginTop: 6 },
+  organizerText: { fontSize: 13, color: "#666", marginTop: 4 },
 
   metaGrid: { flexDirection: "row", marginTop: 20, gap: 24 },
   metaItem: { flex: 1 },
@@ -270,6 +401,7 @@ const styles = StyleSheet.create({
   description: { fontSize: 14, color: "#333", marginTop: 6, lineHeight: 20 },
 
   rsvpedText: { fontSize: 13, color: "#15803D", marginTop: 20 },
+  awaitingText: { fontSize: 13, color: "#B45309", marginTop: 20 },
 
   actionsRow: { flexDirection: "row", gap: 10, marginTop: 24 },
   primaryButton: {
@@ -291,6 +423,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   outlineButtonText: { color: "#D81E5B", fontSize: 14, fontWeight: "700" },
+  registerButton: {
+    marginTop: 12,
+    borderWidth: 1.5,
+    borderColor: "#0058A4",
+    borderRadius: 24,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  registerButtonText: { color: "#0058A4", fontSize: 14, fontWeight: "700" },
+  registerHint: { fontSize: 12, color: "#999", marginTop: 8, lineHeight: 16 },
+  ticketHint: { fontSize: 12, color: "#666", marginTop: 12, lineHeight: 16 },
 
   modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   modalBackdrop: { ...StyleSheet.absoluteFillObject },

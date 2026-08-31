@@ -29,6 +29,12 @@ config: {
         orderId: String,
       },
     },
+    CommunityEventDetailScreen: {
+      path: 'event-complete',
+      parse: {
+        eventId: String,
+      },
+    },
     PaymentMethodScreen: {
       path: 'payment/:orderId/:amount',
       parse: { amount: Number },
