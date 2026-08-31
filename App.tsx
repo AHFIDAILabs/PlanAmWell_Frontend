@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { Platform } from "react-native";
+import { Platform, Linking } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
 import ErrorBoundary from "./src/components/ErrorBoundary";
 import * as Notifications from "expo-notifications";
 import * as Updates from "expo-updates";
@@ -95,6 +96,26 @@ function AppContent() {
   /* ============ OTA UPDATE — runs once on mount, before anything else ============ */
   useEffect(() => {
     checkForOTAUpdate();
+  }, []);
+
+  /* ============ DISMISS LINGERING IN-APP BROWSER ON DEEP LINK ============ */
+  // Every payment/checkout flow (order + event ticket, simulated and real)
+  // opens its hosted checkout via WebBrowser.openBrowserAsync and finishes
+  // with a "Return to PlanAmWell" link back to a planamwell:// deep link.
+  // Tapping that link foregrounds this app and React Navigation's own
+  // `linking` prop below handles the resulting navigation — but it does NOT
+  // dismiss the still-presented browser sheet (SFSafariViewController/
+  // Custom Tab), since that's a native browser-instance action, not a
+  // navigation one. Left alone, the app navigates correctly *underneath* a
+  // browser sheet that never closes, which looks to the user like the
+  // button did nothing. This is the standard fix (the same one
+  // expo-auth-session applies for OAuth redirects) — dismiss whatever
+  // browser instance is open whenever any deep link arrives.
+  useEffect(() => {
+    const subscription = Linking.addEventListener("url", () => {
+      WebBrowser.dismissBrowser();
+    });
+    return () => subscription.remove();
   }, []);
 
   /* ============ SOCKET CONNECT/DISCONNECT LIFECYCLE ============ */

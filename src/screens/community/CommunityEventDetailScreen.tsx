@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import Toast from "react-native-toast-message";
 import * as WebBrowser from "expo-web-browser";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import * as ExpoLinking from "expo-linking";
 import { getEventById, rsvpToEvent, cancelRsvp, initiateEventTicketPayment } from "../../services/Community";
 import { ICommunityEvent } from "../../types/backendType";
 import { EventBanner } from "../../components/community/EventBanner";
@@ -132,6 +133,27 @@ export default function CommunityEventDetailScreen() {
       load();
     }, [load])
   );
+
+  // The simulated (and real) checkout page's "Return to PlanAmWell" link is
+  // a planamwell://event-complete?eventId=... deep link back to THIS same
+  // screen/eventId — since we never navigate away to open checkout (just
+  // present a browser on top), React Navigation treats that as a no-op
+  // navigation to the already-focused route, so useFocusEffect above never
+  // re-fires and the payment result never shows. Listening for the raw URL
+  // directly guarantees a refetch regardless of that ambiguity — and
+  // regardless of platform: openBrowserAsync's returned promise (which the
+  // payment flow below also reloads on) resolves immediately on Android
+  // when the browser merely *opens*, not when it closes, so it can't be
+  // relied on alone to catch this after the fact.
+  useEffect(() => {
+    const subscription = ExpoLinking.addEventListener("url", ({ url }) => {
+      const { hostname, path, queryParams } = ExpoLinking.parse(url);
+      if ((hostname === "event-complete" || path === "event-complete") && queryParams?.eventId === eventId) {
+        load();
+      }
+    });
+    return () => subscription.remove();
+  }, [eventId, load]);
 
   const isTicketed = !!event?.ticketPriceKobo;
   const rsvpStatus = event?.myRsvp?.status;
