@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { View, TouchableOpacity, StyleSheet, Animated, Linking, Dimensions, PanResponder } from "react-native";
-import { FontAwesome } from "@expo/vector-icons";
+import { FontAwesome, FontAwesome6 } from "@expo/vector-icons";
 
 const { width, height } = Dimensions.get("window");
 
@@ -61,10 +61,11 @@ const panResponder = useRef(
   };
 
   const socialButtons = [
-    { name: "facebook", icon: <FontAwesome name="facebook" size={28} color="#4267B2" />, url: "facebook.com/yourpage" },
-    { name: "instagram", icon: <FontAwesome name="instagram" size={28} color="#C13584" />, url: "instagram.com/yourpage" },
-    { name: "twitter", icon: <FontAwesome name="twitter" size={28} color="#1DA1F2" />, url: "twitter.com/yourpage" },
-    { name: "linkedin", icon: <FontAwesome name="linkedin" size={28} color="#0077B5" />, url: "linkedin.com/yourpage" },
+    { name: "facebook", icon: <FontAwesome name="facebook" size={28} color="#4267B2" />, url: "https://www.facebook.com/share/1EuYS5czbR/" },
+    { name: "instagram", icon: <FontAwesome name="instagram" size={28} color="#C13584" />, url: "https://www.instagram.com/planamwell" },
+    { name: "twitter", icon: <FontAwesome name="twitter" size={28} color="#1DA1F2" />, url: "https://x.com/planamwell" },
+    { name: "tiktok", icon: <FontAwesome6 name="tiktok" size={24} color="#000000" />, url: "https://www.tiktok.com/@planamwell" },
+    { name: "linkedin", icon: <FontAwesome name="linkedin" size={28} color="#0077B5" />, url: "https://www.linkedin.com/company/plan-am-well/" },
   ];
 
   return (
