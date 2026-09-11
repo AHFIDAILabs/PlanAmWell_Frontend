@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -54,6 +54,11 @@ export default function TermsOfServiceScreen() {
         <Text style={[styles.lastUpdated, { color: colors.textMuted }]}>
           Last updated: {LAST_UPDATED}
         </Text>
+        <TouchableOpacity onPress={() => Linking.openURL("https://planamwell.com/terms")}>
+          <Text style={[styles.lastUpdated, { color: colors.primary, fontWeight: "700" }]}>
+            View the latest version online →
+          </Text>
+        </TouchableOpacity>
 
         <P>
           Please read these Terms of Service carefully before using {APP_NAME}. By accessing or

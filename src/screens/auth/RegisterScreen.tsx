@@ -64,6 +64,7 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
   const [formData, setFormData] = useState<RegisterFormData>(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const isLoading = loading || authLoading;
 
@@ -99,6 +100,11 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
 
     if (role === 'Doctor' && !doctorImageUri) {
       Toast.show({ type: 'error', text1: 'Profile image required for doctors' });
+      return false;
+    }
+
+    if (!agreedToTerms) {
+      Toast.show({ type: 'error', text1: 'Please agree to the Terms of Service and Privacy Policy' });
       return false;
     }
 
@@ -266,6 +272,28 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
               </Text>
             )}
 
+            {/* ── Terms & Privacy consent ── */}
+            <TouchableOpacity
+              style={s.consentRow}
+              onPress={() => setAgreedToTerms(v => !v)}
+              disabled={isLoading}
+              activeOpacity={0.7}
+            >
+              <View style={[s.checkbox, agreedToTerms && s.checkboxChecked]}>
+                {agreedToTerms && <Feather name="check" size={RFValue(13)} color="#fff" />}
+              </View>
+              <Text style={s.consentTxt}>
+                I agree to the{' '}
+                <Text style={s.consentLink} onPress={() => navigation.navigate('TermsOfServiceScreen' as never)}>
+                  Terms of Service
+                </Text>{' '}
+                and{' '}
+                <Text style={s.consentLink} onPress={() => navigation.navigate('PrivacyPolicyScreen' as never)}>
+                  Privacy Policy
+                </Text>
+              </Text>
+            </TouchableOpacity>
+
             {/* ── Submit ── */}
             <TouchableOpacity style={s.btn} onPress={handleSubmit} disabled={isLoading}>
               {isLoading
@@ -329,6 +357,19 @@ const s = StyleSheet.create({
     fontSize: RFValue(12), color: '#888', textAlign: 'center',
     marginBottom: RFValue(18), paddingHorizontal: RFValue(10), lineHeight: RFValue(18),
   },
+
+  consentRow: {
+    flexDirection: 'row', alignItems: 'flex-start', width: '100%',
+    marginTop: RFValue(6), marginBottom: RFValue(14),
+  },
+  checkbox: {
+    width: RFValue(20), height: RFValue(20), borderRadius: RFValue(4),
+    borderWidth: 1.5, borderColor: '#ccc', alignItems: 'center', justifyContent: 'center',
+    marginRight: RFValue(10), marginTop: RFValue(2),
+  },
+  checkboxChecked: { backgroundColor: '#D81E5B', borderColor: '#D81E5B' },
+  consentTxt: { flex: 1, fontSize: RFValue(13), color: '#666', lineHeight: RFValue(19) },
+  consentLink: { color: '#2196F3', fontWeight: '600' },
 
   btn: {
     width: '100%', paddingVertical: RFValue(14), borderRadius: RFValue(8),
