@@ -100,28 +100,30 @@ const AdvocacyCard: React.FC<AdvocacyCardProps> = ({
             </Text>
           </View>
 
-          <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
-              <Feather name="clock" size={11} color={darkMode ? '#AAA' : '#999'} />
-              <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>
-                {article.readTime} min
-              </Text>
+          {!compact && (
+            <View style={styles.metaRow}>
+              <View style={styles.metaItem}>
+                <Feather name="clock" size={11} color={darkMode ? '#AAA' : '#999'} />
+                <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>
+                  {article.readTime} min
+                </Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Feather name="eye" size={11} color={darkMode ? '#AAA' : '#999'} />
+                <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>{article.views}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Feather name="heart" size={11} color={darkMode ? '#AAA' : '#999'} />
+                <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>{article.likes}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Feather name="message-circle" size={11} color={darkMode ? '#AAA' : '#999'} />
+                <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>
+                  {commentCount ?? article.commentsCount}
+                </Text>
+              </View>
             </View>
-            <View style={styles.metaItem}>
-              <Feather name="eye" size={11} color={darkMode ? '#AAA' : '#999'} />
-              <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>{article.views}</Text>
-            </View>
-            <View style={styles.metaItem}>
-              <Feather name="heart" size={11} color={darkMode ? '#AAA' : '#999'} />
-              <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>{article.likes}</Text>
-            </View>
-            <View style={styles.metaItem}>
-              <Feather name="message-circle" size={11} color={darkMode ? '#AAA' : '#999'} />
-              <Text style={[styles.metaText, darkMode && styles.metaTextDark]}>
-                {commentCount ?? article.commentsCount}
-              </Text>
-            </View>
-          </View>
+          )}
 
           <Text style={[styles.date, darkMode && styles.dateDark]}>
             {formatDate(article.publishedAt || article.createdAt)}

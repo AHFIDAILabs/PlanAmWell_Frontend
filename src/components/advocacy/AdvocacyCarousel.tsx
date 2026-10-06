@@ -11,6 +11,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useComments } from '../../hooks/useComment';
 import { IAdvocacyArticle } from '../../services/Advocacy';
 import SectionHeader from '../common/SectionHeader';
+import { SPACING } from '../../theme/layout';
 
 type AppStackNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<AppStackParamList, "ArticleDetailScreen">,
@@ -18,8 +19,10 @@ type AppStackNavigationProp = CompositeNavigationProp<
 >;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH * 0.85;
-const CARD_MARGIN = 16;
+// Same width as the product and doctor carousels on this screen, so all
+// three read as one consistent size instead of this one dwarfing the rest.
+const CARD_WIDTH = SCREEN_WIDTH * 0.45;
+const CARD_MARGIN = 10;
 const AUTO_SCROLL_INTERVAL = 5000; // 5 seconds
 
 const AdvocacyCarousel: React.FC = () => {
@@ -94,17 +97,18 @@ const AdvocacyCarousel: React.FC = () => {
   keyExtractor={(item) => item._id}
   horizontal
   showsHorizontalScrollIndicator={false}
-  snapToInterval={CARD_WIDTH + CARD_MARGIN * 2}
+  snapToInterval={CARD_WIDTH + CARD_MARGIN}
   decelerationRate="fast"
-  contentContainerStyle={{ paddingHorizontal: CARD_MARGIN }}
+  contentContainerStyle={{ paddingVertical: 5 }}
   onScrollToIndexFailed={onScrollToIndexFailed}
   renderItem={({ item }) => (
     <AdvocacyCard
       article={item}
       width={CARD_WIDTH}
+      compact
       onPress={() => handleArticlePress(item.slug)}
-      commentCount={item.commentsCount} // ✅ use the count from the article itself
-      style={{ marginHorizontal: CARD_MARGIN }}
+      commentCount={item.commentsCount}
+      style={{ marginRight: CARD_MARGIN }}
     />
   )}
 />
@@ -114,7 +118,7 @@ const AdvocacyCarousel: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { width: '100%', marginTop: 20 },
+  container: { width: '100%', marginBottom: SPACING.md },
   loadingContainer: { alignItems: 'center', justifyContent: 'center', height: 200 },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', height: 200 },
   errorText: { color: '#D81E5B' },

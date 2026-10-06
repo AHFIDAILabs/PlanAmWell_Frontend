@@ -8,8 +8,6 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Image,
-  Modal,
-  Switch,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -37,15 +35,7 @@ function formatNextAvailable(iso?: string | null): string {
 export default function AllDoctorsScreen({ navigation }: any) {
   const { doctors, loading, error } = useDoctors();
   const [search, setSearch] = useState("");
-
-  // ---- Filter Modal State ----
-  const [filterVisible, setFilterVisible] = useState(false);
-  const [availableToday, setAvailableToday] = useState(false);
-  const [highRating, setHighRating] = useState(false);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string | null>(null);
-
-  const openFilter = () => setFilterVisible(true);
-  const closeFilter = () => setFilterVisible(false);
 
   // ---- Filtered Doctors ----
   const filtered = useMemo(() => {
@@ -61,23 +51,13 @@ export default function AllDoctorsScreen({ navigation }: any) {
       );
     }
 
-    // Availability filter
-    if (availableToday) {
-      list = list.filter((doc) => doc.availability);
-    }
-
-    // Rating filter
-    if (highRating) {
-      list = list.filter((doc) => (doc.ratings ?? 0) >= 4);
-    }
-
     // Specialty filter
     if (selectedSpecialty) {
       list = list.filter((doc) => doc.specialization === selectedSpecialty);
     }
 
     return list;
-  }, [search, doctors, availableToday, highRating, selectedSpecialty]);
+  }, [search, doctors, selectedSpecialty]);
 
   // --- Get unique specialties for filter options ---
   const specialties = useMemo(() => {
@@ -144,12 +124,7 @@ export default function AllDoctorsScreen({ navigation }: any) {
       />
 
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Find a Doctor</Text>
-          <TouchableOpacity style={styles.filterButton} onPress={openFilter}>
-            <Ionicons name="options-outline" size={24} color="#D81E5B" />
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.headerTitle}>Find a Doctor</Text>
         <Text style={styles.subtitle}>Search doctors, specialties, and more</Text>
 
         <View style={styles.searchContainer}>
@@ -162,6 +137,35 @@ export default function AllDoctorsScreen({ navigation }: any) {
             onChangeText={setSearch}
           />
         </View>
+
+        <FlatList
+          data={specialties}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item}
+          contentContainerStyle={styles.chipsRow}
+          renderItem={({ item }) => {
+            const active = selectedSpecialty === item;
+            return (
+              <TouchableOpacity
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setSelectedSpecialty(active ? null : item)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+              </TouchableOpacity>
+            );
+          }}
+          ListHeaderComponent={
+            <TouchableOpacity
+              style={[styles.chip, !selectedSpecialty && styles.chipActive]}
+              onPress={() => setSelectedSpecialty(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.chipText, !selectedSpecialty && styles.chipTextActive]}>All</Text>
+            </TouchableOpacity>
+          }
+        />
       </View>
 
       <View style={styles.contentContainer}>
@@ -194,52 +198,6 @@ export default function AllDoctorsScreen({ navigation }: any) {
       </View>
 
       <BottomBar activeRoute="AllDoctorScreen" cartItemCount={0} />
-
-      {/* ---------- Filter Modal ---------- */}
-      <Modal visible={filterVisible} transparent animationType="slide">
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={closeFilter} />
-        <View style={styles.filterModal}>
-          <Text style={styles.filterTitle}>Filter Doctors</Text>
-
-          <View style={styles.filterOption}>
-            <Text style={styles.filterOptionText}>Available Today</Text>
-            <Switch value={availableToday} onValueChange={setAvailableToday} trackColor={{ false: "#DDD", true: "#D81E5B" }} thumbColor="#FFF" />
-          </View>
-
-          <View style={styles.filterOption}>
-            <Text style={styles.filterOptionText}>Rating 4.0+</Text>
-            <Switch value={highRating} onValueChange={setHighRating} trackColor={{ false: "#DDD", true: "#D81E5B" }} thumbColor="#FFF" />
-          </View>
-
-          <Text style={styles.filterSubtitle}>Specialty</Text>
-          {specialties.map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={[
-                styles.specialtyOption,
-                selectedSpecialty === s && { backgroundColor: "#D81E5B" },
-              ]}
-              onPress={() => setSelectedSpecialty(selectedSpecialty === s ? null : s)}
-            >
-              <Text
-                style={[
-                  styles.specialtyText,
-                  selectedSpecialty === s && { color: "#FFF" },
-                ]}
-              >
-                {s}
-              </Text>
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity
-            style={styles.applyBtn}
-            onPress={() => closeFilter()}
-          >
-            <Text style={styles.applyText}>Apply Filters</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -248,21 +206,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#fff" },
   headerBg: { position: "absolute", top: 0, width: "100%", height: 280 },
   header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   headerTitle: { fontSize: 28, fontWeight: "700", color: "#1A1A1A" },
-  filterButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
   subtitle: { fontSize: 14, color: "#555", marginBottom: 16 },
   searchContainer: {
     flexDirection: "row",
@@ -279,6 +223,18 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 15, color: "#1A1A1A" },
+  chipsRow: { gap: 8, marginTop: 14 },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#fff",
+  },
+  chipActive: { backgroundColor: "#D81E5B", borderColor: "#D81E5B" },
+  chipText: { fontSize: 13, fontWeight: "600", color: "#555" },
+  chipTextActive: { color: "#fff" },
   contentContainer: { flex: 1, paddingHorizontal: 20 },
   list: { paddingTop: 8, paddingBottom: 100 },
   doctorCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4, borderWidth: 1, borderColor: "#F0F0F0" },
@@ -297,16 +253,4 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60 },
   noResultsText: { fontSize: 18, fontWeight: "600", color: "#666", marginTop: 16, textAlign: "center" },
   noResultsSubtext: { fontSize: 14, color: "#999", marginTop: 8, textAlign: "center" },
-
-  // Filter modal styles
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
-  filterModal: { position: "absolute", bottom: 0, width: "100%", backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "80%" },
-  filterTitle: { fontSize: 18, fontWeight: "700", marginBottom: 15, color: "#1A1A1A" },
-  filterOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  filterOptionText: { fontSize: 15, color: "#333", fontWeight: "500" },
-  filterSubtitle: { fontSize: 15, fontWeight: "600", marginBottom: 10, color: "#333" },
-  specialtyOption: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#ddd", marginBottom: 6 },
-  specialtyText: { fontSize: 14, color: "#222" },
-  applyBtn: { backgroundColor: "#D81E5B", padding: 12, borderRadius: 10, alignItems: "center", marginTop: 12 },
-  applyText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 });
