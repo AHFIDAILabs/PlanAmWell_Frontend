@@ -24,9 +24,11 @@ import DoctorViewSwitcher from '../../components/doctor/DoctorViewSwitcher';
 import { IDoctor } from '../../types/backendType';
 import { RADIUS, SHADOW, SPACING } from '../../theme/layout';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CAROUSEL_CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CAROUSEL_CARD_MARGIN = 10;
-const DOCTOR_CARD_WIDTH = SCREEN_WIDTH * 0.45; 
+const DOCTOR_CARD_WIDTH = SCREEN_WIDTH * 0.45;
+// Same width as the doctor card, so both carousels on this screen read as
+// one consistent size instead of the product card dwarfing everything else.
+const CAROUSEL_CARD_WIDTH = DOCTOR_CARD_WIDTH;
 
 type HomeScreenNavigation = NavigationProp<AppStackParamList>;
 
