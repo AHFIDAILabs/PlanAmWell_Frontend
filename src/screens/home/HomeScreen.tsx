@@ -2,8 +2,9 @@ import React from 'react';
 import { ScrollView, View, StyleSheet, ActivityIndicator, Text, FlatList, Dimensions, TouchableOpacity } from 'react-native';
 import { useRoute, useNavigation, NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import Header from '../../components/home/header';
+import { Feather } from '@expo/vector-icons';
+import HomeGreeting from '../../components/home/HomeGreeting';
+import QuickActionsRow from '../../components/home/QuickActionsRow';
 import AskAmWellCard from '../../components/AskAmWellSection/AskAmWellCard';
 import SectionHeader from '../../components/common/SectionHeader';
 import ProductCard from '../../components/product/ProductCard';
@@ -21,6 +22,7 @@ import Toast from 'react-native-toast-message';
 import AdvocacyCarousel from '../../components/advocacy/AdvocacyCarousel';
 import DoctorViewSwitcher from '../../components/doctor/DoctorViewSwitcher';
 import { IDoctor } from '../../types/backendType';
+import { RADIUS, SHADOW, SPACING } from '../../theme/layout';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CAROUSEL_CARD_WIDTH = SCREEN_WIDTH * 0.75;
 const CAROUSEL_CARD_MARGIN = 10;
@@ -74,7 +76,7 @@ const ProductSection = ({ navigation }: ProductSectionProps) => {
     
     return (
         <View style={styles.productSection}>
-            <SectionHeader title="Our Products" onLinkPress={handleSeeAll} />
+            <SectionHeader title="Shop Pharmacy" onLinkPress={handleSeeAll} />
             {products.length > 0 ? (
                 <FlatList
                     data={products} 
@@ -120,7 +122,7 @@ const DoctorSection = () => {
     
     return (
         <View style={styles.doctorSectionWrapper}>
-            <SectionHeader title="Our Doctors" onLinkPress={handleSeeAll} />
+            <SectionHeader title="Consult a Doctor" onLinkPress={handleSeeAll} />
             
             <FlatList
                 data={doctors} 
@@ -181,8 +183,7 @@ export default function HomeScreen() {
         greetingName = user.firstName;
     }
 
-    const titleText = `Welcome, ${greetingName}!`;
-    const BOTTOM_BAR_TOTAL_HEIGHT = 90; 
+    const BOTTOM_BAR_TOTAL_HEIGHT = 90;
 
 
     const handleViewSwitch = (view: 'dashboard' | 'home') => {
@@ -200,24 +201,18 @@ export default function HomeScreen() {
                     paddingHorizontal: 20,
                 }}
             >
-                <Header 
-                    title={titleText} 
-                    subtitle="PlanAmWell" 
-                    subtitleColor={!isAnonymous ? '#D81E5B' : '#1A1A1A'}
-                />
+                <HomeGreeting name={greetingName} highlight={!isAnonymous} />
 
         {/* View Switcher - Only show for doctors */}
                 {isDoctor && (
-                    <DoctorViewSwitcher 
-                        currentView="home" 
-                        onSwitchView={handleViewSwitch} 
+                    <DoctorViewSwitcher
+                        currentView="home"
+                        onSwitchView={handleViewSwitch}
                     />
                 )}
                 <AskAmWellCard />
 
-                <ProductSection navigation={navigation} /> 
-
-                <DoctorSection />
+                <QuickActionsRow />
 
                 <TouchableOpacity
                     style={styles.communityPromo}
@@ -233,21 +228,26 @@ export default function HomeScreen() {
                         <View style={{ flex: 1 }}>
                             <Text style={styles.communityPromoTitle}>Community Hub</Text>
                             <Text style={styles.communityPromoSubtitle}>
-                                Support groups, workshops & Q&amp;A sessions — join with a chosen name.
+                                Support groups, workshops, and question and answer sessions. Join with a chosen name.
                             </Text>
                         </View>
-                        <Ionicons name="people-circle-outline" size={40} color="rgba(255,255,255,0.85)" />
+                        <Feather name="users" size={32} color="rgba(255,255,255,0.9)" />
                     </LinearGradient>
                 </TouchableOpacity>
 
+                <ProductSection navigation={navigation} />
+
+                <DoctorSection />
+
                 <AdvocacyCarousel />
 
-<SectionHeader 
-  title="Our Partners" 
-  onLinkPress={() => navigation.navigate("AllActivePartnerScreen" as any)} 
-/>
-                
+                <View style={styles.partnersSection}>
+                    <SectionHeader
+                        title="Our Partners"
+                        onLinkPress={() => navigation.navigate("AllActivePartnerScreen" as any)}
+                    />
                     <PartnerCard />
+                </View>
             </ScrollView>
             
             <View style={styles.bottomBarWrapper}>
@@ -270,9 +270,10 @@ const styles = StyleSheet.create({
         backgroundColor: '#0A0A0A',
     },
     communityPromo: {
-        marginTop: 20,
-        borderRadius: 20,
+        marginBottom: SPACING.md,
+        borderRadius: RADIUS.lg,
         overflow: 'hidden',
+        ...SHADOW.medium,
     },
     communityPromoGradient: {
         flexDirection: 'row',
@@ -293,40 +294,34 @@ const styles = StyleSheet.create({
     },
 
     doctorSectionWrapper: {
-        marginBottom: 32,
-        paddingHorizontal: 0,
+        marginBottom: SPACING.md,
     },
     doctorListContainer: {
-        paddingHorizontal: 20,
-        paddingBottom: 5,
+        paddingVertical: 5,
     },
     doctorCardWrapper: {
-        width: DOCTOR_CARD_WIDTH + CAROUSEL_CARD_MARGIN, 
-        marginRight: CAROUSEL_CARD_MARGIN, 
+        width: DOCTOR_CARD_WIDTH + CAROUSEL_CARD_MARGIN,
+        marginRight: CAROUSEL_CARD_MARGIN,
         alignItems: 'center',
         paddingVertical: 5,
     },
-    
-    productSection: { 
-        marginBottom: 30,
-        paddingHorizontal: 0,
+
+    productSection: {
+        marginBottom: SPACING.md,
     },
     productListContainer: {
-        paddingHorizontal: 20,
-        paddingBottom: 5,
+        paddingVertical: 5,
     },
     productCardWrapper: {
-        width: CAROUSEL_CARD_WIDTH + CAROUSEL_CARD_MARGIN, 
+        width: CAROUSEL_CARD_WIDTH + CAROUSEL_CARD_MARGIN,
         marginRight: CAROUSEL_CARD_MARGIN,
         alignItems: 'center',
     },
-    
-    partnerRow: { 
-        flexDirection: 'row', 
-        gap: 16, 
-        marginBottom: 40 
+
+    partnersSection: {
+        marginBottom: SPACING.md,
     },
-    
+
     noDataText: {
         textAlign: 'center',
         color: '#888', 

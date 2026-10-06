@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { usePartners } from "../../hooks/usePartners";
 import PartnerDetailScreen from "../../screens/partner/PartnerDetailScreen";
+import { RADIUS, SHADOW } from "../../theme/layout";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.7;
@@ -107,7 +108,7 @@ export default function PartnerCard() {
         snapToInterval={CARD_WIDTH + 16} // card width + margin
         decelerationRate="fast"
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
+        contentContainerStyle={{ paddingVertical: 4 }}
       />
 
       {/* Partner Detail Modal */}
@@ -126,14 +127,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F0F0F0",
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     padding: 12,
     marginRight: 16,
-    elevation: 2,
-    shadowColor: "#FFECEF",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    ...SHADOW.low,
   },
   image: {
     width: 70,

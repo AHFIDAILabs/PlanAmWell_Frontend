@@ -1,11 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Feather } from '@expo/vector-icons'; 
+import { Feather } from '@expo/vector-icons';
 
 import { NavigationContainer, CompositeNavigationProp,useNavigation } from "@react-navigation/native";
 import  { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AuthStackParamList } from "../../types/Auth";
 import { AppStackParamList } from "../../types/App";
+import { RADIUS, SHADOW } from "../../theme/layout";
 
 type AppStackNavigationProp = CompositeNavigationProp<NativeStackNavigationProp<AppStackParamList, 'AmWellChatModal'>,
  NativeStackNavigationProp<AuthStackParamList>    
@@ -40,7 +41,7 @@ export default function AskAmWellCard() {
           </TouchableOpacity>
         </View>
 
-        {/* 2. Find A Clinic Button (Two-Tone Style) */}
+        {/* 2. Find A Clinic Button (outline style) */}
         <TouchableOpacity
           style={styles.findClinicButton}
           onPress={() => navigation.navigate("FindAClinicScreen")}
@@ -54,11 +55,12 @@ export default function AskAmWellCard() {
 }
 
 const styles = StyleSheet.create({
-  card: { 
-    backgroundColor: '#FFE5EB', 
-    padding: 25, 
-    borderRadius: 16, 
-    marginBottom: 20, 
+  card: {
+    backgroundColor: '#FFE5EB',
+    padding: 25,
+    borderRadius: RADIUS.lg,
+    marginBottom: 24,
+    ...SHADOW.medium,
   },
   title: { 
     fontSize: 18, 
@@ -130,23 +132,22 @@ const styles = StyleSheet.create({
     zIndex: 2, // Ensure it's rendered on top
   },
   
-  // 2. Find A Clinic Button Container (Pink background)
+  // 2. Find A Clinic Button: outline style, same pill shape as the
+  // primary action so the two buttons read as a matched pair.
   findClinicButton: {
-    backgroundColor: '#D81E5B', 
-    paddingVertical: 0, 
-    borderRadius: 30, 
-    alignItems: 'center', 
+    backgroundColor: '#FFF',
+    borderWidth: 1.5,
+    borderColor: '#D81E5B',
+    borderRadius: 30,
+    alignItems: 'center',
     justifyContent: 'center',
-    width: '45%', 
+    paddingVertical: 12,
+    width: '45%',
   },
-  
-  // Text inside the Find A Clinic button (White background trick)
-  findClinicText: { 
-    color: '#D81E5B', 
-    fontWeight: '600', 
-    backgroundColor: '#FFF', 
-    borderRadius: 0, 
-    paddingHorizontal: 10, 
-    paddingVertical: 10, 
+
+  findClinicText: {
+    color: '#D81E5B',
+    fontWeight: '600',
+    fontSize: 15,
   },
 });

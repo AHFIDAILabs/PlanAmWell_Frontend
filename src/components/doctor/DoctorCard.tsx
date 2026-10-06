@@ -11,6 +11,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../context/ThemeContext";
+import { RADIUS, SHADOW } from "../../theme/layout";
 
 interface DoctorCardProps {
   name: string;
@@ -125,14 +126,10 @@ const styles = StyleSheet.create({
     width: CARD_SIZE,
     paddingVertical: 20,
     paddingHorizontal: 14,
-    borderRadius: 18,
+    borderRadius: RADIUS.md,
     alignItems: "center",
     backgroundColor: "#FFF",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 7,
+    ...SHADOW.medium,
   },
 
   cardDark: {

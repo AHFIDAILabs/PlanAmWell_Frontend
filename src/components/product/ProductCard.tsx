@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { IProduct } from "../../types/backendType";
+import { RADIUS, SHADOW } from "../../theme/layout";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -110,13 +111,9 @@ export default function ProductCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFF",
-    borderRadius: 16,
+    borderRadius: RADIUS.md,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.09,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...SHADOW.medium,
   },
 
   imageBox: {
