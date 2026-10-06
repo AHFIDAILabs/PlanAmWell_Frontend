@@ -55,6 +55,23 @@ export default function ProductModal({
                 : "Out of Stock"}
             </Text>
 
+            {(product.dosageForm || product.strength) && (
+              <Text style={styles.metaLine}>
+                {[product.dosageForm, product.strength].filter(Boolean).join(" · ")}
+              </Text>
+            )}
+
+            {product.description ? (
+              <>
+                <Text style={styles.sectionLabel}>ABOUT THIS MEDICATION</Text>
+                <Text style={styles.description}>{product.description}</Text>
+              </>
+            ) : (
+              <Text style={styles.noDescription}>
+                No description available for this product yet.
+              </Text>
+            )}
+
             {isAvailable && onAddToCart && (
               <TouchableOpacity
                 style={styles.addBtn}
@@ -119,6 +136,30 @@ const styles = StyleSheet.create({
   },
   outOfStock: {
     color: "#EF4444",
+  },
+  metaLine: {
+    fontSize: 13,
+    color: "#555",
+    marginBottom: 10,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#999",
+    letterSpacing: 0.3,
+    marginBottom: 6,
+  },
+  description: {
+    fontSize: 14,
+    color: "#333",
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  noDescription: {
+    fontSize: 13,
+    color: "#999",
+    fontStyle: "italic",
+    marginBottom: 20,
   },
   addBtn: {
     backgroundColor: "#D81E5B",

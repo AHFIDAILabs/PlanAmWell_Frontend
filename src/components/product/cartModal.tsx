@@ -72,8 +72,10 @@ const CartModal = ({ visible, onClose }: CartModalProps) => {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.itemPrice}>{item.dosage}</Text>
-      <Text style={styles.itemPrice}>₦{item.price}</Text>
+      {!!item.dosage && <Text style={styles.itemPrice}>{item.dosage}</Text>}
+      <Text style={styles.itemPrice}>
+        ₦{(Number(item.price ?? 0) * Number(item.quantity ?? 0)).toLocaleString()}
+      </Text>
 
       <TouchableOpacity
         onPress={() => removeItem(item.drugId)}
@@ -119,7 +121,7 @@ const CartModal = ({ visible, onClose }: CartModalProps) => {
             />
 
             <SafeAreaView edges={["bottom"]} style={styles.footer}>
-              <Text style={styles.totalText}>Total: ₦{totalAmount}</Text>
+              <Text style={styles.totalText}>Total: ₦{totalAmount.toLocaleString()}</Text>
               <TouchableOpacity style={styles.checkoutBtn} onPress={handleCheckoutPress}>
                 <Text style={styles.checkoutText}>Checkout</Text>
               </TouchableOpacity>

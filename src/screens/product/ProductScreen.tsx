@@ -106,7 +106,11 @@ export default function ProductsScreen() {
     return list;
   }, [products, searchQuery, selectedCategory]);
 
-  const cartCount = cart?.items?.length ?? 0;
+  // Total units across all line items, not the number of distinct products —
+  // tapping "Add to Cart" twice for the same item previously left this badge
+  // stuck at 1, which is exactly what made the cart feel like it wasn't
+  // tracking quantity at all.
+  const cartCount = cart?.totalItems ?? 0;
   const isRefreshing = loading && filteredProducts.length === 0;
 
   const ListHeader = () => (

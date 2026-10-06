@@ -9,7 +9,6 @@ import SectionHeader from '../../components/common/SectionHeader';
 import ProductCard from '../../components/product/ProductCard';
 import DoctorCard from '../../components/doctor/DoctorCard';
 import PartnerCard from '../../components/partner/PartnerCard';
-import AboutCard from '../../components/AboutCard';
 import BottomBar from '../../components/common/BottomBar';
 import { useAuth } from '../../hooks/useAuth';
 import { useCart } from '../../hooks/useCart';
@@ -20,7 +19,6 @@ import { IProduct } from '../../types/backendType';
 import { AppStackParamList } from '../../types/App';
 import Toast from 'react-native-toast-message';
 import AdvocacyCarousel from '../../components/advocacy/AdvocacyCarousel';
-import SocialSticky  from '../../components/socials/socialMedia';
 import DoctorViewSwitcher from '../../components/doctor/DoctorViewSwitcher';
 import { IDoctor } from '../../types/backendType';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -168,6 +166,7 @@ const DoctorSection = () => {
 
 export default function HomeScreen() {
     const { isAnonymous, user } = useAuth();
+    const { cart } = useCart();
     const route = useRoute();
     const navigation = useNavigation<HomeScreenNavigation>();
     const { darkMode } = useTheme();
@@ -193,9 +192,8 @@ export default function HomeScreen() {
     };
     
     return (
-        <View style={[styles.fullContainer, darkMode && styles.fullContainerDark]}> 
-        <SocialSticky />
-            <ScrollView 
+        <View style={[styles.fullContainer, darkMode && styles.fullContainerDark]}>
+            <ScrollView
                 showsVerticalScrollIndicator={false} 
                 contentContainerStyle={{ 
                     paddingBottom: BOTTOM_BAR_TOTAL_HEIGHT, 
@@ -250,16 +248,12 @@ export default function HomeScreen() {
 />
                 
                     <PartnerCard />
-                   
-               
-
-                <AboutCard />
             </ScrollView>
             
             <View style={styles.bottomBarWrapper}>
-                <BottomBar 
-                    activeRoute={route.name} 
-                    cartItemCount={0}
+                <BottomBar
+                    activeRoute={route.name}
+                    cartItemCount={cart?.totalItems ?? 0}
                 />
             </View>
         </View>
