@@ -1,76 +1,60 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { View, StyleSheet } from "react-native";
 import { useNavigation, NavigationProp } from "@react-navigation/native";
 import { AppStackParamList } from "../../types/App";
-import { RADIUS, SHADOW } from "../../theme/layout";
+import QuickActionFlipTile, { QuickAction } from "./QuickActionFlipTile";
 
 type HomeNavigation = NavigationProp<AppStackParamList>;
 
-const ACTIONS: { label: string; icon: keyof typeof Feather.glyphMap; route: keyof AppStackParamList }[] = [
+const ACTIONS: QuickAction[] = [
   { label: "Consult a Doctor", icon: "video", route: "AllDoctorScreen" },
   { label: "Shop Pharmacy", icon: "shopping-bag", route: "ProductsScreen" },
   { label: "Community Hub", icon: "users", route: "CommunityHubScreen" },
   { label: "My Appointments", icon: "calendar", route: "MyAppointments" },
 ];
 
+const BASE_FLIP_INTERVAL_MS = 3200;
+// Each tile starts on a different item and flips on a slightly offset timer,
+// so the row doesn't flip in perfect unison on every cycle.
+const STAGGER_MS = 260;
+
 // A small set of task-oriented shortcuts, grouped by what a patient is
-// trying to do rather than by which part of the catalog it lives in. These
-// are the four things a returning patient is most likely to want on opening
-// the app.
+// trying to do rather than by which part of the catalog it lives in. Each
+// tile hangs from a rope and cycles through all four actions on its own, so
+// the full set is visible across the row over time instead of being fixed
+// one-to-one with a position.
 export default function QuickActionsRow() {
   const navigation = useNavigation<HomeNavigation>();
 
   return (
-    <View style={styles.row}>
-      {ACTIONS.map((action) => (
-        <TouchableOpacity
-          key={action.label}
-          style={styles.tile}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate(action.route as never)}
-        >
-          <View style={styles.iconCircle}>
-            <Feather name={action.icon} size={20} color="#D81E5B" />
-          </View>
-          <Text style={styles.label} numberOfLines={2}>
-            {action.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+    <View style={styles.wrapper}>
+      <View style={styles.rail} />
+      <View style={styles.row}>
+        {ACTIONS.map((_, position) => (
+          <QuickActionFlipTile
+            key={position}
+            items={ACTIONS}
+            startIndex={position}
+            intervalMs={BASE_FLIP_INTERVAL_MS + position * STAGGER_MS}
+            onSelect={(action) => navigation.navigate(action.route as never)}
+          />
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: { marginBottom: 24 },
+  rail: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#C8A165",
+    marginHorizontal: 6,
+    marginBottom: 2,
+  },
   row: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 24,
-  },
-  tile: {
-    flex: 1,
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    borderRadius: RADIUS.sm,
-    paddingVertical: 14,
-    paddingHorizontal: 6,
-    ...SHADOW.low,
-  },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFF0F6",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#333",
-    textAlign: "center",
-    lineHeight: 14,
   },
 });
