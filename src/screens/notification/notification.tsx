@@ -75,6 +75,9 @@ export const NotificationsScreen = () => {
   const [appointments, setAppointments] = useState<IAppointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [activeCallAlerts, setActiveCallAlerts] = useState<Set<string>>(new Set());
+  // Guards accept/reject against a rapid double-tap firing the same network
+  // call twice — holds the appointment id currently in flight, or null.
+  const [processingAppointmentId, setProcessingAppointmentId] = useState<string | null>(null);
   // Tracks the auto-dismiss timeout per alert so it can be cleared on
   // unmount — otherwise it fires later and calls setActiveCallAlerts on a
   // screen the user has already navigated away from.
@@ -104,7 +107,7 @@ export const NotificationsScreen = () => {
       const nameToShow = currentRole === 'doctor' ? patientName : doctorName || 'Doctor';
 
       Alert.alert(
-        '📞 Ongoing Call',
+        'Ongoing Call',
         `${nameToShow} is in the call and waiting for you.`,
         [
           { text: 'Ignore', style: 'cancel', onPress: () => removeActiveCallAlert(appointmentId) },
@@ -199,6 +202,8 @@ export const NotificationsScreen = () => {
     status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'rejected' | 'rescheduled',
     successMsg: string
   ) => {
+    if (processingAppointmentId) return; // ignore re-entrant tap while a call is in flight
+    setProcessingAppointmentId(appt._id!);
     try {
       const payload = { status, ...(appt.userId && { userId: extractId(appt.userId) }) };
       await updateAppointment(appt._id!, payload);
@@ -210,6 +215,8 @@ export const NotificationsScreen = () => {
     } catch (error: any) {
       console.error('Failed to update appointment:', error);
       Toast.show({ type: 'error', text1: 'Failed to update appointment', text2: error.message });
+    } finally {
+      setProcessingAppointmentId(null);
     }
   };
 
@@ -433,6 +440,7 @@ if (notification.type === 'order') {
           }}
           onAccept={handleAccept}
           onReject={handleReject}
+          isProcessing={!!processingAppointmentId}
           onBookAgain={() => {
             if (!selectedAppointment) return;
             navigation.navigate('BookAppointment', {

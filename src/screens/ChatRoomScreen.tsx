@@ -108,6 +108,13 @@ export const ChatRoomScreen: React.FC = () => {
   // Mirrors isLocked for use inside socket handlers (avoids stale closure)
   const isLockedRef = useRef(false);
 
+  // Mirrors whether a video call request is pending/accepted for this
+  // conversation — used to skip mark-as-read while a call overlay (the
+  // outgoing-request UI, or the user having been routed to the full-screen
+  // IncomingCall/VideoCallScreen) is covering the chat, so messages the user
+  // never actually saw don't get silently marked read underneath it.
+  const activeCallRef = useRef(false);
+
   // Stop any in-flight recording/playback when leaving the screen
   useEffect(() => {
     return () => {
@@ -136,6 +143,13 @@ export const ChatRoomScreen: React.FC = () => {
   useEffect(() => {
     isLockedRef.current = isLocked;
   }, [isLocked]);
+
+  // Keep activeCallRef in sync with the conversation's live call request
+  useEffect(() => {
+    activeCallRef.current =
+      conversation?.activeVideoRequest?.status === "pending" ||
+      conversation?.activeVideoRequest?.status === "accepted";
+  }, [conversation?.activeVideoRequest]);
 
   // ─── Offline queue flush ───────────────────────────────────────────────────
   // Flushes pending messages for this conversation when the app returns to the
@@ -234,7 +248,15 @@ export const ChatRoomScreen: React.FC = () => {
         isLockedRef.current = locked;
         setIsLocked(locked);
 
-        await markMessagesAsRead(conv._id);
+        // Don't mark as read if a video call request/call is active for this
+        // conversation — the user is dealing with a call overlay, not
+        // actually reading the messages underneath it.
+        const callActive =
+          conv.activeVideoRequest?.status === "pending" ||
+          conv.activeVideoRequest?.status === "accepted";
+        if (!callActive) {
+          await markMessagesAsRead(conv._id);
+        }
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150);
       }
     } catch (error: any) {
@@ -302,7 +324,7 @@ export const ChatRoomScreen: React.FC = () => {
       });
 
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-      if (conversationIdRef.current) {
+      if (conversationIdRef.current && !activeCallRef.current) {
         markMessagesAsRead(conversationIdRef.current);
       }
     };

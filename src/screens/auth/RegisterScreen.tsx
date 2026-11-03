@@ -268,7 +268,7 @@ const RegisterScreen = ({ navigation }: { navigation: any }) => {
             {/* ── Hint text ── */}
             {role === 'User' && (
               <Text style={s.hint}>
-                📍 Your phone number, address, and other details can be added when you place your first order or book an appointment.
+                Your phone number, address, and other details can be added when you place your first order or book an appointment.
               </Text>
             )}
 

@@ -178,7 +178,7 @@ export default function AmWellChatModal({ navigation }: { navigation: any }) {
                         )}
 
                         {/* Text (hidden for pure media bubbles that have no real text) */}
-                        {!!item.text && item.text !== "📷 Image" && (
+                        {!!item.text && item.text !== "Image" && (
                             <Text style={isUser ? styles.userText : styles.botText}>{item.text}</Text>
                         )}
 

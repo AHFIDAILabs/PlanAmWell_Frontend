@@ -32,6 +32,7 @@ import { useVideoCall } from "../../hooks/useVideoCall";
 import { useAppointmentCallStatus } from "../../hooks/useAppointmentCallStatus";
 import { notificationService } from "../../services/notification";
 import DoctorViewSwitcher from "../../components/doctor/DoctorViewSwitcher";
+import { RADIUS, SPACING, SHADOW } from "../../theme/layout";
 
 const formatTime = (date: Date) =>
   date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -57,6 +58,9 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   const [messagesCount, setMessagesCount] = useState(0);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [checkingCallStatus, setCheckingCallStatus] = useState(false);
+  // Guards accept/reject against a rapid double-tap firing the same network
+  // call twice — holds the appointment id currently in flight, or null.
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
  const { getCallStatus } = useVideoCall();
 
@@ -166,6 +170,8 @@ export default function DoctorDashboardScreen({ navigation }: any) {
 
 
   const handleAccept = async (appt: IAppointment) => {
+    if (processingId) return; // ignore re-entrant tap while a call is in flight
+    setProcessingId(appt._id!);
     try {
       let userId: string | undefined;
       if (appt.userId && typeof appt.userId === "object" && appt.userId !== null && ("_id" in (appt.userId as any))) {
@@ -181,15 +187,19 @@ export default function DoctorDashboardScreen({ navigation }: any) {
       setShowModal(false);
     } catch (error: any) {
       console.error('[Update Error] Failed to confirm appointment:', error.response?.data || error);
-      Toast.show({ 
-        type: "error", 
-        text1: "Failed to confirm", 
-        text2: error.response?.data?.message || error.message 
+      Toast.show({
+        type: "error",
+        text1: "Failed to confirm",
+        text2: error.response?.data?.message || error.message
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleReject = async (appt: IAppointment) => {
+    if (processingId) return; // ignore re-entrant tap while a call is in flight
+    setProcessingId(appt._id!);
     try {
       await updateAppointment(appt._id!, { status: "rejected" });
 
@@ -198,11 +208,13 @@ export default function DoctorDashboardScreen({ navigation }: any) {
       setShowModal(false);
     } catch (error: any) {
       console.error('[Update Error] Failed to reject appointment:', error.response?.data || error);
-      Toast.show({ 
-        type: "error", 
-        text1: "Failed to reject", 
-        text2: error.response?.data?.message || error.message 
+      Toast.show({
+        type: "error",
+        text1: "Failed to reject",
+        text2: error.response?.data?.message || error.message
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -554,7 +566,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
 />
 
         {/* Stats Row */}
-        <View style={[styles.statsRow, { marginTop: 10 }]}>
+        <View style={styles.statsRow}>
           <TouchableOpacity
             style={[styles.statItem, { backgroundColor: colors.card }]}
             onPress={() => navigation.navigate("DoctorAppointment", { filter: "today" })}
@@ -596,7 +608,8 @@ export default function DoctorDashboardScreen({ navigation }: any) {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Up Next</Text>
           {nextAppointment ? (
-            <LinearGradient colors={["#D81E5B20", "#ffffff"]} style={[styles.upNextCard, { padding: 20 }]}>
+            <View style={[styles.upNextCard, { backgroundColor: colors.card }]}>
+              <View style={[styles.upNextAccent, { backgroundColor: colors.primary }]} />
               <Text style={[styles.upNextTime, { color: colors.primary }]}>
                 {formatTime(nextAppointment.scheduledAt)} - Video Consultation
               </Text>
@@ -627,16 +640,16 @@ export default function DoctorDashboardScreen({ navigation }: any) {
                   )}
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={[styles.viewDetailsButton, { backgroundColor: colors.card }]} 
+                <TouchableOpacity
+                  style={[styles.viewDetailsButton, { borderColor: colors.primary }]}
                   onPress={() => openAppointmentModal(nextAppointment)}
                 >
-                  <Text style={[styles.viewDetailsButtonText, { color: colors.text }]}>
+                  <Text style={[styles.viewDetailsButtonText, { color: colors.primary }]}>
                     View Details
                   </Text>
                 </TouchableOpacity>
               </View>
-            </LinearGradient>
+            </View>
           ) : (
             <View style={[styles.upNextCard, styles.emptyStateCard, { backgroundColor: colors.card, padding: 20 }]}>
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>
@@ -656,8 +669,8 @@ export default function DoctorDashboardScreen({ navigation }: any) {
     style={[styles.quickAccessCard, { backgroundColor: colors.card }]}
     onPress={() => navigation.navigate("ConversationsListScreen")}
   >
-    <View style={styles.quickAccessIcon}>
-      <Ionicons name="chatbubbles" size={28} color="#D81E5B" />
+    <View style={[styles.quickAccessIcon, { backgroundColor: colors.primary + "1A" }]}>
+      <Ionicons name="chatbubbles" size={28} color={colors.primary} />
     </View>
     <View style={styles.quickAccessContent}>
       <Text style={[styles.quickAccessTitle, { color: colors.text }]}>
@@ -706,11 +719,11 @@ export default function DoctorDashboardScreen({ navigation }: any) {
               return (
                 <View key={day} style={[
                   styles.dayChip,
-                  { backgroundColor: isAvailable ? '#10B981' : '#E5E7EB' }
+                  { backgroundColor: isAvailable ? colors.success : colors.border }
                 ]}>
                   <Text style={[
                     styles.dayChipText,
-                    { color: isAvailable ? '#fff' : '#6B7280' }
+                    { color: isAvailable ? '#fff' : colors.textMuted }
                   ]}>
                     {day.slice(0, 3)}
                   </Text>
@@ -727,29 +740,33 @@ export default function DoctorDashboardScreen({ navigation }: any) {
             {scheduleData.map((item) => {
               const isSelected = item.date === selectedDate;
               return (
-                <TouchableOpacity 
-                  key={item.date} 
+                <TouchableOpacity
+                  key={item.date}
                   style={[
-                    styles.scheduleDate, 
+                    styles.scheduleDate,
+                    { backgroundColor: colors.card },
                     isSelected && { backgroundColor: colors.primary }
-                  ]} 
+                  ]}
                   onPress={() => setSelectedDate(item.date)}
                 >
                   <Text style={[
-                    styles.dayText, 
+                    styles.dayText,
+                    { color: colors.textMuted },
                     isSelected && { color: colors.background }
                   ]}>
                     {item.day}
                   </Text>
                   <Text style={[
-                    styles.dateText, 
+                    styles.dateText,
+                    { color: colors.text },
                     isSelected && { color: colors.background }
                   ]}>
                     {item.date}
                   </Text>
                   {item.appointments > 0 && (
                     <View style={[
-                      styles.appointmentDot, 
+                      styles.appointmentDot,
+                      { backgroundColor: colors.text },
                       isSelected && { backgroundColor: colors.background }
                     ]} />
                   )}
@@ -818,23 +835,26 @@ export default function DoctorDashboardScreen({ navigation }: any) {
             <ScrollView style={styles.availabilityModalContent}>
               {/* Quick Actions */}
               <View style={styles.quickActions}>
-                <TouchableOpacity 
-                  style={styles.quickActionBtn}
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, { backgroundColor: colors.card }]}
                   onPress={() => setAllDaysAvailability(true)}
                 >
-                  <Text style={styles.quickActionText}>✅ Enable All</Text>
+                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
+                  <Text style={[styles.quickActionText, { color: colors.text }]}>Enable All</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.quickActionBtn}
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, { backgroundColor: colors.card }]}
                   onPress={() => setWeekdaysOnly()}
                 >
-                  <Text style={styles.quickActionText}>📅 Weekdays Only</Text>
+                  <Ionicons name="calendar-outline" size={16} color={colors.info} />
+                  <Text style={[styles.quickActionText, { color: colors.text }]}>Weekdays Only</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.quickActionBtn}
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, { backgroundColor: colors.card }]}
                   onPress={() => setAllDaysAvailability(false)}
                 >
-                  <Text style={styles.quickActionText}>❌ Disable All</Text>
+                  <Ionicons name="close-circle-outline" size={16} color={colors.error} />
+                  <Text style={[styles.quickActionText, { color: colors.text }]}>Disable All</Text>
                 </TouchableOpacity>
               </View>
 
@@ -842,25 +862,25 @@ export default function DoctorDashboardScreen({ navigation }: any) {
               {DAYS_OF_WEEK.map((day) => {
                 const dayData = availability[day] || { available: false, from: "09:00", to: "17:00" };
                 return (
-                  <View key={day} style={[styles.dayCard, { 
+                  <View key={day} style={[styles.dayCard, {
                     backgroundColor: colors.card,
-                    borderColor: dayData.available ? '#10B981' : colors.border
+                    borderColor: dayData.available ? colors.success : colors.border
                   }]}>
                     <View style={styles.dayCardHeader}>
                       <View style={styles.dayCardLeft}>
-                        <View style={[styles.dayBadge, { 
-                          backgroundColor: dayData.available ? '#10B981' : '#E5E7EB' 
+                        <View style={[styles.dayBadge, {
+                          backgroundColor: dayData.available ? colors.success : colors.border
                         }]}>
                           <Text style={[styles.dayBadgeText, {
-                            color: dayData.available ? '#fff' : '#6B7280'
+                            color: dayData.available ? '#fff' : colors.textMuted
                           }]}>
                             {day.slice(0, 3)}
                           </Text>
                         </View>
                         <View>
                           <Text style={[styles.dayName, { color: colors.text }]}>{day}</Text>
-                          <Text style={[styles.dayStatus, { 
-                            color: dayData.available ? '#10B981' : '#6B7280' 
+                          <Text style={[styles.dayStatus, {
+                            color: dayData.available ? colors.success : colors.textMuted
                           }]}>
                             {dayData.available ? '✓ Available' : '✗ Unavailable'}
                           </Text>
@@ -870,7 +890,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
                       <TouchableOpacity
                         onPress={() => toggleAvailability(day)}
                         style={[styles.toggle, {
-                          backgroundColor: dayData.available ? '#10B981' : '#E5E7EB'
+                          backgroundColor: dayData.available ? colors.success : colors.border
                         }]}
                       >
                         <View style={[styles.toggleThumb, {
@@ -938,6 +958,7 @@ export default function DoctorDashboardScreen({ navigation }: any) {
   onJoinCall={handleJoinCall}  // ✅ Pass the join call handler
   getEffectiveStatus={getEffectiveStatus}
   role={"doctor"}
+  isProcessing={!!processingId}
 />
 
       <DoctorBottomBar activeRoute="DoctorDashboardScreen" messagesCount={messagesCount} />
@@ -955,9 +976,9 @@ const styles = StyleSheet.create({
   headerGradient: {
     paddingVertical: 22,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    marginBottom: 10,
+    borderBottomLeftRadius: RADIUS.lg,
+    borderBottomRightRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
   },
   headerTop: {
     flexDirection: "row",
@@ -1002,21 +1023,16 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: 10,
     paddingHorizontal: 16,
-    marginTop: 5,
   },
   statItem: {
-    width: "32%",
+    flex: 1,
     padding: 14,
-    borderRadius: 14,
+    borderRadius: RADIUS.sm,
     alignItems: "center",
     justifyContent: "center",
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    ...SHADOW.low,
   },
   statLabel: {
     fontSize: 12,
@@ -1027,7 +1043,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   section: {
-    marginTop: 24,
+    marginTop: SPACING.md,
     paddingHorizontal: 16,
   },
   sectionTitle: {
@@ -1047,7 +1063,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: RADIUS.sm,
   },
   manageBtnText: {
     color: "#fff",
@@ -1055,12 +1071,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   upNextCard: {
-    borderRadius: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    borderRadius: RADIUS.md,
+    padding: 20,
+    paddingLeft: 24,
+    overflow: "hidden",
+    ...SHADOW.medium,
+  },
+  upNextAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 5,
   },
   upNextTime: {
     fontSize: 14,
@@ -1084,7 +1106,7 @@ const styles = StyleSheet.create({
   joinButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1096,7 +1118,8 @@ const styles = StyleSheet.create({
   viewDetailsButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1.5,
     alignItems: "center",
   },
   viewDetailsButtonText: {
@@ -1105,7 +1128,7 @@ const styles = StyleSheet.create({
   },
   emptyStateCard: {
     padding: 24,
-    borderRadius: 16,
+    borderRadius: RADIUS.md,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 10,
@@ -1119,10 +1142,11 @@ const styles = StyleSheet.create({
   availabilitySummary: {
     marginTop: 10,
     padding: 18,
-    borderRadius: 20,
+    borderRadius: RADIUS.md,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    ...SHADOW.medium,
   },
   summaryItem: {
     alignItems: "center",
@@ -1150,7 +1174,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   dayChip: {
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
@@ -1164,15 +1188,10 @@ const styles = StyleSheet.create({
   scheduleDate: {
     padding: 12,
     marginRight: 10,
-    borderRadius: 14,
-    backgroundColor: "#F3F4F6",
+    borderRadius: RADIUS.sm,
     alignItems: "center",
     width: 70,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    ...SHADOW.low,
   },
   dayText: {
     fontSize: 12,
@@ -1186,7 +1205,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 50,
-    backgroundColor: "#111",
     marginTop: 4,
   },
   appointmentList: {
@@ -1194,15 +1212,11 @@ const styles = StyleSheet.create({
   },
   appointmentCard: {
     padding: 14,
-    borderRadius: 14,
+    borderRadius: RADIUS.md,
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
+    ...SHADOW.low,
   },
   appointmentLeft: {
     width: 70,
@@ -1235,8 +1249,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 16,
     paddingBottom: 30,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
     elevation: 10,
   },
   availabilityModalHeader: {
@@ -1259,19 +1273,22 @@ const styles = StyleSheet.create({
   },
   quickActionBtn: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
+    flexDirection: "row",
     paddingVertical: 10,
     marginHorizontal: 4,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    ...SHADOW.low,
   },
   quickActionText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
   },
   dayCard: {
     padding: 14,
-    borderRadius: 16,
+    borderRadius: RADIUS.md,
     marginBottom: 14,
     borderWidth: 1,
   },
@@ -1345,7 +1362,7 @@ const styles = StyleSheet.create({
   saveAvailabilityBtn: {
     paddingVertical: 14,
     marginTop: 14,
-    borderRadius: 14,
+    borderRadius: RADIUS.sm,
     alignItems: "center",
   },
   saveAvailabilityBtnText: {
@@ -1366,19 +1383,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    borderRadius: 16,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
+    borderRadius: RADIUS.md,
+    ...SHADOW.low,
     gap: 12,
   },
   quickAccessIcon: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#FFF0F6",
     justifyContent: "center",
     alignItems: "center",
   },

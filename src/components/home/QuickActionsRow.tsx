@@ -13,16 +13,10 @@ const ACTIONS: QuickAction[] = [
   { label: "My Appointments", icon: "calendar", route: "MyAppointments" },
 ];
 
-const BASE_FLIP_INTERVAL_MS = 3200;
-// Each tile starts on a different item and flips on a slightly offset timer,
-// so the row doesn't flip in perfect unison on every cycle.
-const STAGGER_MS = 260;
-
 // A small set of task-oriented shortcuts, grouped by what a patient is
 // trying to do rather than by which part of the catalog it lives in. Each
-// tile hangs from a rope and cycles through all four actions on its own, so
-// the full set is visible across the row over time instead of being fixed
-// one-to-one with a position.
+// tile hangs from a rope and permanently shows its own one action — no
+// cycling or flipping.
 export default function QuickActionsRow() {
   const navigation = useNavigation<HomeNavigation>();
 
@@ -30,13 +24,11 @@ export default function QuickActionsRow() {
     <View style={styles.wrapper}>
       <View style={styles.rail} />
       <View style={styles.row}>
-        {ACTIONS.map((_, position) => (
+        {ACTIONS.map((action) => (
           <QuickActionFlipTile
-            key={position}
-            items={ACTIONS}
-            startIndex={position}
-            intervalMs={BASE_FLIP_INTERVAL_MS + position * STAGGER_MS}
-            onSelect={(action) => navigation.navigate(action.route as never)}
+            key={action.label}
+            item={action}
+            onSelect={(selected) => navigation.navigate(selected.route as never)}
           />
         ))}
       </View>

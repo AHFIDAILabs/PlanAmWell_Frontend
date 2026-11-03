@@ -5,11 +5,17 @@ import { CartContext } from "../context/CartContext"; // ← adjust path
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL;
 
+const PENDING_POLL_INTERVAL_MS = 4000;
+
 export const useOrderDetails = (orderId: string, token: string) => {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Mirrors `order` for the polling loop below — the loop's setInterval
+  // closure captures state as of its first run, so it needs a ref to see the
+  // latest paymentStatus on each tick without re-creating the interval.
+  const orderRef = useRef<any>(null);
   const { clearCartLocal } = useContext(CartContext);
 
   const fetchOrder = useCallback(async () => {
@@ -24,6 +30,7 @@ export const useOrderDetails = (orderId: string, token: string) => {
   }
 );
       setOrder(res.data.data);
+      orderRef.current = res.data.data;
     } catch (err) {
       console.error("[useOrderDetails] Failed to fetch order", err);
     } finally {
@@ -87,6 +94,14 @@ export const useOrderDetails = (orderId: string, token: string) => {
     }
   }, [orderId, token, fetchOrder, refreshDelivery, clearCartLocal]);
 
+  // A single mount-time check plus one 3s-later retry only caught a payment
+  // that completed within a few seconds of landing here — but this screen is
+  // typically showing WHILE the user is off in a checkout browser tab
+  // actually paying, which can easily take longer, and a user who manually
+  // switches back (instead of tapping a "Return to app" link) never fires
+  // the order-complete deep link below either. Poll like the web order pages
+  // do, for as long as the order is still pending, instead of giving up
+  // after one retry.
   useEffect(() => {
     let isMounted = true;
 
@@ -94,30 +109,25 @@ export const useOrderDetails = (orderId: string, token: string) => {
       await fetchOrder();
       if (!isMounted) return;
       await verifyAndRefresh();
-
-      retryTimerRef.current = setTimeout(async () => {
-        if (!isMounted) return;
-        await verifyAndRefresh();
-      }, 3000);
     };
 
     init();
 
+    retryTimerRef.current = setInterval(async () => {
+      if (!isMounted) return;
+      if (orderRef.current?.paymentStatus && orderRef.current.paymentStatus !== "pending") {
+        if (retryTimerRef.current) clearInterval(retryTimerRef.current);
+        return;
+      }
+      await verifyAndRefresh();
+    }, PENDING_POLL_INTERVAL_MS);
+
     return () => {
       isMounted = false;
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (retryTimerRef.current) clearInterval(retryTimerRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The mount-time check above (plus its one 3s-later retry) only catches a
-  // payment that completes within a few seconds of landing here — but this
-  // screen is typically what's showing WHILE the user is off in a checkout
-  // browser tab actually paying, which can easily take longer. Once they
-  // finish and return via the planamwell://order-complete deep link, nothing
-  // was re-checking status after that initial window, leaving the order
-  // stuck showing "Awaiting Payment Confirmation" until the user notices and
-  // manually taps "Refresh Status" — exactly the same class of bug fixed for
-  // the event-ticket flow (CommunityEventDetailScreen), applied here too.
   useEffect(() => {
     const subscription = ExpoLinking.addEventListener("url", ({ url }) => {
       const { hostname, path, queryParams } = ExpoLinking.parse(url);

@@ -77,7 +77,7 @@ export async function displayIncomingCallNotification(data: IncomingCallData): P
 
   await notifee.displayNotification({
     id: CALL_NOTIFICATION_ID,
-    title: isVoice ? '📞 Incoming Voice Call' : '📹 Incoming Video Call',
+    title: isVoice ? 'Incoming Voice Call' : 'Incoming Video Call',
     body: `${data.callerName || 'Someone'} is calling you`,
     data: { ...data },
     android: {

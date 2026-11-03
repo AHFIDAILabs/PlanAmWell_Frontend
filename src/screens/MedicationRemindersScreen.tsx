@@ -67,7 +67,7 @@ async function scheduleForReminder(reminder: Reminder): Promise<string[]> {
     try {
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: `💊 ${reminder.drugName}`,
+          title: reminder.drugName,
           body: reminder.dosage ? `${reminder.dosage}${reminder.instructions ? ' — ' + reminder.instructions : ''}` : 'Time to take your medication',
           data: { type: 'medication_reminder', reminderId: reminder._id },
           sound: true,
@@ -122,7 +122,16 @@ export default function MedicationRemindersScreen() {
   const loadReminders = useCallback(async () => {
     try {
       const res = await axios.get(BASE);
-      if (res.data.success) setReminders(res.data.data);
+      if (res.data.success) {
+        const fetched: Reminder[] = res.data.data;
+        setReminders(fetched);
+        // Rehydrate real OS notifications for active reminders — after a
+        // reinstall or fresh login the device has no scheduled notifications
+        // yet, so without this the reminders only ever showed up in this list.
+        for (const reminder of fetched) {
+          await upsertNotifications(reminder);
+        }
+      }
     } catch (_) {}
     setLoading(false);
   }, []);

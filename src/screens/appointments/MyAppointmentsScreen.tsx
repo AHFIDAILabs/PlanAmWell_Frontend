@@ -23,6 +23,7 @@ import { getDoctorImageUri } from "../../services/Doctor";
 import { IAppointment, IDoctor } from "../../types/backendType";
 import { useVideoCall } from "../../hooks/useVideoCall";
 import AppointmentModal from "../../components/appointment/AppointmentModal";
+import { RADIUS } from "../../theme/layout";
 import BottomBar from "../../components/common/BottomBar";
 import socketService from "../../services/socketService"; // Correct import
 
@@ -387,16 +388,16 @@ const renderItem = ({ item }: { item: IAppointment }) => {
       )}
 
       <View style={styles.divider} />
-      <Text style={styles.time}>🕒 {formatAppointmentTime(item.scheduledAt)}</Text>
+      <Text style={styles.time}>{formatAppointmentTime(item.scheduledAt)}</Text>
 
       {diffMinutes > 0 && diffMinutes <= 60 && (
-        <Text style={styles.countdown}>⏰ Starts in {Math.ceil(diffMinutes)} minutes</Text>
+        <Text style={styles.countdown}>Starts in {Math.ceil(diffMinutes)} minutes</Text>
       )}
 
       <View style={styles.statusRow}>
         <View style={[styles.statusPill, { backgroundColor: getStatusColor(effectiveStatus) }]}>
           <Text style={styles.statusText}>
-            {effectiveStatus === "in-progress" ? "🔴 LIVE" : effectiveStatus.toUpperCase()}
+            {effectiveStatus === "in-progress" ? "LIVE" : effectiveStatus.toUpperCase()}
           </Text>
         </View>
 
@@ -501,7 +502,7 @@ const canOpenChat = (appt: IAppointment): boolean => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#F9FAFB" },
   title: { fontSize: 24, fontWeight: "700", marginBottom: 16, color: "#111" },
-  card: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  card: { backgroundColor: "#fff", borderRadius: RADIUS.md, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   cardDisabled: { opacity: 0.6 },
   doctorRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#E5E7EB" },

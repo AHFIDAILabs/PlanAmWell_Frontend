@@ -172,7 +172,7 @@ export const DoctorScreen: React.FC = () => {
 
         {lowDataMode && (
           <View style={styles.lowDataBadge}>
-            <Text style={styles.lowDataBadgeText}>⚡ Low Data Mode — images hidden</Text>
+            <Text style={styles.lowDataBadgeText}>Low Data Mode — images hidden</Text>
           </View>
         )}
 
@@ -237,7 +237,7 @@ export const DoctorScreen: React.FC = () => {
 
         {!!doctorPhone && (
           <TouchableOpacity style={styles.whatsappBtn} onPress={handleWhatsApp} activeOpacity={0.8}>
-            <Text style={styles.whatsappBtnText}>💬  Contact via WhatsApp</Text>
+            <Text style={styles.whatsappBtnText}>Contact via WhatsApp</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

@@ -22,7 +22,7 @@ import Toast from "react-native-toast-message";
 import { IDoctor } from "../../types/backendType";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../hooks/useAuth";
-import { notificationService } from "../../services/notification";
+import { getUserConversations } from "../../services/Chat";
 import DoctorBottomBar from "../../components/common/DoctorBottomBar";
 import { updateDoctorProfile } from "../../services/Doctor";
 
@@ -35,7 +35,7 @@ export default function DoctorProfileScreen() {
     isDoctor() ? (user as IDoctor) : null
   );
   const [editVisible, setEditVisible] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
+  const [messagesCount, setMessagesCount] = useState(0);
   const [saving, setSaving] = useState(false);
 
   // Local avatar URI selected from picker (before save)
@@ -53,9 +53,17 @@ export default function DoctorProfileScreen() {
 
   // ─── Hooks must all be before any conditional return ──────────
   useEffect(() => {
-    notificationService.getUnreadCount().then((res) => {
-      if (res.success) setNotificationCount(res.data.count);
-    }).catch(() => {});
+    // Messages badge must reflect real unread chat counts, not the general
+    // notification unread count — see DoctorDashboard's fetchMessagesCount.
+    getUserConversations()
+      .then((conversations) => {
+        const total = conversations.reduce(
+          (sum, c) => sum + (c.unreadCount?.doctor ?? 0),
+          0
+        );
+        setMessagesCount(total);
+      })
+      .catch(() => {});
   }, []);
 
   // Sync local doctor state when user changes (e.g. after refresh)
@@ -322,7 +330,7 @@ export default function DoctorProfileScreen() {
             </View>
             {!doctor.licenseNumber && (
               <Text style={styles.verificationNote}>
-                🔍 Verification in progress. Our team will review your credentials shortly.
+                Verification in progress. Our team will review your credentials shortly.
               </Text>
             )}
           </View>
@@ -479,7 +487,7 @@ export default function DoctorProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <DoctorBottomBar activeRoute="DoctorProfileScreen" messagesCount={notificationCount} />
+      <DoctorBottomBar activeRoute="DoctorProfileScreen" messagesCount={messagesCount} />
     </SafeAreaView>
   );
 }

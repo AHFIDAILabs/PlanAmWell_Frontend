@@ -11,8 +11,7 @@ import { linking } from "./src/navigations/linking";
 import { CartProvider } from "./src/context/CartContext";
 import { NotificationProvider } from "./src/context/notificatonContext";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
-import { AuthProvider } from "./src/context/AuthContext";
-import { useAuth } from "./src/hooks/useAuth";
+import { AuthProvider, useAuthContext } from "./src/context/AuthContext";
 import Toast from "react-native-toast-message";
 import socketService from "./src/services/socketService";
 import pushNotificationService from "./src/services/pushNotificationService";
@@ -87,7 +86,15 @@ async function checkForOTAUpdate() {
 /* ================= App Content ================= */
 function AppContent() {
   const { darkMode } = useTheme();
-  const { isAuthenticated } = useAuth();
+  // ✅ Shared AuthContext instance (not a fresh useAuth() call) — this
+  // component sits above <AuthProvider> in the tree, so it must consume the
+  // same context every screen's login flow writes to, otherwise its
+  // isAuthenticated would come from its own isolated useAuth() copy that
+  // never learns about a login performed elsewhere mid-session (see the
+  // fragmented-useAuth() note in notificatonContext.tsx), leaving the
+  // Android call-notification setup below stuck on stale/missing auth until
+  // a full app restart.
+  const { isAuthenticated } = useAuthContext();
   const navigationRef = useRef<any>(null);
   const prevRouteNameRef = useRef<string | undefined>(undefined);
   const notificationListener = useRef<any>(null);
@@ -357,32 +364,30 @@ function AppContent() {
   return (
     <>
       <StatusBar style={darkMode ? "light" : "dark"} />
-      <AuthProvider>
-        <NotificationProvider>
-          <CartProvider>
-            <NavigationContainer
-              ref={navigationRef}
-              linking={linking}
-              fallback={null}
-              onReady={() => {
-                if (navigationRef.current) {
-                  pushNotificationService.setNavigationRef(navigationRef.current);
-                  prevRouteNameRef.current = navigationRef.current.getCurrentRoute?.()?.name;
-                }
-              }}
-              onStateChange={() => {
-                const currentRouteName = navigationRef.current?.getCurrentRoute?.()?.name;
-                if (currentRouteName && currentRouteName !== prevRouteNameRef.current) {
-                  logScreenView(currentRouteName);
-                  prevRouteNameRef.current = currentRouteName;
-                }
-              }}
-            >
-              <AppNavigator />
-            </NavigationContainer>
-          </CartProvider>
-        </NotificationProvider>
-      </AuthProvider>
+      <NotificationProvider>
+        <CartProvider>
+          <NavigationContainer
+            ref={navigationRef}
+            linking={linking}
+            fallback={null}
+            onReady={() => {
+              if (navigationRef.current) {
+                pushNotificationService.setNavigationRef(navigationRef.current);
+                prevRouteNameRef.current = navigationRef.current.getCurrentRoute?.()?.name;
+              }
+            }}
+            onStateChange={() => {
+              const currentRouteName = navigationRef.current?.getCurrentRoute?.()?.name;
+              if (currentRouteName && currentRouteName !== prevRouteNameRef.current) {
+                logScreenView(currentRouteName);
+                prevRouteNameRef.current = currentRouteName;
+              }
+            }}
+          >
+            <AppNavigator />
+          </NavigationContainer>
+        </CartProvider>
+      </NotificationProvider>
 
       <Toast />
     </>
@@ -394,7 +399,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

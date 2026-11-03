@@ -241,7 +241,7 @@ handleNotificationReceived(
   async scheduleTestNotification() {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '📞 Incoming Call (Test)',
+        title: 'Incoming Call (Test)',
         body: 'Dr. Test is calling you',
         data: {
           type: 'incoming_call',

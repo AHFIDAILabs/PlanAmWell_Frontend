@@ -1,14 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Svg, { Path, Rect, Ellipse } from "react-native-svg";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  Easing,
-  runOnJS,
-} from "react-native-reanimated";
 import { RADIUS, SHADOW } from "../../theme/layout";
 
 export interface QuickAction {
@@ -18,13 +11,10 @@ export interface QuickAction {
 }
 
 interface QuickActionFlipTileProps {
-  items: QuickAction[];
-  startIndex: number;
-  intervalMs: number;
+  item: QuickAction;
   onSelect: (item: QuickAction) => void;
 }
 
-const FLIP_DURATION = 600;
 const TILE_HEIGHT = 92;
 
 // A small rope-and-clothespin illustration hanging above each tile, drawn in
@@ -40,82 +30,19 @@ function RopeClip() {
   );
 }
 
-function TileContent({ item }: { item: QuickAction }) {
-  return (
-    <>
-      <View style={styles.iconCircle}>
-        <Feather name={item.icon} size={20} color="#D81E5B" />
-      </View>
-      <Text style={styles.label} numberOfLines={2}>
-        {item.label}
-      </Text>
-    </>
-  );
-}
-
-// Each tile cycles through the full set of quick actions on its own timer,
-// flipping like a single page of a notepad hinged at the top: the current
-// face lifts and rotates back and over, and the next item is already
-// waiting on the reverse side. Tapping the tile navigates to whichever
-// action is showing at that moment.
-export default function QuickActionFlipTile({
-  items,
-  startIndex,
-  intervalMs,
-  onSelect,
-}: QuickActionFlipTileProps) {
-  const [currentIndex, setCurrentIndex] = useState(startIndex % items.length);
-  const progress = useSharedValue(0);
-
-  function advance() {
-    setCurrentIndex((i) => (i + 1) % items.length);
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      progress.value = withTiming(
-        1,
-        { duration: FLIP_DURATION, easing: Easing.inOut(Easing.cubic) },
-        (finished) => {
-          if (finished) {
-            runOnJS(advance)();
-            progress.value = 0;
-          }
-        }
-      );
-    }, intervalMs);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, intervalMs]);
-
-  const current = items[currentIndex];
-  const next = items[(currentIndex + 1) % items.length];
-
-  const frontStyle = useAnimatedStyle(() => ({
-    opacity: progress.value < 0.5 ? 1 : 0,
-    transform: [{ perspective: 900 }, { rotateX: `${-progress.value * 90}deg` }],
-  }));
-
-  const backStyle = useAnimatedStyle(() => ({
-    opacity: progress.value >= 0.5 ? 1 : 0,
-    transform: [{ perspective: 900 }, { rotateX: `${90 - progress.value * 90}deg` }],
-  }));
-
+// Each tile hangs from its own rope and permanently shows one quick action —
+// no cycling or flipping. Tapping it navigates straight to that action.
+export default function QuickActionFlipTile({ item, onSelect }: QuickActionFlipTileProps) {
   return (
     <View style={styles.column}>
       <RopeClip />
-      <Pressable style={styles.tileWrapper} onPress={() => onSelect(current)}>
-        <Animated.View style={[styles.face, frontStyle]}>
-          <TileContent item={current} />
-        </Animated.View>
-        <Animated.View style={[styles.face, styles.faceAbsolute, backStyle]}>
-          <TileContent item={next} />
-        </Animated.View>
+      <Pressable style={styles.tile} onPress={() => onSelect(item)}>
+        <View style={styles.iconCircle}>
+          <Feather name={item.icon} size={20} color="#D81E5B" />
+        </View>
+        <Text style={styles.label} numberOfLines={2}>
+          {item.label}
+        </Text>
       </Pressable>
     </View>
   );
@@ -123,11 +50,7 @@ export default function QuickActionFlipTile({
 
 const styles = StyleSheet.create({
   column: { flex: 1, alignItems: "center" },
-  tileWrapper: {
-    width: "100%",
-    height: TILE_HEIGHT,
-  },
-  face: {
+  tile: {
     width: "100%",
     height: TILE_HEIGHT,
     alignItems: "center",
@@ -137,13 +60,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 6,
     ...SHADOW.low,
-    backfaceVisibility: "hidden",
-    transformOrigin: "top",
-  },
-  faceAbsolute: {
-    position: "absolute",
-    top: 0,
-    left: 0,
   },
   iconCircle: {
     width: 40,

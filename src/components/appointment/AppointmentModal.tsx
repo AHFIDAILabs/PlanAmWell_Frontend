@@ -20,6 +20,7 @@ interface Props {
   onOpenChat?:      (appt: IAppointment) => void;
   getEffectiveStatus: (appt: IAppointment) => string;
   role:             "user" | "doctor";
+  isProcessing?:    boolean;
 }
 
 export default function AppointmentModal({
@@ -33,6 +34,7 @@ export default function AppointmentModal({
   onOpenChat,
   getEffectiveStatus,
   role,
+  isProcessing = false,
 }: Props) {
   if (!appointment) return null;
 
@@ -226,10 +228,18 @@ export default function AppointmentModal({
             {/* Doctor: accept / reject */}
             {role === "doctor" && effectiveStatus === "pending" && onAccept && onReject && (
               <View style={styles.rowActions}>
-                <TouchableOpacity style={[styles.btn, styles.rejectBtn]} onPress={() => onReject(appointment)}>
+                <TouchableOpacity
+                  style={[styles.btn, styles.rejectBtn, isProcessing && styles.btnDisabled]}
+                  onPress={() => onReject(appointment)}
+                  disabled={isProcessing}
+                >
                   <Text style={styles.btnText}>Reject</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={() => onAccept(appointment)}>
+                <TouchableOpacity
+                  style={[styles.btn, styles.acceptBtn, isProcessing && styles.btnDisabled]}
+                  onPress={() => onAccept(appointment)}
+                  disabled={isProcessing}
+                >
                   <Text style={styles.btnText}>Accept</Text>
                 </TouchableOpacity>
               </View>
@@ -350,6 +360,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   btnText:      { fontSize: 15, fontWeight: "700", color: "#fff" },
+  btnDisabled:  { opacity: 0.6 },
   acceptBtn:    { backgroundColor: "#4CAF50" },
   rejectBtn:    { backgroundColor: "#F44336" },
   closeBtn:     { backgroundColor: "#2196F3" },

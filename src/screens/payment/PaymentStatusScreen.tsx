@@ -45,11 +45,11 @@ export default function PaymentStatusScreen() {
     if (status !== "paid") return;
 
     const timer = setTimeout(() => {
-      navigation.replace("MyOrders");
+      navigation.replace("OrderDetailsScreen", { orderId: params.orderId });
     }, SUCCESS_REDIRECT_DELAY);
 
     return () => clearTimeout(timer);
-  }, [status, navigation]);
+  }, [status, navigation, params.orderId]);
 
   /* ───────── Loading ───────── */
   if (loading) {
@@ -111,7 +111,11 @@ export default function PaymentStatusScreen() {
 
         <TouchableOpacity
           style={styles.secondaryBtn}
-          onPress={() => navigation.replace("MyOrders")}
+          onPress={() =>
+            navigation.replace("OrderDetailsScreen", {
+              orderId: params.orderId,
+            })
+          }
         >
           <Text style={styles.secondaryBtnText}>View Order</Text>
         </TouchableOpacity>
@@ -132,7 +136,9 @@ export default function PaymentStatusScreen() {
       {/* Manual opt‑out */}
       <TouchableOpacity
         style={styles.primaryBtn}
-        onPress={() => navigation.replace("MyOrders")}
+        onPress={() =>
+          navigation.replace("OrderDetailsScreen", { orderId: params.orderId })
+        }
       >
         <Text style={styles.primaryBtnText}>View Order Now</Text>
       </TouchableOpacity>

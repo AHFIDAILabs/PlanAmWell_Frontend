@@ -240,7 +240,7 @@ export const useChatBot = (userId?: string, authSessionId?: string | null) => {
             // Show the media bubble in local state
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
-                text: mediaType === "image" ? "📷 Image" : `📄 ${fileName}`,
+                text: mediaType === "image" ? "Image" : fileName,
                 sender: "user",
                 timestamp: new Date(),
                 mediaUrl: uploaded.url,

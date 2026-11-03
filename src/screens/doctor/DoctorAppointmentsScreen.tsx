@@ -165,6 +165,20 @@ export default function DoctorAppointmentsScreen({ navigation }: any) {
     fetchAppointments();
   }, [doctorId]);
 
+  // callStatusMap was previously initialized to {} and never populated,
+  // so every call-status badge in this list fell back to the plain
+  // date-math status and never reflected a call actually ringing/in
+  // progress/ended. Each appointment already carries its own live
+  // `callStatus` from the backend — keep the map in sync with it.
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    appointments.forEach((appt) => {
+      if (!appt._id || !appt.callStatus || appt.callStatus === "idle") return;
+      map[appt._id] = appt.callStatus === "ended" ? "call-ended" : appt.callStatus;
+    });
+    setCallStatusMap(map);
+  }, [appointments]);
+
   const openModal = (appointment: IAppointment) => {
     setSelectedAppointment(appointment);
     setModalVisible(true);

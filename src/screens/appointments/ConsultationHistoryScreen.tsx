@@ -389,27 +389,27 @@ export const ConsultationHistoryScreen: React.FC = () => {
 
          
               <View style={styles.modalSection}>
-                <Text style={styles.sectionLabel}>📅 Date & Time</Text>
+                <Text style={styles.sectionLabel}>Date & Time</Text>
                 <Text style={styles.sectionValue}>
                   {selectedAppointment.scheduledAt.toLocaleString()}
                 </Text>
               </View>
 
               <View style={styles.modalSection}>
-                <Text style={styles.sectionLabel}>⏱️ Duration</Text>
+                <Text style={styles.sectionLabel}>Duration</Text>
                 <Text style={styles.sectionValue}>{selectedAppointment.duration} minutes</Text>
               </View>
 
               {selectedAppointment.reason && (
                 <View style={styles.modalSection}>
-                  <Text style={styles.sectionLabel}>📝 Reason</Text>
+                  <Text style={styles.sectionLabel}>Reason</Text>
                   <Text style={styles.sectionValue}>{selectedAppointment.reason}</Text>
                 </View>
               )}
 
               {selectedAppointment.notes && (
                 <View style={styles.modalSection}>
-                  <Text style={styles.sectionLabel}>💭 Notes</Text>
+                  <Text style={styles.sectionLabel}>Notes</Text>
                   <Text style={styles.sectionValue}>{selectedAppointment.notes}</Text>
                 </View>
               )}

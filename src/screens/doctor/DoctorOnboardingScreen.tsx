@@ -235,7 +235,7 @@ export default function DoctorOnboardingScreen() {
 
       Toast.show({
         type: "success",
-        text1: "Welcome to PlanAmWell! 🎉",
+        text1: "Welcome to PlanAmWell!",
         text2: "Your profile is ready.",
       });
 
