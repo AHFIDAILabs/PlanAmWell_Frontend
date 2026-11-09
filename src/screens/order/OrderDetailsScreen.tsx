@@ -19,10 +19,29 @@ import { Ionicons } from "@expo/vector-icons";
 type RouteProps = RouteProp<AppStackParamList, "OrderDetailsScreen">;
 type NavigationProp = StackNavigationProp<AppStackParamList>;
 
-const DELIVERY_STEPS = ["pending", "shipped", "delivered"];
+// Matches the status vocabulary the backend/admin dashboard actually use
+// (pending/processing/shipped/delivered/cancelled/failed) — this previously
+// omitted "processing", so an order in that state showed every step as
+// incomplete (looked like nothing had happened), and had no terminal
+// treatment for cancelled/failed at all (rendered identically to "pending").
+const DELIVERY_STEPS = ["pending", "processing", "shipped", "delivered"];
+const NEGATIVE_DELIVERY_STATUSES = ["cancelled", "failed"];
 
 function DeliveryTracker({ status }: { status: string }) {
-  const current = DELIVERY_STEPS.indexOf(status?.toLowerCase());
+  const normalized = status?.toLowerCase();
+
+  if (NEGATIVE_DELIVERY_STATUSES.includes(normalized)) {
+    return (
+      <View style={styles.trackerCancelledBanner}>
+        <Ionicons name="close-circle" size={18} color="#C62828" />
+        <Text style={styles.trackerCancelledText}>
+          {normalized === "cancelled" ? "Delivery was cancelled" : "Delivery failed"}
+        </Text>
+      </View>
+    );
+  }
+
+  const current = DELIVERY_STEPS.indexOf(normalized);
   return (
     <View style={styles.trackerContainer}>
       {DELIVERY_STEPS.map((step, idx) => {
@@ -188,11 +207,16 @@ export default function OrderDetailsScreen() {
 }
 
 const StatusRow = ({ label, value }: { label: string; value: string }) => {
-  const isPositive = ["paid", "delivered", "shipped"].includes(value?.toLowerCase());
+  const normalized = value?.toLowerCase();
+  // Cancelled/failed previously fell into the same "neutral" bucket as
+  // pending, making a dead order look like it was simply still in progress.
+  const isNegative = ["cancelled", "failed"].includes(normalized);
+  const isPositive = !isNegative && ["paid", "delivered", "shipped"].includes(normalized);
+  const tone = isNegative ? styles.statusNegative : isPositive ? styles.statusPositive : styles.statusNeutral;
   return (
     <View style={styles.statusRow}>
       <Text style={styles.statusLabel}>{label}</Text>
-      <Text style={[styles.statusValue, isPositive ? styles.statusPositive : styles.statusNeutral]}>
+      <Text style={[styles.statusValue, tone]}>
         {value}
       </Text>
     </View>
@@ -259,6 +283,7 @@ const styles = StyleSheet.create({
   statusValue: { fontSize: 14, textTransform: "capitalize", fontWeight: "600" },
   statusPositive: { color: "#2e7d32" },
   statusNeutral: { color: "#e65100" },
+  statusNegative: { color: "#C62828" },
   row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
   itemName: { fontSize: 14, color: "#444", flex: 1 },
   itemPrice: { fontSize: 14, fontWeight: "600", color: "#222" },
@@ -326,5 +351,18 @@ const styles = StyleSheet.create({
   trackerLabelActive: {
     color: "#D81E5B",
     fontWeight: "700",
+  },
+  trackerCancelledBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FDECEA",
+    borderRadius: 10,
+    padding: 12,
+  },
+  trackerCancelledText: {
+    color: "#C62828",
+    fontWeight: "700",
+    fontSize: 14,
   },
 });

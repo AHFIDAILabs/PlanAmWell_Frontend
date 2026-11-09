@@ -40,15 +40,23 @@ export const useOrderDetails = (orderId: string, token: string) => {
 
   const refreshDelivery = useCallback(async () => {
     try {
-   await axios.get(
-  `${SERVER_URL}/api/v1/orders/${orderId}/delivery-status`,
-  {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Cache-Control': 'no-cache',
-    }
-  }
-);
+      const res = await axios.get(
+        `${SERVER_URL}/api/v1/orders/${orderId}/delivery-status`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+          }
+        }
+      );
+      // Apply immediately instead of only relying on the fetchOrder() call
+      // right after this — that re-GET happens to pick up the same freshly
+      // saved value today, but this response is the direct source of truth
+      // for what just got written, not an incidental side effect.
+      const newStatus = res.data?.deliveryStatus;
+      if (newStatus) {
+        setOrder((prev: any) => (prev ? { ...prev, deliveryStatus: newStatus } : prev));
+      }
     } catch (err: any) {
       console.warn("[useOrderDetails] Delivery refresh failed:", err?.response?.data || err?.message);
     }
