@@ -15,6 +15,7 @@ import { AppStackParamList } from "../../types/App";
 import { useAuth } from "../../hooks/useAuth";
 import { useOrderDetails } from "../../hooks/useOrderDetails";
 import { Ionicons } from "@expo/vector-icons";
+import { statusTone } from "../../utils/orderStatus";
 
 type RouteProps = RouteProp<AppStackParamList, "OrderDetailsScreen">;
 type NavigationProp = StackNavigationProp<AppStackParamList>;
@@ -207,16 +208,13 @@ export default function OrderDetailsScreen() {
 }
 
 const StatusRow = ({ label, value }: { label: string; value: string }) => {
-  const normalized = value?.toLowerCase();
-  // Cancelled/failed previously fell into the same "neutral" bucket as
-  // pending, making a dead order look like it was simply still in progress.
-  const isNegative = ["cancelled", "failed"].includes(normalized);
-  const isPositive = !isNegative && ["paid", "delivered", "shipped"].includes(normalized);
-  const tone = isNegative ? styles.statusNegative : isPositive ? styles.statusPositive : styles.statusNeutral;
+  const tone = statusTone(value);
+  const toneStyle =
+    tone === "positive" ? styles.statusPositive : tone === "negative" ? styles.statusNegative : styles.statusNeutral;
   return (
     <View style={styles.statusRow}>
       <Text style={styles.statusLabel}>{label}</Text>
-      <Text style={[styles.statusValue, tone]}>
+      <Text style={[styles.statusValue, toneStyle]}>
         {value}
       </Text>
     </View>

@@ -38,6 +38,7 @@ import { ConversationsListScreen } from "../screens/ConversationsListScreen";
 import IncomingCallScreen from "../screens/video/IncomingCallScreen";
 import ConfirmOrderScreen from "../screens/order/ConfirmOrderScreen";
 import OrderDetailsScreen from "../screens/order/OrderDetailsScreen";
+import MyOrdersScreen from "../screens/order/MyOrdersScreen";
 
 import { AppStackParamList } from "../types/App";
 import { IDoctor } from "../types/backendType";
@@ -130,6 +131,7 @@ export default function AppNavigator() {
       <RootStack.Screen name="CheckoutScreen" component={CheckoutScreen} />
       <RootStack.Screen name="ConfirmOrderScreen" component={ConfirmOrderScreen} />
       <RootStack.Screen name="OrderDetailsScreen" component={OrderDetailsScreen} />
+      <RootStack.Screen name="MyOrdersScreen" component={MyOrdersScreen} />
       <RootStack.Screen
         name="PaymentMethodScreen"
         component={PaymentMethodScreen}

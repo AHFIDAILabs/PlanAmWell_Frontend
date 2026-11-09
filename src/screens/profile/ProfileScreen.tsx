@@ -371,6 +371,13 @@ const handleAppointmentPress = async (appointment: IUpcomingAppointment) => {
 
                 {/* Menu Group */}
                 <View style={styles.menuGroup}>
+                    {role !== 'Doctor' && (
+                        <ProfileMenuItem
+                            icon="shopping-bag"
+                            title="My Orders"
+                            onPress={() => navigation.navigate('MyOrdersScreen' as never)}
+                        />
+                    )}
                     <ProfileMenuItem
                         icon="activity"
                         title="Medication Reminders"
